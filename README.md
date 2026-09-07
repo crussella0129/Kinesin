@@ -14,11 +14,10 @@ To create a general purpose harness as minimally, and with as few dependencies, 
 
 
 ### Kinesin Core Scaffolding
-|_ #### Kinesin.toml
+|_ **Kinesin.toml**
 TOML config header (for the configurability of functionality listed above) + agent instructions in the markdown area - think 'claude.md meets deterministic config file'. The elements of this document become immutable an immutable source of truth that the .toml can be compared against after compilation as well
-|_ #### ReAct.rs
+|_ **ReAct.rs**
 structs that map the firing order of 
-|_ #### input.rs
+|_ **input.rs**
 structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected. Process most similar to "collects keystroke input / allows typing -> 'enter' press collects that state -> sends that state immutably to files that call for the output of this file" using only std library components in as minimal of code as possible
-|_ ####
 |_
