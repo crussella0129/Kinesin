@@ -35,8 +35,7 @@ Kinesin/
 ├── scripts/                         # Cross-platform orchestration
 │   └── first_flight.ps1             # Automated bootstrapper that observes environment (Windows or Linux), engages Windows/WSL bootstrapper to check if the operating environment is a windows operating system, check/install WSL, llama.cpp, wireguard (and other core, non-rust deps) via the appropriate package manager.
 ├── models/
-|   └── your-gguf-here.gguf
-│   └── hf.rs/                       # a py03 connector that allows you 
+|   └── your-gguf-here.gguf          # Your GGUF format model text-to-text of choice (coding or agent models recommeneded), selected beforehand and copied or cloned to this directory
 ├── Kinesin.toml                     # TOML config header (for the configurability of functionality listed above) + agent instructions in the markdown area - think 'claude.md meets deterministic config file'. This document becomes an immutable source of truth that the .toml can be compared against after compilation.
 ├── Cargo.toml                       # Zero-dependency package manifest - kept separate from Kinesin.toml to prevent incorrect changes and breakages (we can review that though).
 └── README.md                        # Documentation
