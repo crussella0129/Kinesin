@@ -10,7 +10,7 @@ To create a general purpose harness as minimally, and with as few dependencies, 
 
 ## Project Scaffolding
   
-'*note that "User" could be a human or another agent in this context
+' *note that "User" could be a human or another agent in this context
 
 Kinesin/
 ├── .github/                         # CI/CD automation workflows
