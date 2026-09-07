@@ -12,7 +12,8 @@ To create a general purpose harness as minimally, and with as few dependencies, 
   
 *note that "User" could be a human or another agent in this context
 
-```Kinesin/
+```
+Kinesin/
 ├── .github/                         # CI/CD automation workflows
 ├── src/                             # Core Rust implementation
 │   └── main.rs                      # Application entry point & orchestration
@@ -36,5 +37,6 @@ To create a general purpose harness as minimally, and with as few dependencies, 
 │   └── hf.rs/                       # a py03 connector that allows you 
 ├── Kinesin.toml                     # TOML config header (for the configurability of functionality listed above) + agent instructions in the markdown area - think 'claude.md meets deterministic config file'. This document becomes an immutable source of truth that the .toml can be compared against after compilation.
 ├── Cargo.toml                       # Zero-dependency package manifest - kept separate from Kinesin.toml to prevent incorrect changes and breakages (we can review that though).
-└── README.md                        # Documentation```
+└── README.md                        # Documentation
+```
 
