@@ -12,9 +12,9 @@ To create a general purpose harness as minimally, and with as few dependencies, 
   
 `*note that "User" could be a human or another agent in this context`
 
-`Kinesin/
-├── .github/                         # CI/CD automation workflows
-├── src/                             # Core Rust implementation
+`Kinesin/`
+`├── .github/                         # CI/CD automation workflows`
+`├── src/                             # Core Rust implementation`
 │   └── main.rs                      # Application entry point & orchestration
 |   └── **Kineserve/**
 |        ├── main.rs                 # entry point & orchestration + structs that check for installation and/or run llama.cpp, launch llama serve, and point it at model/
