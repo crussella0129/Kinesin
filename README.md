@@ -2,46 +2,886 @@
 
 The *even tinier* General Purpose Harness (but a very hard worker for its size!)
 
-## General Goal
+Kinesin is a small agent harness. It runs a local language model, it routes the
+model's requests to functions, and it keeps a full record of every message. The
+plan is to write it with the Rust standard library first, and to add outside
+libraries only where the standard library cannot do the job.
 
-To create a general purpose harness as minimally, and with as few dependencies, as possible. The following global structure is proposed:
+This README is the scaffold. It describes each part, the standard library tools
+that each part needs, the study material for each step, and the open decisions
+that you must make before you write code. The document uses ASD-STE100 Simplified
+Technical English: short sentences, active voice, and one idea per sentence.
+
+---
+
+## Contents
+
+1. [What Kinesin is](#1-what-kinesin-is)
+2. [Design rules](#2-design-rules)
+3. [Architecture and data flow](#3-architecture-and-data-flow)
+4. [Project layout](#4-project-layout)
+5. [Component guide](#5-component-guide)
+6. [The non-Rust parts and how to connect them](#6-the-non-rust-parts-and-how-to-connect-them)
+7. [Trace schema](#7-trace-schema)
+8. [The ReAct loop](#8-the-react-loop)
+9. [What is missing: decisions to make first](#9-what-is-missing-decisions-to-make-first)
+10. [Suggested build order](#10-suggested-build-order)
+11. [Learning resources index](#11-learning-resources-index)
+
+---
+
+## 1. What Kinesin is
+
+Kinesin has three parts:
+
+- **Kineserve** starts a local model server and points it at your model file. It
+  uses `llama-server` from the llama.cpp project.
+- **Koil** is the channel between the harness and the model server. It also
+  records every message that crosses it.
+- **K-Core** is the brain. It runs the ReAct loop (reason, then act), it routes
+  function calls, and it reads your configuration and instructions.
+
+> **Note:** In this document, "user" means a human **or** another agent. Both send
+> input to Kinesin in the same way.
+
+The name is a metaphor only. A kinesin is a motor protein that carries cargo
+along a track. Kinesin the program carries messages between the harness and the
+model. Do not read more into the name than that.
+
+---
+
+## 2. Design rules
+
+1. **Standard library first.** Use `std` for input, output, files, sockets,
+   threads, and collections. Add an outside library only when `std` has no
+   answer, and write down why.
+2. **Small surface.** Keep each crate small. Prefer clear code over clever code.
+3. **One meaning per term.** A "trace" is always the JSON record of one message.
+   "Record" is the verb for the act of saving a trace.
+4. **Everything is observable.** Koil records all traffic. A trace is immutable
+   after Koil writes it.
+5. **Configuration is the source of truth.** `kinesin.toml` holds the settings
+   and the agent instructions. The program reads it; the program does not change
+   it.
+
+Three tasks break the "standard library only" rule. The standard library has no
+JSON parser, no TOML parser, and no cryptography. Section 9 lists these and gives
+you the decision for each.
+
+---
+
+## 3. Architecture and data flow
 
 ```
-Kineserve (llama serve (llama.cpp) bound to local host 127.0.0.1:8080 or 8000) <-> Koil (Custom Wireguard Connector) <-> K-Core: (Contains harness's general ReAct function routing + configurable instructions).
+K-Core  <->  Koil  <->  Kineserve  <->  llama-server  <->  model.gguf
+(ReAct       (channel   (supervisor    (HTTP server      (your GGUF
+ loop +       + trace     for the        from             text model)
+ routing)     record)     model server)  llama.cpp)
 ```
 
-## Project Scaffolding
-  
-*note that "User" could be a human or another agent in this context
+The message flow for one step is:
+
+1. K-Core builds a request from the instructions and the conversation so far.
+2. K-Core sends the request through Koil to Kineserve.
+3. Kineserve passes the request to `llama-server` over local HTTP.
+4. `llama-server` returns the model's answer.
+5. Koil records the request and the answer as traces.
+6. K-Core reads the answer. If the answer asks for a function, K-Core calls the
+   function and adds the result to the conversation.
+7. The loop repeats until a stop condition is true.
+
+**Traces** are the audit log. Each trace is one JSON file in `traces/logs/`. The
+file name is a random ID, not a sequential number. `traces/trace_hash.json` is a
+lookup table that maps each ID to its file. Section 7 gives the trace schema.
+Section 9, items 4 and 5, give the ID decision.
+
+---
+
+## 4. Project layout
+
+The tree below is a proposal. It is a **Cargo workspace** with three member
+crates. A workspace lets the three crates share one build and one lock file, but
+keeps each crate separate. This layout differs from the first draft in the git
+history; Section 9, item 1 explains the change and asks you to confirm it.
 
 ```
 Kinesin/
-├── .github/                         # CI/CD automation workflows
-├── src/                             # Core Rust implementation
-│   └── main.rs                      # Application entry point & orchestration
-|   └── Kineserve/
-|        ├── main.rs                 # entry point & orchestration + structs that launches llama serve and point it at model/
-|        ├── input.rs                # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
-|        ├── scripts/                # Cross-platform orchestration
-│            └── run-harness.ps1     # Automated Windows/WSL bootstrapper
-|        └── Cargo.toml              # Zero-dependency package manifest
-|   └── Koil/
-|        ├── main.rs                 # entry point & orchestration + structs that launches wireguard
-|        └── Cargo.toml              # Zero-dependency package manifest
-|   └── K-Core/
-|        ├── main.rs                 # Entry point & orchestration + structs that map the firing order of K-Core components to Llama serve compatible JSON traces  
-|        ├── input.rs                # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
-|        └── Cargo.toml              # Zero-dependency package manifest
-├── scripts/                         # Cross-platform orchestration
-│   └── preflight.ps1                # Automated bootstrapper that observes environment (Windows or Linux), engages Windows/WSL bootstrapper to check if the operating environment is a windows operating system, check/install WSL, llama.cpp, wireguard (and other core, non-rust deps) via the appropriate package manager.
-├── models/                          # Directory for storing models
-|   └── your-gguf-here.gguf          # Your GGUF format model text-to-text of choice (coding or agent models recommeneded), selected beforehand and copied or cloned to this directory
-├── traces/                          # Directory for storing JSON traces of each session
-|   └── trace_hash.json              # Hash lookup table for json Traces in the logs/ directory.
-|   └── logs                         # Compilation of all Traces (immutable recordings of all activity that flows across Koil (which is all activity between Kineserve and K-Core))
-|         └── trace#.json            # trace id is randomly generated (key/hash), rather than sequential.
-├── kinesin.toml                     # TOML config header (for the configurability of functionality listed above) + agent instructions in the markdown area - think 'claude.md meets deterministic config file'. This document becomes an immutable source of truth that the .toml can be compared against after compilation.
-├── Cargo.toml                       # Zero-dependency package manifest - kept separate from Kinesin.toml to prevent incorrect changes and breakages (we can review that though).
-└── README.md                        # Documentation
+├── .github/
+│   └── workflows/                 # CI jobs: format, lint, build, test
+├── crates/                        # Workspace member crates
+│   ├── kineserve/                 # Starts and supervises llama-server
+│   │   ├── src/
+│   │   │   ├── main.rs            # Entry point: start the server, wait for /health
+│   │   │   └── input.rs          # Reads input with std only (io, fs)
+│   │   └── Cargo.toml
+│   ├── koil/                      # The channel; records traces
+│   │   ├── src/
+│   │   │   └── main.rs           # Starts or wraps WireGuard; writes traces
+│   │   └── Cargo.toml
+│   └── k-core/                    # The ReAct loop and function routing
+│       ├── src/
+│       │   ├── main.rs           # Entry point: run the loop, build JSON traces
+│       │   └── input.rs          # Reads input with std only
+│       └── Cargo.toml
+├── models/
+│   └── your-gguf-here.gguf        # Your chosen text-to-text GGUF model
+├── traces/
+│   ├── trace_hash.json            # Lookup table: ID -> trace file
+│   └── logs/
+│       └── <trace-id>.json        # One immutable trace per message; random ID
+├── scripts/
+│   ├── preflight.ps1              # Windows/WSL environment check and install
+│   └── run-harness.ps1            # Start order for the three parts
+├── kinesin.toml                   # TOML settings + Markdown instructions
+├── Cargo.toml                     # Workspace manifest (lists the members)
+├── LICENSE
+└── README.md
 ```
 
+---
+
+## 5. Component guide
+
+Each entry below gives the same four things:
+
+- **Purpose** — what the part does.
+- **Standard library tools** — the `std` modules to learn.
+- **Rust study** — the exact book sections to read.
+- **How it connects** — the link to other parts, where relevant.
+
+For ownership, read the **Brown University fork** of the Rust book first. Its
+Chapter 4 is larger than the standard book. It adds a "Fixing Ownership Errors"
+section and an "Ownership Recap" that shows the Read/Write/Own permission model.
+That model makes the borrow checker easier to understand. Read the standard book
+for the other chapters.
+
+- Standard book: https://doc.rust-lang.org/book/
+- Brown fork: https://rust-book.cs.brown.edu/
+
+---
+
+### 5.1 `Cargo.toml` (workspace manifest, root)
+
+**Purpose.** Lists the member crates and shares build settings. This root file is
+a workspace manifest, not a package. It has a `[workspace]` table with a
+`members` list; it does not have a `[package]` table.
+
+**Rust study.**
+- The Cargo Book, "Workspaces": https://doc.rust-lang.org/cargo/reference/workspaces.html
+- The Cargo Book, "The Manifest Format":
+  https://doc.rust-lang.org/cargo/reference/manifest.html
+- Rust book, Chapter 14.3 "Cargo Workspaces".
+
+---
+
+### 5.2 `crates/kineserve/` — the model server supervisor
+
+**Purpose.** Starts `llama-server` as a child process. Points it at the model in
+`models/`. Waits until the server is ready. Stops the server on shutdown.
+
+**Standard library tools.**
+- `std::process::Command` — start `llama-server`, set its flags, hold the child
+  handle.
+- `std::net::TcpStream` — poll the server's `/health` endpoint until it answers.
+- `std::io` (`Read`, `Write`, `BufReader`) — read the child's output and the
+  socket.
+- `std::thread` and `std::time` — wait and retry during model load.
+
+**Rust study.**
+- Rust book, Chapter 21 "Final Project: Building a Multithreaded Web Server".
+  Sections 21.1–21.3 build an HTTP server and a thread pool with `std::net` only.
+  You do not build a server here, but the same TCP and stream skills apply to the
+  health poll and the raw HTTP client.
+- Rust by Example, "Std Misc → Child processes":
+  https://doc.rust-lang.org/rust-by-example/std_misc/process.html
+- Standard library docs for `std::process::Command`:
+  https://doc.rust-lang.org/std/process/struct.Command.html
+- Rust book, Chapter 9 "Error Handling" — the child process can fail to start;
+  return a `Result`.
+- Brown fork, Chapter 4 — the child handle is a value that Kineserve owns; learn
+  move and borrow rules before you pass the handle around.
+
+**How it connects.** See Section 6.1 for the child-process and HTTP details.
+
+---
+
+### 5.3 `crates/kineserve/src/input.rs` and `crates/k-core/src/input.rs`
+
+**Purpose.** Collects user input with the standard library only. Treats the
+collected input as an immutable value. The two `input.rs` files do the same job
+in their own crate.
+
+**Standard library tools.**
+- `std::io::stdin` and `std::io::BufRead` — read a line or a block of text.
+- `std::fs` — read input from a file when the input is not from the keyboard.
+- `String` and `&str` — hold and borrow the text.
+
+**Rust study.**
+- Rust book, Chapter 2 "Programming a Guessing Game" — the first `stdin` example.
+- Rust book, Chapter 8.2 "Storing UTF-8 Encoded Text with Strings".
+- Rust book, Chapter 12.1–12.3 — read arguments, read a file, and structure the
+  program well. This is the closest pattern to a small command-line tool.
+- Brown fork, Chapter 4.1–4.2 and 4.5 — an immutable input is a value with read
+  permission but no write permission. The permission model explains why the rest
+  of the program cannot change it.
+
+---
+
+### 5.4 `crates/koil/` — the channel and the trace recorder
+
+**Purpose.** Two jobs. First, it carries messages between K-Core and Kineserve.
+The plan is to use WireGuard for this channel. Second, it records every message
+as a trace file.
+
+**Standard library tools.**
+- `std::process::Command` — start or configure the system WireGuard tools.
+- `std::fs` and `std::io::Write` — write each trace to `traces/logs/`.
+- `std::collections::HashMap` — hold the ID-to-file lookup table in memory before
+  it writes `trace_hash.json`.
+- `std::time::SystemTime` — add a timestamp to each trace.
+- `std::hash` (`Hasher`) or an entropy read — make the random trace ID (see
+  Section 9, items 4 and 5).
+
+**Rust study.**
+- Rust book, Chapter 8.3 "Storing Keys with Associated Values in Hash Maps".
+- Rust book, Chapter 12.2 and 12.4 — read and write files well.
+- Rust book, Chapter 16 "Fearless Concurrency" — if Koil records traces on a
+  separate thread, read 16.1 (threads), 16.2 (channels), and 16.3 (`Arc` and
+  `Mutex` for shared state).
+- Brown fork, Chapter 4 whole chapter — Koil holds data that more than one part
+  reads; ownership and borrow rules matter most here.
+
+**How it connects.** See Section 6.2 for WireGuard. See Section 7 for the trace
+schema.
+
+> **Design question.** If K-Core and Kineserve both run on one machine over
+> `127.0.0.1`, a WireGuard tunnel adds little. Keep WireGuard if your goal is to
+> learn it, or if you plan to split the two parts across machines later. For a
+> first local run, you can skip the tunnel and let Koil record traces only.
+
+---
+
+### 5.5 `crates/k-core/` — the ReAct loop and function routing
+
+**Purpose.** The brain of the harness. It reads the configuration and the
+instructions. It builds each request to the model. It reads the model's answer.
+It detects a function call in the answer, routes the call to the correct
+function, and adds the result to the conversation. It maps the order of these
+steps to JSON traces that work with `llama-server`.
+
+**Standard library tools.**
+- `enum` and `match` — model the loop state and the message types.
+- `struct` — hold a message, a function call, and a trace.
+- `std::collections::HashMap` — map a function name to its handler.
+- `Result` and the `?` operator — carry errors up the call chain.
+- Iterators — walk the conversation and the parsed fields.
+
+**Rust study.**
+- Rust book, Chapter 5 "Using Structs" — model the data.
+- Rust book, Chapter 6 "Enums and Pattern Matching" — model the loop states and
+  branch on them with `match`.
+- Rust book, Chapter 7 "Managing Growing Projects" — split `main.rs` and
+  `input.rs` into modules and bring them into scope with `use`.
+- Rust book, Chapter 9 "Error Handling" — a robust loop needs a clear error path.
+- Rust book, Chapter 13 "Iterators and Closures" — parse and route with iterators.
+- Brown fork, Chapter 4 and Chapter 4.3 "Fixing Ownership Errors" — the loop
+  passes strings and structs between functions; this section shows how to fix the
+  common borrow errors that you will meet.
+
+**Background on the loop.** The ReAct pattern comes from the paper "ReAct:
+Synergizing Reasoning and Acting in Language Models" (Yao and others, 2022):
+https://arxiv.org/abs/2210.03629 . Read it once to understand the reason–act
+cycle. You do not need to copy the paper; you need the idea of a loop that thinks,
+acts, observes, and repeats.
+
+---
+
+### 5.6 `models/`
+
+**Purpose.** Holds your model file in GGUF format. Choose a text-to-text model. A
+small coding model or agent model is a good start. Copy or clone the file here
+before you run Kineserve.
+
+**Study.** GGUF is the file format that llama.cpp reads. Read the format note in
+the ggml repository so you pick a file that `llama-server` can load:
+https://github.com/ggml-org/ggml/blob/master/docs/gguf.md
+
+---
+
+### 5.7 `traces/`
+
+**Purpose.** Holds the audit log. `traces/logs/<trace-id>.json` is one trace per
+message. `traces/trace_hash.json` maps each ID to its file. A trace is immutable
+after Koil writes it.
+
+**Standard library tools.** `std::fs`, `std::io::Write`, `std::collections::HashMap`.
+
+**Rust study.** Rust book, Chapter 8.3 (hash maps) and Chapter 12.2 (file I/O).
+
+**Decisions.** The trace schema is in Section 7. The ID scheme is open; see
+Section 9, items 4 and 5.
+
+---
+
+### 5.8 `kinesin.toml`
+
+**Purpose.** One file with two parts. The top part is a TOML header for
+deterministic settings. The lower part is a Markdown body for the agent
+instructions. Think of it as a "CLAUDE.md meets a config file". The program reads
+this file; the program treats it as the source of truth.
+
+**Standard library tools.** `std::fs` to read the file. String methods to split
+the two parts.
+
+**Rust study.**
+- Rust book, Chapter 8.2 (strings) and Chapter 12.2 (read a file).
+- The TOML specification, to learn the format you will read:
+  https://toml.io/en/v1.0.0
+- The CommonMark specification, for the Markdown body:
+  https://spec.commonmark.org/
+
+**Decision.** The standard library has no TOML parser. See Section 9, item 3.
+
+---
+
+### 5.9 `scripts/`
+
+**Purpose.** Set up and start order. `preflight.ps1` checks the environment. It
+detects Windows, checks or installs WSL, and installs `llama.cpp`, WireGuard, and
+the other non-Rust dependencies with the correct package manager.
+`run-harness.ps1` starts the three parts in the correct order.
+
+**Study.**
+- PowerShell scripting overview:
+  https://learn.microsoft.com/powershell/scripting/overview
+- WSL install and commands: https://learn.microsoft.com/windows/wsl/install
+- Section 6.3 explains WSL and the package steps.
+
+**Decision.** These scripts are Windows and PowerShell. Decide the Linux and
+macOS equivalent, or move the checks into the Rust binary. See Section 9, item 10.
+
+---
+
+### 5.10 `.github/workflows/`
+
+**Purpose.** Continuous integration. Run the format check, the lint, the build,
+and the tests on each push.
+
+**Study.**
+- GitHub Actions quickstart:
+  https://docs.github.com/actions/quickstart
+- The three Rust commands to run in CI: `cargo fmt --check`, `cargo clippy`, and
+  `cargo test`.
+- Rust book, Chapter 11 "Writing Automated Tests" — write the tests that CI runs.
+
+---
+
+## 6. The non-Rust parts and how to connect them
+
+Kinesin joins Rust code to three outside tools: `llama-server`, WireGuard, and
+WSL. This section explains each link.
+
+### 6.1 Rust to `llama-server` (the most important link)
+
+`llama-server` is a C++ program. It is a normal HTTP server. Your Rust code does
+**not** call C++ functions. Your Rust code starts the server and then talks to it
+over local HTTP. This keeps the two languages fully separate.
+
+**Step 1 — Start the server.** Kineserve runs `llama-server` with
+`std::process::Command`. Set these flags:
+
+- `-m` — the path to your model in `models/`.
+- `--host 127.0.0.1` — bind to localhost only.
+- `--port 8080` — the port (the default is 8080).
+- `-c` — the context size.
+
+**Step 2 — Wait for ready.** The model takes time to load. Do not send a request
+too early. Poll `GET /health` until it returns "ok". Then send real requests.
+
+**Step 3 — Send a request.** The standard library has no HTTP client. You write a
+small one over `std::net::TcpStream`:
+
+1. Open a `TcpStream` to `127.0.0.1:8080`.
+2. Write the request line, for example `POST /completion HTTP/1.1`.
+3. Write the headers. You must send `Host:`, `Content-Type: application/json`,
+   and `Content-Length:` with the exact byte length of the body.
+4. Write a blank line.
+5. Write the JSON body.
+6. Read the response bytes. Find the blank line that ends the headers. The JSON
+   body follows it.
+
+**Step 4 — Choose the endpoint.**
+
+- `POST /completion` takes a single `prompt` field and returns a `content` field.
+  It is the simplest to start with.
+- `POST /v1/chat/completions` takes a `messages` array of role and content pairs.
+  It matches the chat shape and the OpenAI format. Use it when you need multi-turn
+  chat.
+
+**Key request fields:** `prompt` (or `messages`), `n_predict` (max tokens),
+`temperature`, and `stream`. Set `stream` to false at first, so you read one
+whole answer.
+
+**Key response fields:** `content` (the text), `stop_type` (why it stopped), and
+`timings` (performance). For the chat endpoint, read
+`choices[0].message.content`.
+
+**Study.**
+- llama.cpp server README (endpoints, flags, and fields):
+  https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
+- llama.cpp main README (how to build `llama-server`):
+  https://github.com/ggml-org/llama.cpp
+- MDN "HTTP Messages" (the request and response structure) and "Content-Length":
+  https://developer.mozilla.org/docs/Web/HTTP/Messages
+- Rust book, Chapter 21.1 — the same read-and-parse pattern for a raw HTTP socket.
+
+### 6.2 Rust to WireGuard (Koil)
+
+There are two ways to build Koil. Pick one.
+
+**Path A — Wrap the system tools (recommended start).** WireGuard has two
+command-line tools: `wg` and `wg-quick`. Koil uses `std::process::Command` to run
+them. Koil makes the keys, writes a config file, and runs `wg-quick up`. This
+path is small Rust code and real, tested WireGuard.
+
+**Path B — A userspace implementation in Rust (advanced).** Koil embeds the
+WireGuard protocol in the Rust process. No system tools and no `wg-quick` are
+needed for the tunnel logic. WireGuard needs cryptography: Curve25519,
+ChaCha20-Poly1305, BLAKE2s, and the Noise handshake. The standard library has no
+cryptography. So this path needs an outside library; it cannot be standard
+library only. There are two ways:
+
+- **B1 — Use a userspace WireGuard crate (recommended for Path B).** Add a Rust
+  library that already implements the protocol, and call it from Koil. Two good
+  options:
+  - **GotaTun** — a userspace WireGuard in Rust from Mullvad, forked from
+    BoringTun and now their standard for desktop. https://github.com/mullvad/gotatun
+    and the crate at https://lib.rs/crates/gotatun . This fits your Rust-first
+    goal, and it means Koil does not hand-write crypto.
+  - **boringtun** — Cloudflare's userspace WireGuard in Rust, the parent of
+    GotaTun. https://github.com/cloudflare/boringtun
+  - Note: the tunnel still needs a TUN network device. That step may need extra
+    privileges on the host.
+- **B2 — Hand-write the protocol.** You write the handshake and the crypto calls
+  yourself. This is a large task and is easy to get wrong. Do not start here; read
+  GotaTun and boringtun as study references instead.
+
+Suggested order for Koil: Path A first (small and tested), then Path B1 with
+GotaTun if you want the tunnel inside the Rust process.
+
+**Study.**
+- WireGuard Quick Start (keys, config, `wg-quick up`):
+  https://www.wireguard.com/quickstart/
+- WireGuard Conceptual Overview (cryptokey routing, peers, allowed IPs):
+  https://www.wireguard.com/#conceptual-overview
+- The `wg` and `wg-quick` man pages (the exact flags Koil will call):
+  https://man7.org/linux/man-pages/man8/wg.8.html and
+  https://man7.org/linux/man-pages/man8/wg-quick.8.html
+- WireGuard Protocol & Cryptography and the Whitepaper (only for Path B):
+  https://www.wireguard.com/protocol/ and https://www.wireguard.com/papers/wireguard.pdf
+
+### 6.3 Windows to Linux tools (WSL)
+
+`llama.cpp` and the WireGuard tools run more simply on Linux. On Windows, use
+WSL2 (Windows Subsystem for Linux, version 2). WSL2 runs a real Linux kernel next
+to Windows.
+
+**The `preflight.ps1` flow:**
+
+1. Detect the operating system. If it is Windows, continue. If it is Linux, use
+   the package manager directly.
+2. Check for WSL. If it is missing, run `wsl --install`.
+3. Inside WSL, update the package list.
+4. Inside WSL, install the build tools, clone and build `llama.cpp`, and install
+   `wireguard-tools` with `apt`.
+
+**Networking note.** WSL2 uses its own virtual network. A server that listens
+inside WSL2 is often reachable from Windows on `localhost`, but not always. If
+Kineserve runs inside WSL and a Windows-side part connects to it, read the WSL
+networking page first:
+https://learn.microsoft.com/windows/wsl/networking
+
+**Study.**
+- WSL install: https://learn.microsoft.com/windows/wsl/install
+- WSL basic commands: https://learn.microsoft.com/windows/wsl/basic-commands
+- WSL file system interop (reach Windows files from Linux and the reverse):
+  https://learn.microsoft.com/windows/wsl/filesystems
+
+---
+
+## 7. Trace schema
+
+A trace is the record of one message that crosses Koil. Koil writes one trace as
+one JSON file in `traces/logs/`. The file name is the trace ID. The file is
+immutable after Koil writes it.
+
+This section gives a first schema. Change it to fit your needs. But keep the field
+names stable after you start, because the lookup table and any later tool depend
+on them.
+
+### 7.1 Fields of one trace
+
+| Field | Type | Required | Meaning |
+|-------|------|----------|---------|
+| `id` | string | yes | The random trace ID. It is also the file name. |
+| `time` | string | yes | The time Koil wrote the trace, in ISO 8601 (for example `2026-09-07T14:03:22Z`). |
+| `session` | string | yes | The ID of the run that this trace belongs to. One run has many traces. |
+| `step` | number | yes | The step number inside the session. It starts at 0 and counts up. |
+| `direction` | string | yes | `to_model` or `from_model`. |
+| `source` | string | yes | The part that sent the message (for example `k-core`). |
+| `destination` | string | yes | The part that received the message (for example `kineserve`). |
+| `endpoint` | string | for `to_model` | The `llama-server` path, for example `/completion`. |
+| `model` | string | yes | The model file name from `models/`. |
+| `payload` | object | yes | The exact JSON body that crossed the channel (see below). |
+| `timings` | object | for `from_model` | The timing block from `llama-server`, if it is present. |
+| `prev` | string or null | yes | The ID of the trace before this one in the session, or null for the first. |
+
+The `payload` field is the key to the phrase "works with `llama-server`". For a
+`to_model` trace, the payload is the request that you sent to `llama-server`, with
+no change. For a `from_model` trace, the payload is the answer that `llama-server`
+returned, with no change. So a trace holds the real `llama-server` body plus the
+metadata around it. The `prev` field links the traces in order, so you can replay
+a session from first to last.
+
+### 7.2 Example trace to the model
+
+```json
+{
+  "id": "b1c4f9a2e8d74630",
+  "time": "2026-09-07T14:03:22Z",
+  "session": "9f2a77c0",
+  "step": 0,
+  "direction": "to_model",
+  "source": "k-core",
+  "destination": "kineserve",
+  "endpoint": "/completion",
+  "model": "your-model.gguf",
+  "payload": {
+    "prompt": "System instructions...\nUser: list the files\n",
+    "n_predict": 256,
+    "temperature": 0.2,
+    "stream": false
+  },
+  "prev": null
+}
+```
+
+### 7.3 Example trace from the model
+
+```json
+{
+  "id": "7d0e5a13c9b28f44",
+  "time": "2026-09-07T14:03:24Z",
+  "session": "9f2a77c0",
+  "step": 1,
+  "direction": "from_model",
+  "source": "kineserve",
+  "destination": "k-core",
+  "model": "your-model.gguf",
+  "payload": {
+    "content": "{\"action\": \"list_files\", \"args\": {\"path\": \".\"}}",
+    "stop_type": "eos"
+  },
+  "timings": {
+    "prompt_n": 42,
+    "predicted_n": 18,
+    "predicted_ms": 640.5
+  },
+  "prev": "b1c4f9a2e8d74630"
+}
+```
+
+### 7.4 The lookup table `trace_hash.json`
+
+`traces/trace_hash.json` maps each trace ID to its file. It gives quick access
+without a scan of the directory. A simple shape is one object. Each key is a trace
+ID. Each value holds the file path, the session, the step, and the time.
+
+```json
+{
+  "b1c4f9a2e8d74630": {
+    "file": "traces/logs/b1c4f9a2e8d74630.json",
+    "session": "9f2a77c0",
+    "step": 0,
+    "time": "2026-09-07T14:03:22Z"
+  },
+  "7d0e5a13c9b28f44": {
+    "file": "traces/logs/7d0e5a13c9b28f44.json",
+    "session": "9f2a77c0",
+    "step": 1,
+    "time": "2026-09-07T14:03:24Z"
+  }
+}
+```
+
+Rules for the recorder:
+
+- Write the trace file first. Add the lookup entry second. This order makes sure
+  the table never points to a missing file.
+- Do not change a trace after you write it. To correct a record, write a new trace
+  and link it with `prev`.
+- The ID scheme (random bytes or a hash) is a separate decision. See Section 9,
+  items 4 and 5.
+
+---
+
+## 8. The ReAct loop
+
+K-Core runs the ReAct loop. "ReAct" means reason, then act. The model reasons in
+text. Then it asks for an action. K-Core runs the action, observes the result, and
+gives the result back to the model. The loop repeats until a stop condition is
+true.
+
+### 8.1 The step cycle
+
+One step of the loop does these things in order:
+
+1. Build the prompt. Join the instructions from `kinesin.toml`, the conversation
+   so far, and the last observation.
+2. Send the prompt to the model through Koil (Section 6.1). Record a `to_model`
+   trace.
+3. Read the answer. Record a `from_model` trace.
+4. Look for an action in the answer.
+5. If there is no action, treat the answer as the final answer. Stop the loop.
+6. If there is an action, find the function for that action name in the function
+   table.
+7. If the name is not in the table, make an error observation. Go to step 10.
+8. Check the arguments against what the function needs. If the arguments are
+   wrong, make an error observation. Go to step 10.
+9. Call the function. Capture its result or its error as the observation.
+10. Add the action and the observation to the conversation.
+11. Add 1 to the step count. Go to step 1.
+
+### 8.2 The loop states
+
+Model the loop with a small set of states. An `enum` fits well (Rust book,
+Chapter 6):
+
+- `Think` — build and send the prompt; wait for the answer.
+- `Act` — a valid action is present; call the function.
+- `Observe` — record the result and add it to the conversation.
+- `Done` — a stop condition is true; return the final answer.
+- `Failed` — an error stops the loop; return the error.
+
+### 8.3 How the model asks for an action
+
+Decide one clear format for an action. Put the rule in `kinesin.toml`, so the
+model follows it. A simple rule is: the model returns one JSON object with an
+`action` field and an `args` field. For example:
+
+```json
+{
+  "action": "list_files",
+  "args": { "path": "." }
+}
+```
+
+K-Core reads the `content` field of the answer. Then it parses this small JSON. If
+the parse fails, K-Core makes an error observation and lets the model try again.
+
+Note: this format uses the plain `/completion` endpoint. The
+`/v1/chat/completions` endpoint has its own tool-call fields. Pick one endpoint
+and one format, and keep to it.
+
+### 8.4 Stop conditions
+
+The loop must not run forever. Stop when any of these is true:
+
+- The answer has no action. This is the normal, successful end.
+- The step count reaches the maximum. Set the maximum in `kinesin.toml`, for
+  example 12 steps.
+- The same action and the same arguments repeat too many times. This shows a
+  stuck loop.
+- A function returns a stop result on purpose (for example a `finish` function).
+- An error happens that you cannot recover from (for example Kineserve is not
+  reachable).
+
+### 8.5 What to record
+
+Record a trace for every message to and from the model (Section 7). Also decide
+whether to record the function results. A good first rule: put the observation
+text inside the next `to_model` trace, because the observation becomes part of the
+next prompt. This keeps the full history in the traces.
+
+### 8.6 Errors in the loop
+
+Return a `Result` from each function (Rust book, Chapter 9). Turn a function error
+into an observation, not a crash, so the model can react to it. Stop the loop only
+for an error that you cannot recover from. For that case, write a `Failed` trace
+with the reason.
+
+Rust study for this section: Chapter 5 (structs for the message and the action),
+Chapter 6 (enums and `match` for the states), Chapter 9 (`Result` and `?`), and
+Chapter 13 (iterators to walk the conversation). Read the Brown fork, Chapter 4.3
+"Fixing Ownership Errors", before you pass the conversation between functions.
+
+---
+
+## 9. What is missing: decisions to make first
+
+These are the open points. Decide each one before you write the matching code.
+Each item says the problem, the choices, and a suggested start.
+
+1. **Workspace or one binary.** The first draft mixed a root `src/main.rs` with
+   three sub-crates. That is unclear. Choose a Cargo workspace with three member
+   crates (Section 4), **or** one binary crate with three modules. Suggested
+   start: the workspace, because the three parts have different jobs and may run
+   as separate processes. Confirm this choice, then build the root `Cargo.toml`
+   as a workspace manifest.
+
+2. **JSON.** The standard library has no JSON parser. Both `llama-server` and the
+   traces use JSON. Choose:
+   - **Hand-write a small encoder and decoder** for the few shapes you use. This
+     is more work but more learning, and it keeps the "standard library only"
+     rule. The JSON grammar is small; read https://www.json.org/ .
+   - **Add `serde` and `serde_json`.** This is the common, safe choice. It breaks
+     the "standard library only" rule for one clear reason.
+   - Suggested start: hand-write a small encoder for requests and a small decoder
+     that reads only the few response fields you need. Move to `serde_json` later
+     if the hand-written code becomes a burden.
+
+3. **TOML.** The standard library has no TOML parser. `kinesin.toml` needs one.
+   Choose:
+   - **Hand-write a reader** for the small subset you use (key, value, and
+     section headers). The config is small and under your control.
+   - **Add the `toml` crate.**
+   - Suggested start: hand-write the subset reader, because you control the file.
+
+4. **Randomness for trace IDs.** The trace ID is random, not sequential. The
+   standard library has no random number generator. Choose the entropy source:
+   - **Read the operating system randomness.** On Linux, read bytes from
+     `/dev/urandom` with `std::fs`. This is standard library only, but Linux only.
+   - **Add the `getrandom` crate** for a cross-platform source.
+   - **Derive an ID** from a hash of the timestamp plus a counter. This is
+     standard library only and cross-platform, but it is weaker and can collide.
+   - Suggested start: read `/dev/urandom` inside WSL/Linux for the first version.
+
+5. **Hashing for the lookup table.** The standard library has `DefaultHasher` in
+   `std::collections::hash_map`. You can use it for a non-cryptographic ID or a
+   bucket key. Note one limit: its output is not stable across Rust versions, so
+   do not store it as a long-term stable key. Decide whether the trace ID is a
+   random value (item 4) or a hash, and write the rule down.
+
+6. **WireGuard scope.** Decide Path A (wrap the system tools) or Path B
+   (userspace in Rust with GotaTun or boringtun). Also decide whether the local,
+   one-machine setup needs a tunnel at all (Section 5.4). Suggested start: Path A,
+   or no tunnel for the first run; move to Path B1 with GotaTun later.
+
+7. **Trace schema (drafted).** Section 7 now gives a first schema and examples.
+   The open choices that remain: confirm the field names; decide whether to keep
+   the full `llama-server` payload or only selected fields; and decide the ID
+   scheme with items 4 and 5.
+
+8. **The ReAct loop rules (drafted).** Section 8 now gives the step cycle, the
+   states, the action format, and the stop conditions. The open choices that
+   remain: set the maximum step count in `kinesin.toml`; pick the action format
+   (the `/completion` JSON object or the `/v1/chat/completions` tool calls); and
+   set the rule for a stuck loop.
+
+9. **The config and instruction split.** `kinesin.toml` holds TOML settings and a
+   Markdown body in one file. Decide how you split them. A simple rule: put the
+   TOML part between two markers, and put the Markdown part after the second
+   marker. Also decide the "immutable source of truth" check: after a build, make
+   a hash of the file and store it; later, compare the current file against the
+   stored hash to detect a change.
+
+10. **Cross-platform start.** `preflight.ps1` and `run-harness.ps1` are Windows
+    and PowerShell. Decide the Linux and macOS path: a shell script, or checks
+    inside the Rust binary. Suggested start: keep the PowerShell scripts for
+    Windows, and add a short shell script for Linux later.
+
+11. **Error strategy.** Decide how each crate reports errors. A common pattern is
+    a custom `enum` per crate plus `Result`. Read Rust book, Chapter 9. Decide how
+    the top level prints an error and what exit code it returns.
+
+12. **Tests.** There is no test plan yet. Decide the unit tests per module and
+    put integration tests in a `tests/` directory in each crate. Read Rust book,
+    Chapter 11.
+
+---
+
+## 10. Suggested build order
+
+This order lets you see a result early and add one part at a time.
+
+1. **Set up the workspace.** Make the root `Cargo.toml` and one "hello" binary in
+   `k-core`. Confirm the build runs. (Cargo Book workspaces; Rust book Ch 1, 7.)
+2. **Write Kineserve.** Start `llama-server` as a child process. Poll `/health`
+   until it returns "ok". (std::process, std::net; Rust book Ch 21.)
+3. **Write a tiny HTTP client in K-Core.** Send one `/completion` request over a
+   `TcpStream`. Print the raw answer. (std::net; Rust book Ch 21.1; MDN HTTP.)
+4. **Add the small JSON encode and decode.** Encode the request. Decode the
+   `content` field of the answer. (Section 9, item 2.)
+5. **Define and write traces.** Use the schema in Section 7. Write each trace to
+   `traces/logs/`. Build the `trace_hash.json` lookup table. (std::fs,
+   std::collections; Rust book Ch 8, 12.)
+6. **Build the ReAct loop.** Add one example function and route to it. Add the
+   stop condition and the step limit. (Section 8; Rust book Ch 5, 6, 9, 13.)
+7. **Read `kinesin.toml`.** Read the settings and the instructions. Split the two
+   parts. (Section 9, items 3 and 9.)
+8. **Add Koil.** Start with Path A (system WireGuard), or skip the tunnel for the
+   first local run. (WireGuard Quick Start.)
+9. **Add tests and the scripts.** Write unit tests and integration tests. Finish
+   `preflight.ps1` and `run-harness.ps1`. (Rust book Ch 11; PowerShell docs.)
+
+---
+
+## 11. Learning resources index
+
+### Rust core
+
+- **The Rust Programming Language (standard):** https://doc.rust-lang.org/book/
+  - Ch 2 (guessing game: first `stdin`), Ch 3 (common concepts).
+  - Ch 5 (structs), Ch 6 (enums and `match`), Ch 7 (modules).
+  - Ch 8 (collections: 8.1 `Vec`, 8.2 `String`, 8.3 `HashMap`).
+  - Ch 9 (error handling: `Result` and `?`).
+  - Ch 11 (tests), Ch 12 (I/O project: args, files, stderr).
+  - Ch 13 (iterators and closures).
+  - Ch 15 (smart pointers: `Box`, `Rc`, `RefCell` — only if you share state).
+  - Ch 16 (concurrency: 16.1 threads, 16.2 channels, 16.3 `Arc`/`Mutex`).
+  - Ch 21 (final project: a std-only multithreaded web server — the HTTP model).
+- **The Rust Programming Language (Brown University fork):**
+  https://rust-book.cs.brown.edu/
+  - Ch 4 (Understanding Ownership, expanded): 4.1 What is Ownership?, 4.2
+    References and Borrowing, 4.3 Fixing Ownership Errors, 4.4 The Slice Type, 4.5
+    Ownership Recap (the Read/Write/Own permission model). Read this Ch 4 first.
+- **Rust by Example:** https://doc.rust-lang.org/rust-by-example/
+  - Std Misc → child processes, threads, channels, file I/O. Fills the gaps that
+    the book skips for process spawning.
+- **Standard library API docs:** https://doc.rust-lang.org/std/
+  - `std::process::Command`, `std::net::{TcpStream, TcpListener}`,
+    `std::io::{Read, Write, BufReader, BufRead}`, `std::fs`, `std::thread`,
+    `std::sync::{Arc, Mutex, mpsc}`, `std::collections::HashMap`, `std::time`.
+- **The Cargo Book:** https://doc.rust-lang.org/cargo/
+  - "Workspaces" and "The Manifest Format".
+
+### Non-Rust dependencies
+
+- **llama.cpp / `llama-server`:** https://github.com/ggml-org/llama.cpp
+  - Server README (endpoints, flags, JSON fields):
+    https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
+  - Read: start flags (`-m`, `--host`, `--port`, `-c`); endpoints (`/health`,
+    `/completion`, `/v1/chat/completions`, `/props`, `/tokenize`); fields
+    (`prompt`, `n_predict`, `temperature`, `stream`; `content`, `stop_type`,
+    `timings`).
+- **GGUF format:** https://github.com/ggml-org/ggml/blob/master/docs/gguf.md
+- **WireGuard:** https://www.wireguard.com/
+  - Quick Start; Conceptual Overview; `wg` and `wg-quick` man pages; Protocol &
+    Cryptography and the Whitepaper (only for a userspace Koil).
+  - **GotaTun** (Mullvad userspace WireGuard in Rust; a fork of BoringTun; use as
+    a crate for Path B1): https://github.com/mullvad/gotatun and
+    https://lib.rs/crates/gotatun
+  - `boringtun` (Cloudflare userspace WireGuard in Rust; the parent of GotaTun):
+    https://github.com/cloudflare/boringtun
+- **WSL:** https://learn.microsoft.com/windows/wsl/
+  - Install; basic commands; networking; file system interop.
+- **PowerShell:** https://learn.microsoft.com/powershell/scripting/overview
+- **GitHub Actions:** https://docs.github.com/actions/quickstart
+
+### Formats and background
+
+- **HTTP messages (MDN):** https://developer.mozilla.org/docs/Web/HTTP/Messages
+- **JSON grammar:** https://www.json.org/
+- **TOML specification:** https://toml.io/en/v1.0.0
+- **CommonMark (Markdown):** https://spec.commonmark.org/
+- **ReAct paper (the loop idea):** https://arxiv.org/abs/2210.03629
