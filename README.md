@@ -29,14 +29,18 @@ Kinesin/
 |        ├── main.rs                 #  
 |        └── Cargo.toml              # Zero-dependency package manifest
 |   └── K-Core/
-|        ├── main.rs                 # structs that map the firing order of 
+|        ├── main.rs                 # Entry point & orchestration + structs that map the firing order of K-Core components to Llama serve compatible JSON traces  
 |        ├── input.rs                # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
 |        └── Cargo.toml              # Zero-dependency package manifest
 ├── scripts/                         # Cross-platform orchestration
 │   └── first_flight.ps1             # Automated bootstrapper that observes environment (Windows or Linux), engages Windows/WSL bootstrapper to check if the operating environment is a windows operating system, check/install WSL, llama.cpp, wireguard (and other core, non-rust deps) via the appropriate package manager.
-├── models/
+├── models/                          # Directory for storing models
 |   └── your-gguf-here.gguf          # Your GGUF format model text-to-text of choice (coding or agent models recommeneded), selected beforehand and copied or cloned to this directory
-├── Kinesin.toml                     # TOML config header (for the configurability of functionality listed above) + agent instructions in the markdown area - think 'claude.md meets deterministic config file'. This document becomes an immutable source of truth that the .toml can be compared against after compilation.
+├── traces/                          # Directory for storing JSON traces of each session
+|   └── trace_hash.json              # Hash lookup table for json Traces in the logs/ directory.
+|   └── logs                         # Compilation of all Traces (immutable recordings of all activity that flows across Koil (which is all activity between Kineserve and K-Core))
+|         └── trace#.json            # trace id is randomly generated (key/hash), rather than sequential.
+├── kinesin.toml                     # TOML config header (for the configurability of functionality listed above) + agent instructions in the markdown area - think 'claude.md meets deterministic config file'. This document becomes an immutable source of truth that the .toml can be compared against after compilation.
 ├── Cargo.toml                       # Zero-dependency package manifest - kept separate from Kinesin.toml to prevent incorrect changes and breakages (we can review that though).
 └── README.md                        # Documentation
 ```
