@@ -26,14 +26,14 @@ Kinesin/
 │            └── run-harness.ps1     # Automated Windows/WSL bootstrapper
 |        └── Cargo.toml              # Zero-dependency package manifest
 |   └── Koil/
-|        ├── main.rs                 #  
+|        ├── main.rs                 # entry point & orchestration + structs that launches wireguard
 |        └── Cargo.toml              # Zero-dependency package manifest
 |   └── K-Core/
 |        ├── main.rs                 # Entry point & orchestration + structs that map the firing order of K-Core components to Llama serve compatible JSON traces  
 |        ├── input.rs                # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
 |        └── Cargo.toml              # Zero-dependency package manifest
 ├── scripts/                         # Cross-platform orchestration
-│   └── first_flight.ps1             # Automated bootstrapper that observes environment (Windows or Linux), engages Windows/WSL bootstrapper to check if the operating environment is a windows operating system, check/install WSL, llama.cpp, wireguard (and other core, non-rust deps) via the appropriate package manager.
+│   └── preflight.ps1                # Automated bootstrapper that observes environment (Windows or Linux), engages Windows/WSL bootstrapper to check if the operating environment is a windows operating system, check/install WSL, llama.cpp, wireguard (and other core, non-rust deps) via the appropriate package manager.
 ├── models/                          # Directory for storing models
 |   └── your-gguf-here.gguf          # Your GGUF format model text-to-text of choice (coding or agent models recommeneded), selected beforehand and copied or cloned to this directory
 ├── traces/                          # Directory for storing JSON traces of each session
