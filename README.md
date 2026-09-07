@@ -7,7 +7,7 @@ The *even tinier* General Purpose Harness (but a very hard worker for its size!)
 To create a general purpose harness as minimally, and with as few dependencies, as possible. The following global structure is proposed:
 
 ```
-Kineserve (llama serve (llama.cpp) bound to local host 127.0.0.1:8080 or 8000)<-Koil (Custom Wireguard Connector)-> K-Core: (Contains harness's general ReAct function routing + configurable instructions).
+Kineserve (llama serve (llama.cpp) bound to local host 127.0.0.1:8080 or 8000) <-> Koil (Custom Wireguard Connector) <-> K-Core: (Contains harness's general ReAct function routing + configurable instructions).
 ```
 
 ## Project Scaffolding
