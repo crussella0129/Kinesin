@@ -2,7 +2,7 @@
 
 The *even tinier* General Purpose Harness (but a very hard worker for its size!)
 
-## General Goal##: to create a general purpose harness as minimally, and with as few dependencies, as possible. 
+## General Goal ## : to create a general purpose harness as minimally, and with as few dependencies, as possible. 
 
 ##Project Scaffolding (which may also be the structure of the main function):
   *note that "User" could be a human or another agent in this context
