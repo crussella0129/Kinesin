@@ -25,7 +25,7 @@ Technical English: short sentences, active voice, and one idea per sentence.
 7. [Trace schema](#7-trace-schema)
 8. [The ReAct loop](#8-the-react-loop)
 9. [What is missing: decisions to make first](#9-what-is-missing-decisions-to-make-first)
-10. [Suggested build order](#10-suggested-build-order)
+10. [Roadmap](#10-roadmap)
 11. [Learning resources index](#11-learning-resources-index)
 
 ---
@@ -40,6 +40,20 @@ Kinesin has three parts:
   records every message that crosses it.
 - **K-Core** is the brain. It runs the ReAct loop (reason, then act), it routes
   function calls, and it reads your configuration and instructions.
+
+**Where it runs.** Kinesin splits the control work from the compute work. K-Core
+is small and can run anywhere. Kineserve needs a machine with enough memory and a
+good GPU. The two do not need to be the same machine.
+
+- **Now (local).** All three parts run on one machine. Koil passes messages
+  across `127.0.0.1`. One Koil is enough. This is the build target for Phase 1.
+- **Later (distributed).** Kineserve runs on a bigger machine somewhere else, and
+  serves more sessions at the same time. A second Koil runs beside it. The two
+  Koils hold a private link between them, wherever each machine is.
+
+Koil is the same component in both cases. The local setup is the simple case of
+the same design, not a different design. Section 10, Phase 5 covers the
+distributed step.
 
 > **Note:** In this document, "user" means a human **or** another agent. Both send
 > input to Kinesin in the same way.
@@ -63,6 +77,10 @@ model. Do not read more into the name than that.
 5. **Configuration is the source of truth.** `kinesin.toml` holds the settings
    and the agent instructions. The program reads it; the program does not change
    it.
+6. **Write down why.** For each design choice, record the reason next to the
+   choice. A structure without a reason looks like a mistake to the next reader,
+   and you are the next reader. The Koil note in Section 5.4 is the example to
+   follow.
 
 Three tasks break the "standard library only" rule. The standard library has no
 JSON parser, no TOML parser, and no cryptography. Section 9 lists these and gives
@@ -72,12 +90,31 @@ you the decision for each.
 
 ## 3. Architecture and data flow
 
+**Local (Phase 1, build this now).** One machine. One Koil. No tunnel.
+
 ```
 K-Core  <->  Koil  <->  Kineserve  <->  llama-server  <->  model.gguf
 (ReAct       (channel   (supervisor    (HTTP server      (your GGUF
  loop +       + trace     for the        from             text model)
  routing)     record)     model server)  llama.cpp)
 ```
+
+**Distributed (Phase 5, later).** Two machines. Two Koils. A private link between
+them.
+
+```
+  your machine                    |        the bigger machine
+                                  |
+K-Core  <->  Koil  <===============|===>  Koil  <->  Kineserve  <->  llama-server
+(ReAct       (local     private    |      (remote    (supervisor)
+ loop)        endpoint)  link      |       endpoint)
+                                   |
+```
+
+K-Core sees the same interface in both pictures. It sends a request to Koil and
+receives an answer. It does not know whether the bytes cross loopback or a
+tunnel. Section 5.4 explains why this matters more than anything else you build
+first.
 
 The message flow for one step is:
 
@@ -230,8 +267,20 @@ in their own crate.
 ### 5.4 `crates/koil/` — the channel and the trace recorder
 
 **Purpose.** Two jobs. First, it carries messages between K-Core and Kineserve.
-The plan is to use WireGuard for this channel. Second, it records every message
-as a trace file.
+Second, it records every message as a trace file.
+
+**Why Koil exists (the reason, written down).** Kineserve does not have to run on
+your machine. The goal is to run the model on a bigger machine somewhere else,
+which serves more sessions at the same time, and to keep that link private
+wherever the two machines are. Koil is the endpoint that makes this possible. In
+the local setup, one Koil passes messages across `127.0.0.1`. In the distributed
+setup, a second Koil runs beside the remote Kineserve, and the two Koils hold a
+private WireGuard link. The local case is the same design with one endpoint, not
+a different design.
+
+Because Koil sits at the boundary, it is also the correct place to record the
+traces. It sees every message in both directions. The transport and the audit
+record belong together here for that reason.
 
 **Standard library tools.**
 - `std::process::Command` — start or configure the system WireGuard tools.
@@ -254,10 +303,19 @@ as a trace file.
 **How it connects.** See Section 6.2 for WireGuard. See Section 7 for the trace
 schema.
 
-> **Design question.** If K-Core and Kineserve both run on one machine over
-> `127.0.0.1`, a WireGuard tunnel adds little. Keep WireGuard if your goal is to
-> learn it, or if you plan to split the two parts across machines later. For a
-> first local run, you can skip the tunnel and let Koil record traces only.
+> **Build the seam first.** This is the most important thing in Phase 1. Koil must
+> show K-Core one interface: "send this request to Kineserve, and give me the
+> answer". K-Core must never know whether the bytes cross loopback or a tunnel.
+> Give the interface one implementation now, `direct`, which passes messages
+> across `127.0.0.1`. Phase 5 adds a second implementation, `wireguard`, behind
+> the same interface. If the seam is correct, Phase 5 changes nothing in K-Core.
+> If the seam is wrong, Phase 5 touches every part of the harness.
+
+> **Keep concurrency out of Koil.** The bigger machine gives you more sessions at
+> the same time, but the tunnel is not what provides them. `llama-server` provides
+> them with its parallel slots (`-np`), and K-Core keeps the sessions apart with
+> the `session` field in each trace. Koil stays a private pipe. Do not put a
+> scheduler in it.
 
 ---
 
@@ -619,8 +677,22 @@ library only. There are two ways:
   yourself. This is a large task and is easy to get wrong. Do not start here; read
   GotaTun and boringtun as study references instead.
 
+**The rule: use WireGuard, do not rewrite it.** The word "custom" in the first
+draft meant a custom *connector*, not a custom *protocol*. Path A and Path B1 both
+give you the private Koil-to-Koil link that the design needs. Path B2 gives you
+nothing more, and it puts security-critical code in your hands. Choose Path A or
+Path B1.
+
 Suggested order for Koil: Path A first (small and tested), then Path B1 with
-GotaTun if you want the tunnel inside the Rust process.
+GotaTun if you want the tunnel inside the Rust process and a Koil that needs no
+outside tools.
+
+**Reachability.** WireGuard moves with a peer when its address changes. But it
+does not open a path through NAT by itself. The link is simple when one side has
+a fixed, reachable address, and the other side calls out to it. So make the
+bigger machine the reachable side: give it a public address or a forwarded port,
+and let your local Koil start the connection. Two machines that both sit behind
+home routers need a relay, which is work you do not need.
 
 **Study.**
 - WireGuard Quick Start (keys, config, `wg-quick up`):
@@ -915,10 +987,12 @@ Each item says the problem, the choices, and a suggested start.
    do not store it as a long-term stable key. Decide whether the trace ID is a
    random value (item 4) or a hash, and write the rule down.
 
-6. **WireGuard scope.** Decide Path A (wrap the system tools) or Path B
-   (userspace in Rust with GotaTun or boringtun). Also decide whether the local,
-   one-machine setup needs a tunnel at all (Section 5.4). Suggested start: Path A,
-   or no tunnel for the first run; move to Path B1 with GotaTun later.
+6. **WireGuard scope (settled).** The tunnel stays. The reason is in Section 5.4:
+   Kineserve is to run on a bigger remote machine, and the Koil-to-Koil link keeps
+   that private. The local setup is the same design with one endpoint. Two points
+   remain: write the tunnel with a library or the system tools, never by hand
+   (Section 6.2); and build the transport seam in Phase 1, so Phase 5 adds the
+   tunnel without a change to K-Core.
 
 7. **Trace schema (drafted).** Section 7 now gives a first schema and examples.
    The open choices that remain: confirm the field names; decide whether to keep
@@ -951,29 +1025,152 @@ Each item says the problem, the choices, and a suggested start.
 
 ---
 
-## 10. Suggested build order
+## 10. Roadmap
 
-This order lets you see a result early and add one part at a time.
+This section tells you where to start and how to build Kinesin out.
+
+**Phase 1 is the work to do now.** Phases 2 to 6 are later work. They are in this
+document for one reason: they tell you which seams Phase 1 must have. Read them
+once before you start, then build Phase 1.
+
+Finish a phase before you start the next one. Each phase gives a goal, the steps,
+and the reason it comes at this point.
+
+| Phase | Goal | State |
+|-------|------|-------|
+| 1 | One prompt in, one answer out, one trace on disk | Build now |
+| 2 | The loop and the tools make it an agent | Later |
+| 3 | Long runs do not break | Later |
+| 4 | The trace log becomes useful | Later |
+| 5 | Kineserve moves to a bigger machine | Later |
+| 6 | Change the harness without fear | Later |
+
+---
+
+### Phase 1 — Foundations (start here)
+
+**Goal.** Send one prompt to a local model. Receive one answer. Write one trace.
 
 1. **Set up the workspace.** Make the root `Cargo.toml` and one "hello" binary in
-   `k-core`. Confirm the build runs. (Cargo Book workspaces; Rust book Ch 1, 7.)
-2. **Write Kineserve.** Start `llama-server` as a child process. Poll `/health`
-   until it returns "ok". (std::process, std::net; Rust book Ch 21.)
-3. **Write a tiny HTTP client in K-Core.** Send one `/completion` request over a
-   `TcpStream`. Print the raw answer. (std::net; Rust book Ch 21.1; MDN HTTP.)
-4. **Add the small JSON encode and decode.** Encode the request. Decode the
+   `k-core`. Confirm the build runs. (Cargo Book, "Workspaces"; Rust book Ch 1, 7.)
+2. **Add a shared library crate** for the common types: the message, the trace,
+   and the config. Every binary depends on this one crate. This stops the same
+   struct from appearing in two places. (Rust book Ch 7.)
+3. **Write Kineserve.** Start `llama-server` as a child process. Poll `/health`
+   until it returns "ok". (std::process, std::net; Rust book Ch 21; Section 6.1.)
+4. **Write the small HTTP client in K-Core.** Send one `/completion` request over
+   a `TcpStream`. Print the raw answer. (Rust book Ch 21.1; MDN HTTP.)
+5. **Add the small JSON encode and decode.** Encode the request. Decode the
    `content` field of the answer. (Section 9, item 2.)
-5. **Define and write traces.** Use the schema in Section 7. Write each trace to
-   `traces/logs/`. Build the `trace_hash.json` lookup table. (std::fs,
-   std::collections; Rust book Ch 8, 12.)
-6. **Build the ReAct loop.** Add one example function and route to it. Add the
-   stop condition and the step limit. (Section 8; Rust book Ch 5, 6, 9, 13.)
-7. **Read `kinesin.toml`.** Read the settings and the instructions. Split the two
-   parts. (Section 9, items 3 and 9.)
-8. **Add Koil.** Start with Path A (system WireGuard), or skip the tunnel for the
-   first local run. (WireGuard Quick Start.)
-9. **Add tests and the scripts.** Write unit tests and integration tests. Finish
-   `preflight.ps1` and `run-harness.ps1`. (Rust book Ch 11; PowerShell docs.)
+6. **Define the transport seam in Koil.** Give it one implementation, `direct`,
+   which passes messages across `127.0.0.1`. Read the seam note in Section 5.4
+   before you write this.
+7. **Write traces.** Use the schema in Section 7. Write each trace to
+   `traces/logs/`. Build the `trace_hash.json` lookup table. (Rust book Ch 8, 12.)
+8. **Read `kinesin.toml`.** Read the settings and the instructions. Split the two
+   parts at the divider. (Section 5.8.)
+9. **Add the first tests.** Test the JSON codec and the config reader. These two
+   are easy to test and easy to get wrong. (Rust book Ch 11.)
+
+**The one thing to get right.** The transport seam in step 6. Everything else in
+Phase 1 you can rewrite cheaply. A wrong seam costs you the whole of Phase 5.
+
+---
+
+### Phase 2 — The loop and the tools
+
+**Goal.** Make it an agent. The model chooses an action, and K-Core runs it.
+
+1. **Build the ReAct loop.** Use the step cycle and the states in Section 8.
+2. **Design the tool interface.** This is the least designed part of Kinesin, and
+   it is the product surface of a general purpose harness. Decide four things:
+   - how you declare a tool: its name, its description, its argument names, and
+     its argument types;
+   - how the tool list reaches the model: in the instructions, or as a schema;
+   - how you check the arguments before you call the tool;
+   - what shape a tool result has, and how a tool error becomes an observation.
+3. **Add the capability model.** The model chooses the actions, so the harness
+   must bound them. Add an allow-list of tool names. Add a confirm step for any
+   tool that changes data. (Section 5.8.3.)
+4. **Add two or three real tools.** Keep them small: read a file, list a
+   directory, and finish.
+5. **Add the stop conditions and the step limit.** (Section 8.4.)
+
+**Why here.** The tools make the harness general purpose. Design the tool
+interface once and early, because every tool you add later takes its shape.
+
+---
+
+### Phase 3 — Survive a real session
+
+**Goal.** A long run does not break.
+
+1. **Add context management.** The conversation grows at every step, and the model
+   has a fixed `context_size`. Decide what happens at the limit: remove the oldest
+   messages, replace them with a summary, or stop with a clear error. A small
+   local model reaches this limit fast, so do not leave this out.
+2. **Cap the size of a tool result** before it goes into the prompt. One large
+   file can fill the context in a single step.
+3. **Add timeouts and retries** around the model call. (Section 5.8.3.)
+4. **Finish the error path.** A tool error becomes an observation. Only an error
+   that you cannot recover from stops the loop. (Section 8.6.)
+
+**Why here.** Phases 1 and 2 give you short runs that work. This phase is what
+makes a run of twelve steps as safe as a run of two.
+
+---
+
+### Phase 4 — Inspect and replay
+
+**Goal.** Make the trace log useful. Until now you only write traces. Nothing
+reads them.
+
+1. **Write a trace reader.** Rebuild one session from `trace_hash.json` and the
+   `prev` chain. Print the steps in order.
+2. **Add a run record.** A run has a start time, an end time, the config hash, the
+   model name, the step count, and the result. A person needs one summary, not
+   many files.
+3. **Add replay.** Feed the recorded answers back into the loop in place of a live
+   model. The loop must behave the same way.
+
+**Why this pays.** You already record everything that replay needs. This phase
+adds no new data. It turns the audit log into a test tool, which Phase 6 then
+uses.
+
+---
+
+### Phase 5 — Distributed: the Koil-to-Koil link
+
+**Goal.** Run Kineserve on a bigger machine. Serve more sessions. Keep the link
+private.
+
+1. **Add the second transport implementation**, `wireguard`, behind the seam from
+   Phase 1. K-Core does not change.
+2. **Use a WireGuard library or the system tools.** Do not write the protocol
+   yourself. (Section 6.2, Path A or Path B1.)
+3. **Make the bigger machine the reachable side.** Your local Koil calls out to
+   it. (Section 6.2, "Reachability".)
+4. **Put the concurrency work in K-Core and Kineserve.** Kineserve passes `-np` to
+   `llama-server`. K-Core gives each session an ID and matches each answer to its
+   request. Koil stays a private pipe. (Rust book Ch 16.)
+
+---
+
+### Phase 6 — Trust it
+
+**Goal.** Change the harness without fear.
+
+1. **Keep a set of recorded sessions as golden traces.** Replay them after each
+   change and compare the result. This is your regression test, and it comes free
+   from Phase 4.
+2. **Add session resume.** The trace chain is close to an event log already.
+   Decide whether a run can restart from its last trace after a crash. This
+   matters more after Phase 5, because a remote machine can drop.
+3. **Add the config hash check.** Compare the current `kinesin.toml` against the
+   hash stored with the run. (Section 5.8.2.)
+4. **Pin a sampling `seed`** so that a run repeats. (Section 5.8.3.)
+5. **Finish the scripts and CI.** `preflight.ps1`, `run-harness.ps1`, and the
+   workflow that runs `cargo fmt --check`, `cargo clippy`, and `cargo test`.
 
 ---
 
