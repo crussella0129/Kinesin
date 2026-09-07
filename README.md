@@ -19,16 +19,16 @@ Kinesin/
 ├── .github/                         # CI/CD automation workflows
 ├── src/                             # Core Rust implementation
 │   └── main.rs                      # Application entry point & orchestration
-|   └── **Kineserve/**
+|   └── Kineserve/
 |        ├── main.rs                 # entry point & orchestration + structs that launches llama serve and point it at model/
 |        ├── input.rs                # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
 |        ├── scripts/                # Cross-platform orchestration
 │            └── run-harness.ps1     # Automated Windows/WSL bootstrapper
 |        └── Cargo.toml              # Zero-dependency package manifest
-|   └── **Koil/**
+|   └── Koil/
 |        ├── main.rs                 #  
 |        └── Cargo.toml              # Zero-dependency package manifest
-|   └── **K-Core/**
+|   └── K-Core/
 |        ├── main.rs                 # structs that map the firing order of 
 |        ├── input.rs                # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
 |        └── Cargo.toml              # Zero-dependency package manifest
