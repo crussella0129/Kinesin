@@ -18,20 +18,20 @@ Kinesin/
 ├── src/                             # Core Rust implementation
 │   └── main.rs                      # Application entry point & orchestration
 |   └── **Kineserve/**
-|        ├── main.rs                 # entry point & orchestration + structs that check for installation and/or run llama.cpp, launch llama serve, and point it at model/
+|        ├── main.rs                 # entry point & orchestration + structs that launches llama serve and point it at model/
 |        ├── input.rs                # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
 |        ├── scripts/                # Cross-platform orchestration
 │            └── run-harness.ps1     # Automated Windows/WSL bootstrapper
 |        └── Cargo.toml              # Zero-dependency package manifest
 |   └── **Koil/**
-|        ├── main.rs                #  
-|        └── Cargo.toml             # Zero-dependency package manifest
+|        ├── main.rs                 #  
+|        └── Cargo.toml              # Zero-dependency package manifest
 |   └── **K-Core/**
-|        ├── main.rs                        # structs that map the firing order of 
-|        ├── input.rs                       # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
-|        └── Cargo.toml             # Zero-dependency package manifest
+|        ├── main.rs                 # structs that map the firing order of 
+|        ├── input.rs                # Structs that map where the user's inputs are collected and treats that output as an immutable variable, invoked when inputs are to be collected using only std library components (io, fs, etc...) in as minimal of code as possible.
+|        └── Cargo.toml              # Zero-dependency package manifest
 ├── scripts/                         # Cross-platform orchestration
-│   └── run-harness.ps1              # Automated Windows/WSL bootstrapper to check if the operating environment is a windows operating system, check/install WSL via winget,
+│   └── first_flight.ps1             # Automated bootstrapper that observes environment (Windows or Linux), engages Windows/WSL bootstrapper to check if the operating environment is a windows operating system, check/install WSL, llama.cpp, wireguard (and other core, non-rust deps) via the appropriate package manager.
 ├── models/
 |   └── your-gguf-here.gguf
 │   └── hf.rs/                       # a py03 connector that allows you 
