@@ -9,7 +9,10 @@ where the standard library cannot do the job, and each one is written down with
 its reason.
 
 **Status: nothing is built yet.** This repository holds the design and the plan.
-Start at [docs/roadmap.md](docs/roadmap.md), Phase 0.
+
+- If this is your first Rust project, start at
+  [docs/first-steps.md](docs/first-steps.md).
+- Otherwise start at [docs/roadmap.md](docs/roadmap.md), Phase 0.
 
 ---
 
@@ -107,7 +110,8 @@ JSON parser, no TOML parser, and no cryptography.
 
 | Document | What it covers |
 |----------|----------------|
-| [roadmap.md](docs/roadmap.md) | **Start here.** Phases 0 to 6, with what to build in what order |
+| [first-steps.md](docs/first-steps.md) | **New to Rust projects? Start here.** Ten small steps before the real work |
+| [roadmap.md](docs/roadmap.md) | **Then here.** Phases 0 to 6, with what to build in what order |
 | [architecture.md](docs/architecture.md) | The parts, the data flow, and both deployment shapes |
 | [components.md](docs/components.md) | Each crate and folder: purpose, `std` tools, and study material |
 | [configuration.md](docs/configuration.md) | `kinesin.toml`: the skeleton, the split rule, and future settings |
