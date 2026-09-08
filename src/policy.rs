@@ -349,6 +349,12 @@ pub(crate) fn authorize_with_prior(
     if task.is_checked() && !workspace.tools.contains(&ToolName::ReadFile) {
         return Err("checked task requires authorized read_file tool".into());
     }
+    // A checked run must not be able to write. If it could edit a source, it
+    // could plant the value a criterion later reads and cite its own change as
+    // evidence. Acceptance depends on observing files the run did not author.
+    if task.is_checked() && workspace.tools.iter().any(|tool| tool.is_mutating()) {
+        return Err("a checked task workspace cannot enable a write tool".into());
+    }
     let limits = overrides.unwrap_or_default().apply(config.limits())?;
     if !workspace.tools.is_empty() && limits.max_tool_result_bytes < 256 {
         return Err("tools require a result envelope limit of at least 256 bytes".into());
@@ -486,6 +492,47 @@ pub fn sha256(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_checked_workspace_cannot_enable_a_write_tool() {
+        let fixture = Fixture::new();
+        // The checked task's workspace also lists write_file.
+        let config = fixture
+            .parse(&BASE.replace(
+                "tools = [\"read_file\"]",
+                "tools = [\"read_file\", \"write_file\"]",
+            ))
+            .unwrap();
+        let checked = crate::policy::authorize(
+            &config,
+            None,
+            Submission::Checked {
+                task: "practice-fields".into(),
+                model: "local".into(),
+                limits: None,
+                capture: None,
+            },
+        );
+        // Barred by construction: a run that could write the value it later
+        // reads would defeat the acceptance contract.
+        assert!(checked.is_err());
+        // The same workspace is fine for freeform work.
+        assert!(
+            crate::policy::authorize(
+                &config,
+                None,
+                Submission::Freeform {
+                    workspace: "practice".into(),
+                    model: "local".into(),
+                    continues: None,
+                    prompt: "edit the note".into(),
+                    limits: None,
+                    capture: None,
+                },
+            )
+            .is_ok()
+        );
+    }
 
     #[test]
     fn a_continuation_cites_an_answer_without_inheriting_authority() {

@@ -89,6 +89,7 @@ pub enum ToolName {
     ListFiles,
     ReadFile,
     SearchFiles,
+    WriteFile,
 }
 
 impl ToolName {
@@ -97,7 +98,15 @@ impl ToolName {
             Self::ListFiles => "list_files",
             Self::ReadFile => "read_file",
             Self::SearchFiles => "search_files",
+            Self::WriteFile => "write_file",
         }
+    }
+
+    /// A tool that changes the workspace rather than only observing it. Mutating
+    /// tools are barred from checked runs, because a run that could write the
+    /// value it later reads would defeat the acceptance contract.
+    pub fn is_mutating(self) -> bool {
+        matches!(self, Self::WriteFile)
     }
 
     /// Only a complete successful read mints evidence. A listing or a search

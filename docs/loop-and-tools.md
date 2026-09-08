@@ -134,13 +134,15 @@ The real request includes this in its `tools` array, with the other chat fields.
 Use typed structs with unknown-field rejection and a shared lexical path
 validator. Do not write a general JSON Schema engine for a fixed tool set.
 
-Three read-only tools are offered:
+Four tools are offered. The first three only read; `write_file` changes the
+workspace and is gated separately (see below and [security](security.md)).
 
 | Tool | Arguments | Returns | Mints evidence |
 |------|-----------|---------|----------------|
 | `read_file` | `path` | A bounded UTF-8 prefix of one file | **Yes** |
 | `list_files` | `path` | A bounded nonrecursive listing | No |
 | `search_files` | `path`, `query`, optional `case_sensitive` | Matching file names and one-based line numbers below `path` | No |
+| `write_file` | `path`, `content` | Bytes written; replaces one file atomically | No |
 
 `search_files` exists because listing and reading alone cannot answer "which
 file mentions this" without walking the tree one directory at a time, spending
@@ -168,6 +170,22 @@ and non-regular files are skipped rather than followed, and content that is not
 valid UTF-8 is skipped rather than searched as replacement characters. Any bound
 reached or content skipped sets `truncated`, so an empty result never implies
 the workspace was fully examined.
+
+`write_file` is the first tool that changes the workspace, and it changes the
+trust model with it. Read the safety properties in [security](security.md) before
+implementing it. The essentials here: it lives behind a **separate**
+`WorkspaceWriter` capability, so the read tools have no method that can write; it
+is built only for a workspace whose operator listed it, so a run that was not
+granted writes has no writer at all; the write is atomic, landing in a temporary
+sibling then renaming into place; and it refuses to leave the root, write through
+a symbolic link, overwrite a directory, or create parent directories. It mints no
+evidence. Content is bounded, and it arrives inside the tool arguments so it is
+already under the argument limit.
+
+A **checked** task cannot enable a write tool. If a run could edit a file it then
+reads, it could plant the value a criterion checks and cite its own change as
+evidence, so authorization refuses that combination. Writes are a freeform-run
+capability.
 
 ## Complete tool history
 

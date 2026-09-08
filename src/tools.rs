@@ -6,6 +6,7 @@ use std::path::Path;
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::config::{ToolName, validate_id, validate_relative_path};
 
@@ -19,6 +20,9 @@ pub const MAX_QUERY_BYTES: usize = 128;
 pub const MAX_SEARCH_DEPTH: usize = 4;
 /// Bytes read from any single file while searching.
 pub const MAX_SEARCH_FILE_BYTES: usize = 65_536;
+/// Bytes a single write may place. Content arrives inside the tool arguments,
+/// so it is already under MAX_ARGUMENT_BYTES; this states the write's own bound.
+pub const MAX_WRITE_BYTES: usize = 32_768;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -45,6 +49,13 @@ pub struct ToolResult {
     pub error: Option<ToolError>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub evidence_id: Option<String>,
+}
+
+#[cfg(test)]
+impl ToolResult {
+    fn assert_ok(&self) {
+        assert_eq!(self.status, ToolStatus::Ok, "{:?}", self.error);
+    }
 }
 
 impl ToolResult {
@@ -90,6 +101,42 @@ pub struct TypedToolArgs {
     /// the default and exactness is the deliberate request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub case_sensitive: Option<bool>,
+    /// Present only for `write_file`. Absent for the read tools, so unexpected
+    /// content on a read still fails the typed contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
+impl TypedToolArgs {
+    /// One place that decides which fields each tool accepts, so a field can
+    /// never be silently ignored on a tool that does not use it.
+    pub fn shape_for(&self, name: ToolName) -> Result<(), (&'static str, &'static str)> {
+        let query = self.query.is_some() || self.case_sensitive.is_some();
+        let content = self.content.is_some();
+        match name {
+            ToolName::SearchFiles if self.query.is_none() => Err((
+                "missing_query",
+                "search_files requires a literal query term.",
+            )),
+            ToolName::SearchFiles if content => {
+                Err(("unexpected_content", "search_files does not write content."))
+            }
+            ToolName::WriteFile if self.content.is_none() => {
+                Err(("missing_content", "write_file requires content to write."))
+            }
+            ToolName::WriteFile if query => {
+                Err(("unexpected_query", "write_file does not take a query."))
+            }
+            ToolName::ReadFile | ToolName::ListFiles if query => Err((
+                "unexpected_query",
+                "Only search_files accepts a query term.",
+            )),
+            ToolName::ReadFile | ToolName::ListFiles if content => {
+                Err(("unexpected_content", "Only write_file accepts content."))
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 impl TypedToolArgs {
@@ -102,6 +149,13 @@ impl TypedToolArgs {
         args.path = normalized_path(&args.path)?;
         if let Some(query) = &args.query {
             args.query = Some(validated_query(query)?);
+        }
+        if args
+            .content
+            .as_ref()
+            .is_some_and(|c| c.len() > MAX_WRITE_BYTES)
+        {
+            return Err("write content exceeds its byte limit".into());
         }
         Ok(args)
     }
@@ -231,6 +285,13 @@ impl WorkspaceReader {
                 &query.expect("search query checked above"),
                 case_sensitive,
                 limit,
+            ),
+            // A read capability cannot write. The runner routes a write to the
+            // separate WorkspaceWriter; reaching here is a routing fault.
+            ToolName::WriteFile => ToolResult::failure(
+                ToolStatus::Denied,
+                "not_a_write_capability",
+                "This capability only reads.",
             ),
         }
     }
@@ -549,6 +610,96 @@ pub struct SearchMatch {
     pub text: String,
 }
 
+/// A write capability, distinct from WorkspaceReader by construction: the read
+/// tools have no method that can change a file. One is built only for a
+/// workspace whose operator listed a write tool, so a run that was never granted
+/// writes has no writer at all.
+pub struct WorkspaceWriter {
+    root: Dir,
+}
+
+impl WorkspaceWriter {
+    /// Trusted startup only; never call with a path from a model or submission.
+    pub fn open(root: &Path) -> Result<Self, String> {
+        Dir::open_ambient_dir(root, ambient_authority())
+            .map(|root| Self { root })
+            .map_err(|_| "cannot open approved workspace directory".into())
+    }
+
+    /// Replace or create one regular file inside the capability. The write is
+    /// atomic: content lands in a temporary sibling and is renamed into place,
+    /// so a crash leaves either the old file or the new one, never a partial.
+    pub fn write_file(&self, path: &str, content: &str) -> ToolResult {
+        if content.len() > MAX_WRITE_BYTES {
+            return ToolResult::failure(
+                ToolStatus::Denied,
+                "content_too_large",
+                "Write content exceeds its byte limit.",
+            );
+        }
+        if normalized_path(path).is_err() {
+            return ToolResult::failure(
+                ToolStatus::Denied,
+                "invalid_path",
+                "Use a supported relative workspace path.",
+            );
+        }
+        // Never write through an existing symlink or over a directory. A curated
+        // tree's structure is the operator's, not the model's, to change.
+        match self.root.symlink_metadata(path) {
+            Ok(metadata) if metadata.is_file() => {}
+            Ok(metadata) if metadata.is_symlink() => {
+                return ToolResult::failure(
+                    ToolStatus::Denied,
+                    "symlink_target",
+                    "Refusing to write through a symbolic link.",
+                );
+            }
+            Ok(_) => {
+                return ToolResult::failure(
+                    ToolStatus::Denied,
+                    "not_a_file",
+                    "The path is not a regular file.",
+                );
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => return io_failure(error.kind()),
+        }
+        // The parent must already exist. Creating directories is a separate
+        // effect a later tool can own explicitly.
+        let (parent, _) = path.rsplit_once('/').unwrap_or((".", path));
+        if parent != "." {
+            match self.root.metadata(parent) {
+                Ok(metadata) if metadata.is_dir() => {}
+                Ok(_) => {
+                    return ToolResult::failure(
+                        ToolStatus::Denied,
+                        "parent_not_a_directory",
+                        "The parent path is not a directory.",
+                    );
+                }
+                Err(error) => return io_failure(error.kind()),
+            }
+        }
+        let temporary = format!("{path}.kinesin-{}.tmp", uuid::Uuid::new_v4());
+        if let Err(error) = self.root.write(&temporary, content.as_bytes()) {
+            let _ = self.root.remove_file(&temporary);
+            return io_failure(error.kind());
+        }
+        if let Err(error) = self.root.rename(&temporary, &self.root, path) {
+            let _ = self.root.remove_file(&temporary);
+            return io_failure(error.kind());
+        }
+        let mut result = ToolResult::success(None);
+        result.body = serde_json::to_string(&json!({
+            "wrote": path,
+            "bytes": content.len(),
+        }))
+        .expect("fixed write result shape");
+        result
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ListedEntry {
@@ -624,6 +775,20 @@ mod tests {
         }
         fn reader(&self) -> WorkspaceReader {
             WorkspaceReader::open(&self.root.join("workspace")).unwrap()
+        }
+        fn writer(&self) -> WorkspaceWriter {
+            WorkspaceWriter::open(&self.root.join("workspace")).unwrap()
+        }
+        fn read_back(&self, name: &str) -> String {
+            std::fs::read_to_string(self.root.join("workspace").join(name)).unwrap()
+        }
+        fn tmp_files(&self) -> Vec<String> {
+            std::fs::read_dir(self.root.join("workspace"))
+                .unwrap()
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.contains(".kinesin-"))
+                .collect()
         }
         fn write(&self, name: &str, bytes: impl AsRef<[u8]>) {
             std::fs::write(self.root.join("workspace").join(name), bytes).unwrap();
@@ -855,6 +1020,132 @@ mod tests {
         assert_eq!(capped.status, ToolStatus::Ok);
         assert!(capped.encoded().unwrap().len() <= 1_024);
         assert!(capped.truncated);
+    }
+
+    #[test]
+    fn write_creates_and_replaces_a_file_atomically() {
+        let fixture = Fixture::new();
+        let writer = fixture.writer();
+
+        let created = writer.write_file(
+            "note.txt", "first
+",
+        );
+        assert_eq!(created.status, ToolStatus::Ok);
+        assert_eq!(created.evidence_id, None, "a write cites no evidence");
+        let body: serde_json::Value = serde_json::from_str(&created.body).unwrap();
+        assert_eq!(body["wrote"], "note.txt");
+        assert_eq!(body["bytes"], 6);
+        assert_eq!(
+            fixture.read_back("note.txt"),
+            "first
+"
+        );
+
+        let replaced = writer.write_file(
+            "note.txt",
+            "second longer
+",
+        );
+        assert_eq!(replaced.status, ToolStatus::Ok);
+        assert_eq!(
+            fixture.read_back("note.txt"),
+            "second longer
+"
+        );
+        assert!(
+            fixture.tmp_files().is_empty(),
+            "the atomic temporary is never left behind"
+        );
+
+        // A nested write lands where a directory already exists.
+        writer.write_file("nested/deep.txt", "x").assert_ok();
+        assert_eq!(fixture.read_back("nested/deep.txt"), "x");
+    }
+
+    #[test]
+    fn write_refuses_to_leave_the_root_or_clobber_structure() {
+        let fixture = Fixture::new();
+        std::fs::write(fixture.root.join("outside-secret.txt"), "old").unwrap();
+        std::fs::create_dir(fixture.root.join("workspace/adir")).unwrap();
+        let workspace = fixture.root.join("workspace");
+        // A symlink inside the root pointing outside it.
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(
+            fixture.root.join("outside-secret.txt"),
+            workspace.join("link"),
+        )
+        .unwrap();
+        #[cfg(windows)]
+        let _ = std::os::windows::fs::symlink_file(
+            fixture.root.join("outside-secret.txt"),
+            workspace.join("link"),
+        );
+        let writer = fixture.writer();
+
+        for (path, status, code) in [
+            ("../outside-secret.txt", ToolStatus::Denied, "invalid_path"),
+            ("adir", ToolStatus::Denied, "not_a_file"),
+            // A missing parent is an I/O outcome, not a policy denial.
+            ("missing_dir/child.txt", ToolStatus::Error, "not_found"),
+        ] {
+            let denied = writer.write_file(path, "attempt");
+            assert_eq!(denied.status, status, "{path}");
+            assert_eq!(denied.error.unwrap().code, code, "{path}");
+        }
+        assert_eq!(
+            std::fs::read_to_string(fixture.root.join("outside-secret.txt")).unwrap(),
+            "old",
+            "nothing outside the root was touched"
+        );
+
+        // Writing through the escaping symlink is refused where symlinks exist.
+        #[cfg(unix)]
+        {
+            let denied = writer.write_file("link", "attempt");
+            assert_eq!(denied.status, ToolStatus::Denied);
+            assert_eq!(denied.error.unwrap().code, "symlink_target");
+            assert_eq!(
+                std::fs::read_to_string(fixture.root.join("outside-secret.txt")).unwrap(),
+                "old"
+            );
+        }
+    }
+
+    #[test]
+    fn write_bounds_content_and_a_reader_cannot_write() {
+        let fixture = Fixture::new();
+        let writer = fixture.writer();
+
+        let oversized = writer.write_file("big.txt", &"x".repeat(MAX_WRITE_BYTES + 1));
+        assert_eq!(oversized.status, ToolStatus::Denied);
+        assert_eq!(oversized.error.unwrap().code, "content_too_large");
+        assert!(!fixture.root.join("workspace/big.txt").exists());
+
+        // The read capability has no path to a write, even for write_file.
+        let denied =
+            fixture
+                .reader()
+                .execute(ToolName::WriteFile, "note.txt", MAX_TOOL_BYTES, None);
+        assert_eq!(denied.status, ToolStatus::Denied);
+        assert_eq!(denied.error.unwrap().code, "not_a_write_capability");
+    }
+
+    #[test]
+    fn argument_shape_matches_each_tool() {
+        let write = TypedToolArgs::parse(r#"{"path":"a.txt","content":"hi"}"#).unwrap();
+        assert!(write.shape_for(ToolName::WriteFile).is_ok());
+        // Content on a read, or a missing write body, must be rejected.
+        assert!(write.shape_for(ToolName::ReadFile).is_err());
+        let read = TypedToolArgs::parse(r#"{"path":"a.txt"}"#).unwrap();
+        assert!(read.shape_for(ToolName::WriteFile).is_err());
+        assert!(read.shape_for(ToolName::ReadFile).is_ok());
+        // Oversized content is refused at parse.
+        let huge = format!(
+            r#"{{"path":"a.txt","content":"{}"}}"#,
+            "x".repeat(MAX_WRITE_BYTES + 1)
+        );
+        assert!(TypedToolArgs::parse(&huge).is_err());
     }
 
     #[test]

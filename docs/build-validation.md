@@ -556,6 +556,36 @@ rather than letting a thread change authority halfway through, and authorization
 still checks those aliases: inheriting repeats an earlier decision, it does not
 bypass one. The suite is 181 offline tests.
 
+## Added after the first validation pass: a bounded write tool
+
+The read-only posture was a security stance, and it was crossed deliberately, not
+loosened. `write_file` is the first tool that changes the workspace. It runs
+through a `WorkspaceWriter` that is a separate type from the reader, so the read
+tools have no method that can write, and the writer is constructed only for a
+workspace whose operator listed a write tool. A run without that grant has no
+writer, and an unauthorized write is denied before any handler runs and is still
+journalled.
+
+The write itself is atomic: content lands in a temporary sibling and is renamed
+into place, so a crash leaves the old file or the new one, never a partial. It
+refuses to leave the root, write through a symbolic link, overwrite a directory,
+or create parent directories, and its content is bounded. It mints no evidence.
+
+One acceptance interaction drove a hard bar: a checked run must not enable a write
+tool. If it could edit a source and then read it back, it would plant the value a
+criterion checks and cite its own change, so authorization refuses that
+combination. This was found and closed by construction, with a test, before the
+tool shipped.
+
+Seven tests cover it: atomic create and replace with no temporary left behind;
+refusal to escape the root, write through a symlink, or clobber a directory; the
+content bound and a reader's inability to write; the per-tool argument shape;
+the authorization bar in a checked workspace; a freeform run that writes end to
+end and journals the effect; and a denied write where the workspace grants none.
+Editing in place, deletion, move, and shell execution remain deferred, gated the
+same way, with shell called out as a distinct process-spawning trust class. The
+suite is 188 offline tests.
+
 ## Original intent and remaining exposure evidence
 
 The implemented product exercises the guide's local and loopback service paths.

@@ -631,3 +631,141 @@ async fn cancellation_while_waiting_for_tool_capacity_does_not_start_a_read_or_n
     assert_eq!(resources.models.available_permits(), 1);
     assert_eq!(resources.tools.available_permits(), capacity);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_freeform_run_writes_a_file_and_records_the_effect() {
+    let write_config = CONFIG.replace(
+        "tools = [\"read_file\"]",
+        "tools = [\"read_file\", \"write_file\"]",
+    );
+    let fixture = Fixture::new(&[(
+        "note.txt",
+        "old contents
+",
+    )]);
+    let config = fixture.config(&write_config);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Replace note.txt with a greeting.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    let client = ModelClient::scripted(
+        [
+            batch(vec![call(
+                "w1",
+                "write_file",
+                &json!({"path": "note.txt", "content": "hello
+"})
+                .to_string(),
+            )]),
+            ModelReply::Answer("I replaced the file.".into()),
+        ]
+        .into_iter()
+        .map(Into::into),
+    );
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_write_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    let record = run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("write run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+
+    // The file actually changed on disk.
+    assert_eq!(
+        std::fs::read_to_string(fixture.root.join("workspace/note.txt")).unwrap(),
+        "hello
+"
+    );
+    // The write is a recorded effect, not evidence.
+    let write = events
+        .iter()
+        .find(|event| event.kind == "tool_finished" && event.data["tool"] == "write_file")
+        .expect("the write is journalled");
+    assert_eq!(write.data["dispatch"], "executed");
+    assert!(write.data.get("evidence_id").is_none_or(Value::is_null));
+    // A freeform run stays unchecked regardless of the write.
+    assert_eq!(record.phase, "completed");
+    assert_eq!(record.acceptance_status, "unchecked");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_write_is_denied_where_the_workspace_grants_none() {
+    // The workspace lists no write tool, so the model proposing one is denied
+    // before any handler runs, and nothing is written.
+    let fixture = Fixture::new(&[(
+        "note.txt",
+        "unchanged
+",
+    )]);
+    let config = fixture.config(CONFIG);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Try to write.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    let client = ModelClient::scripted(
+        [
+            batch(vec![call(
+                "w1",
+                "write_file",
+                &json!({"path": "note.txt", "content": "hacked
+"})
+                .to_string(),
+            )]),
+            ModelReply::Answer("done".into()),
+        ]
+        .into_iter()
+        .map(Into::into),
+    );
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+    assert_eq!(
+        std::fs::read_to_string(fixture.root.join("workspace/note.txt")).unwrap(),
+        "unchanged
+",
+        "an unauthorized tool never runs its handler"
+    );
+    let denied = events
+        .iter()
+        .find(|event| event.kind == "tool_finished" && event.data["tool"] == "write_file")
+        .expect("the denied call is still journalled");
+    assert_eq!(denied.data["dispatch"], "denied");
+}

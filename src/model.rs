@@ -135,6 +135,13 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
                     },
                     "required":["path","query"],"additionalProperties":false
                 })),
+                "write_file" => ("Create or replace one text file at a relative workspace path. Provide the complete new contents; the write replaces the whole file atomically. It reports the bytes written and cites no evidence. It cannot create directories, write through a symbolic link, or leave the workspace.", json!({
+                    "type":"object","properties":{
+                        "path":{"type":"string"},
+                        "content":{"type":"string","description":"The complete new file contents."}
+                    },
+                    "required":["path","content"],"additionalProperties":false
+                })),
                 _ => return Err("unsupported compiled tool".to_owned()),
             };
             Ok(json!({"type":"function","function":{

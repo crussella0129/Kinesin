@@ -92,8 +92,21 @@ Discovery and schemas do not establish authority. It must adapt into the same
 policy and execution limits.
 
 **Arbitrary shell/code tools immediately.** They would change the trust model
-before the first project has a tested process/worker boundary. Trusted compiled
-read-only tools are the initial service offering.
+before the first project has a tested process/worker boundary. Shell execution is
+a different trust class from a bounded file write: arbitrary process spawning, an
+argument vector rather than a shell string, output bounding, its own timeout, and
+reconciliation of an effect that cannot be un-run. It stays deferred until a
+demonstrated task needs it, and it arrives with that machinery, not before.
+
+**A bounded `write_file`, built.** The read-only posture was a security stance,
+not a permanent limit. `write_file` now crosses it deliberately, and keeps the
+stance's guarantees: a `WorkspaceWriter` separate from the reader so reads cannot
+write; a writer built only for a workspace the operator granted, so an ungranted
+run has none; an atomic temp-then-rename that never leaves a partial file; refusal
+to leave the root, follow a symlink, or overwrite a directory; and a bar on write
+tools in checked runs, since a run that could plant the value it later reads would
+certify its own change. Editing in place, deletion, and move are the next
+increments and are not built yet. See [security](security.md).
 
 **Custom VPN/gateway.** An existing OS route reaches private inference already.
 A gateway must earn its place through authentication, policy, queueing, or

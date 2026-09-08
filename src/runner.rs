@@ -10,7 +10,7 @@ use crate::storage::{
     self, Admission, Command, Event, PendingAck, Response, RunRecord, StorageClient, TaskIdentity,
     Terminal,
 };
-use crate::tools::{ToolResult, ToolStatus, TypedToolArgs, WorkspaceReader};
+use crate::tools::{ToolResult, ToolStatus, TypedToolArgs, WorkspaceReader, WorkspaceWriter};
 use crate::verification::{self, AcceptanceReceipt, EvidenceInventory};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -26,6 +26,9 @@ pub struct RunResources {
     pub models: Arc<Semaphore>,
     pub tools: Arc<Semaphore>,
     workspaces: Arc<BTreeMap<String, Arc<WorkspaceReader>>>,
+    /// Present only for workspaces whose operator enabled a write tool, so a run
+    /// without that grant has no writer to reach.
+    writers: Arc<BTreeMap<String, Arc<WorkspaceWriter>>>,
     dispatcher: Option<Arc<ModelDispatcher>>,
     pub concurrency: ConcurrencyConfig,
 }
@@ -38,6 +41,7 @@ impl RunResources {
             )),
             tools: Arc::new(Semaphore::new(concurrency.max_blocking_tools)),
             workspaces: Arc::new(BTreeMap::new()),
+            writers: Arc::new(BTreeMap::new()),
             dispatcher: None,
             concurrency,
         }
@@ -47,6 +51,15 @@ impl RunResources {
     pub fn with_workspace(mut self, alias: &str, root: &Path) -> Result<Self, String> {
         Arc::make_mut(&mut self.workspaces)
             .insert(alias.into(), Arc::new(WorkspaceReader::open(root)?));
+        Ok(self)
+    }
+
+    /// Trusted startup only. Grants writes as well as reads for one workspace,
+    /// mirroring an operator who listed a write tool.
+    pub fn with_write_workspace(mut self, alias: &str, root: &Path) -> Result<Self, String> {
+        self = self.with_workspace(alias, root)?;
+        Arc::make_mut(&mut self.writers)
+            .insert(alias.into(), Arc::new(WorkspaceWriter::open(root)?));
         Ok(self)
     }
 
@@ -62,6 +75,19 @@ impl RunResources {
                     Ok((
                         workspace.id.clone(),
                         Arc::new(WorkspaceReader::open(&workspace.root)?),
+                    ))
+                })
+                .collect::<Result<BTreeMap<_, _>, String>>()?,
+        );
+        let writers = Arc::new(
+            config
+                .workspaces()
+                .iter()
+                .filter(|workspace| workspace.tools.iter().any(|tool| tool.is_mutating()))
+                .map(|workspace| {
+                    Ok((
+                        workspace.id.clone(),
+                        Arc::new(WorkspaceWriter::open(&workspace.root)?),
                     ))
                 })
                 .collect::<Result<BTreeMap<_, _>, String>>()?,
@@ -93,6 +119,7 @@ impl RunResources {
                         models: backends[&model.base_url].clone(),
                         tools: tools.clone(),
                         workspaces: workspaces.clone(),
+                        writers: writers.clone(),
                         dispatcher: Some(dispatcher.clone()),
                         concurrency: concurrency.clone(),
                     },
@@ -819,6 +846,7 @@ pub async fn run_admitted_with_text(
                         "read_file" => Some(ToolName::ReadFile),
                         "list_files" => Some(ToolName::ListFiles),
                         "search_files" => Some(ToolName::SearchFiles),
+                        "write_file" => Some(ToolName::WriteFile),
                         _ => None,
                     };
                     let args = TypedToolArgs::parse(&call.arguments);
@@ -867,12 +895,15 @@ pub async fn run_admitted_with_text(
                         }) {
                             let reader =
                                 resources.workspaces.get(&authority.workspace().id).cloned();
+                            let writer = resources.writers.get(&authority.workspace().id).cloned();
                             if let Some(reader) = reader {
                                 let name = tool.ok_or("validated tool missing")?;
                                 let validated =
                                     args.as_ref().map_err(|_| "validated arguments missing")?;
+                                let shape = validated.shape_for(name);
                                 let path = validated.path.clone();
                                 let query = validated.query.clone();
+                                let content = validated.content.clone();
                                 let case_sensitive = validated.case_sensitive.unwrap_or(false);
                                 let maximum = authority.limits().max_tool_result_bytes;
                                 let evidence_id = name.mints_evidence().then(|| evidence.next_id());
@@ -880,6 +911,28 @@ pub async fn run_admitted_with_text(
                                 let mut handle = tokio::task::spawn_blocking(move || {
                                     // The actual blocking worker owns capacity until it exits.
                                     let _permit = permit;
+                                    if let Err((code, message)) = shape {
+                                        return ToolResult::failure(
+                                            ToolStatus::Denied,
+                                            code,
+                                            message,
+                                        );
+                                    }
+                                    if name.is_mutating() {
+                                        // A write reaches only the separate writer, which exists
+                                        // solely for a workspace the operator granted writes.
+                                        return match writer {
+                                            Some(writer) => writer.write_file(
+                                                &path,
+                                                content.as_deref().unwrap_or(""),
+                                            ),
+                                            None => ToolResult::failure(
+                                                ToolStatus::Denied,
+                                                "write_not_authorized",
+                                                "This workspace does not grant writes.",
+                                            ),
+                                        };
+                                    }
                                     reader.execute_with_query(
                                         name,
                                         &path,

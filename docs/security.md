@@ -91,6 +91,42 @@ retains the receipt and final candidate, including rejected candidates, but no
 additional evidence bodies. Replay requires explicit capture permission and the
 actual frozen inputs; a stored verdict alone is not reproducible proof.
 
+## Write tools change the trust model
+
+The first three tools only observe the workspace. `write_file` changes it, and
+that is a deliberate step across the read-only boundary, gated the same way every
+other authority is.
+
+**Consent is the operator's, at configuration time.** A workspace grants writes
+only when its operator lists a write tool in that workspace's `tools`. The model
+proposing a write is not authorization; the operator enabling the tool is, exactly
+as installing a skill rather than ingesting a web page is the consent. The model
+is never consulted on a security decision.
+
+**The capability is separate by construction.** Writes run through a
+`WorkspaceWriter` distinct from `WorkspaceReader`; the read tools have no method
+that can change a file. A writer is built only for a workspace that granted a
+write tool, so a run without that grant has no writer to reach, and an
+unauthorized write is denied before any handler runs and is still journalled.
+
+**The write itself is bounded and structure-preserving.** It stays inside the
+capability root, refuses to write through a symbolic link or over a directory,
+does not create parent directories, and replaces the whole file atomically
+through a temporary sibling and a rename, so a crash leaves either the old file
+or the new one. Content is bounded and mints no evidence.
+
+**A checked task cannot write.** Acceptance depends on observing files the run did
+not author. A run that could edit a source and then read it back would certify its
+own change, so authorization refuses a write tool in a checked task's workspace.
+
+**Still deferred, and gated the same way.** Editing in place, deletion, move, and
+shell or command execution are larger surfaces. Shell execution especially is a
+different trust class: arbitrary process spawning, argument-vector construction,
+output bounding, and its own timeout and reconciliation. Each earns its place
+against a demonstrated task, with its own effect-specific authority and confirm
+policy, before it is built. See [decisions](decisions.md) and the
+[roadmap](roadmap.md).
+
 ## Filesystem tools from their first implementation
 
 Use `cap-std` when the first file tools arrive. Open the trusted root once with

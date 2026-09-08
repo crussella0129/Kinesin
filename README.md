@@ -43,7 +43,8 @@ rather than the fewest dependencies or source files.
 
 It accepts a bounded batch of independent tasks, runs them concurrently, and
 gives each task its own conversation, workspace authority, budgets, cancellation,
-and result. It begins with three read-only file tools and one llama.cpp adapter.
+and result. It begins with three read-only file tools plus a bounded `write_file`, and one
+llama.cpp adapter.
 Streaming makes useful text visible sooner; partial tool arguments never execute.
 
 Tests use scripted models. Benchmarks distinguish the runtime's overhead from
@@ -71,7 +72,8 @@ supervision. They are responsibilities, not three mandatory daemons.
 - Synchronous owned types and fake events first; Tokio and async reqwest when
   networking begins.
 - Trusted compiled tool handlers receive a narrow `WorkspaceReader` backed by
-  `cap-std`, not permission to open arbitrary operating-system paths.
+  `cap-std`, not permission to open arbitrary operating-system paths. Writes use a
+  separate `WorkspaceWriter`, built only where an operator granted a write tool.
 - Explicit admission, model-call, blocking-tool, queue-byte, and per-run limits.
 - A single SQLite owner thread; acknowledged transactions couple event records
   with the run's current status. No custom crash-recovery file format.
