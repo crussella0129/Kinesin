@@ -23,7 +23,7 @@ Technical English: short sentences, active voice, and one idea per sentence.
 5. [Component guide](#5-component-guide)
 6. [The non-Rust parts and how to connect them](#6-the-non-rust-parts-and-how-to-connect-them)
 7. [Trace schema](#7-trace-schema)
-8. [The ReAct loop](#8-the-react-loop)
+8. [The ReAct loop and the tool layer](#8-the-react-loop-and-the-tool-layer)
 9. [What is missing: decisions to make first](#9-what-is-missing-decisions-to-make-first)
 10. [Roadmap](#10-roadmap)
 11. [Learning resources index](#11-learning-resources-index)
@@ -356,9 +356,33 @@ acts, observes, and repeats.
 
 ### 5.6 `models/`
 
-**Purpose.** Holds your model file in GGUF format. Choose a text-to-text model. A
-small coding model or agent model is a good start. Copy or clone the file here
-before you run Kineserve.
+**Purpose.** Holds your model file in GGUF format. Choose a text-to-text model.
+Copy or clone the file here before you run Kineserve.
+
+**Choose the model with care. It decides whether the harness works at all.** A
+harness that routes tool calls depends on the model's ability to choose a tool and
+to fill in the arguments. Measurements of local models show a sharp limit:
+
+- **8B parameters is the practical minimum** for tool calls. Below that, tool
+  selection and argument accuracy fall fast.
+- **The Qwen 3 family gives the best local results.** Qwen 3 8B is the best
+  balance of speed and accuracy. Qwen 3 14B is more accurate and slower.
+- **Size alone does not decide quality.** In one measurement, a 70B model scored
+  below an 8B Qwen model at tool selection. Some models that advertise tool use
+  scored worst of all. Test the model you plan to use.
+- **A model must have a chat template that supports tools.** Section 8.3 explains
+  how to check this before you build anything.
+
+**Quantization: one trap to avoid.**
+
+- **Weight quantization is safe.** A Q4_K_M file performs about the same as the
+  full-precision file for tool calls. Use it.
+- **KV-cache quantization is not safe.** The llama.cpp documentation warns that
+  extreme KV quantization, for example `-ctk q4_0`, substantially degrades tool
+  call performance. Separate measurements show 4-bit KV cache causes *silent*
+  failures on long, tool-heavy prompts: the answer still reads well, but a wrong
+  token early corrupts everything after it. Keep the default KV cache. If you must
+  save memory, use 8-bit, never 4-bit.
 
 **Study.** GGUF is the file format that llama.cpp reads. Read the format note in
 the ggml repository so you pick a file that `llama-server` can load:
@@ -637,6 +661,39 @@ whole answer.
 `timings` (performance). For the chat endpoint, read
 `choices[0].message.content`.
 
+**Step 5 — Use the server's tool support.** `llama-server` can format and parse
+tool calls for you. This matters a lot, and Section 8.3 explains why. The short
+version:
+
+- Start the server with the `--jinja` flag. This makes the server use the model's
+  own chat template.
+- Send your tool list in a `tools` array on `/v1/chat/completions`. Each entry has
+  a `type`, and a `function` with a `name`, a `description`, and a JSON Schema in
+  `parameters`.
+- The server formats those tools the way the model was trained to receive them. It
+  then parses the reply and returns `tool_calls` in the response message, with
+  `finish_reason` set to `"tool"`.
+- The server log tells you whether it used a **native** format for your model or
+  the **generic** fallback. Native uses fewer tokens and works better. If the log
+  says generic, change the model.
+- Parallel tool calls are off by default. Turn them on with
+  `"parallel_tool_calls": true` only when you need them.
+
+**Step 6 — Constrain the output when you need a fixed shape.** Send a
+`json_schema` or a `response_format` field on the chat endpoint, or a `grammar`
+field on `/completion`. llama.cpp turns the schema into a GBNF grammar and allows
+only tokens that fit it. The model then cannot produce malformed JSON. Note two
+limits: the schema does **not** go into the prompt, so you must still describe the
+shape in words; and only a subset of JSON Schema is supported.
+
+**Study.**
+- llama.cpp function calling guide (the `--jinja` flag, the `tools` array,
+  `tool_calls`, native and generic formats, supported models):
+  https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md
+- llama.cpp GBNF grammars and JSON schema conversion (the supported subset and the
+  performance notes):
+  https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md
+
 **Study.**
 - llama.cpp server README (endpoints, flags, and fields):
   https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
@@ -848,9 +905,52 @@ Rules for the recorder:
 - The ID scheme (random bytes or a hash) is a separate decision. See Section 9,
   items 4 and 5.
 
+### 7.5 Record the tool events too
+
+The first purpose of the trace log is to find out what went wrong. That purpose
+sets a requirement that the fields above do not yet meet.
+
+Koil sees only the messages between K-Core and Kineserve. **A tool runs inside
+K-Core, so a tool call never crosses Koil.** With the fields above, a tool result
+survives only as text inside the next prompt. That is the wrong shape for
+debugging, because "what went wrong" is often "the tool returned something
+unexpected".
+
+So let K-Core write tool events into the same chain, with the same schema. Add two
+values to `direction`:
+
+- `tool_call` — K-Core is about to run a tool. The payload holds the tool name and
+  the arguments.
+- `tool_result` — the tool finished. The payload holds the status, the result or
+  the error, the duration, and a flag if the result was cut.
+
+The log then holds the whole session, not only the model traffic. The `prev` chain
+still puts every event in order.
+
+### 7.6 Keep the log readable by hand
+
+Manual reading is a valid way to use this log, and it needs no extra program. Two
+small choices keep it that way:
+
+- **Write the JSON with indentation, not on one line.** A trace is then readable
+  as soon as you open it.
+- **Make the lookup table do the sorting.** `trace_hash.json` already holds
+  `session` and `step`. Sort on those two fields and you have the file order for a
+  whole session, with no parser at all.
+
+That covers one trace and one session. A reader program only earns its place when
+you want replay (Section 10, Phase 4), because replay must rebuild the loop state,
+not just show the files.
+
+**If you want rewind, watch this constraint.** Rewind means: return to step N and
+continue differently. It works only if every input to the loop state appears
+somewhere in the chain. If K-Core holds state that never reaches a trace, rewind
+breaks at that point. The tool events above close the largest hole. Keep the rule
+in mind as you add fields: **if it changes the loop, record it.**
+
 ---
 
-## 8. The ReAct loop
+## 8. The ReAct loop and the tool layer
 
 K-Core runs the ReAct loop. "ReAct" means reason, then act. The model reasons in
 text. Then it asks for an action. K-Core runs the action, observes the result, and
@@ -890,9 +990,34 @@ Chapter 6):
 
 ### 8.3 How the model asks for an action
 
-Decide one clear format for an action. Put the rule in `kinesin.toml`, so the
-model follows it. A simple rule is: the model returns one JSON object with an
-`action` field and an `args` field. For example:
+This is the most important decision in the whole harness. There are three ways to
+do it. They differ a great deal in how often they work.
+
+**Approach A — Native tool calls (recommended).** Start `llama-server` with
+`--jinja`. Send your tools in the `tools` array on `/v1/chat/completions`. The
+server formats the tools with the model's own chat template and parses the reply
+for you. You receive `tool_calls` in the response, and `finish_reason` is
+`"tool"`. **You write no parser for tool calls.**
+
+Why this is the default choice: model makers train the model on their own tool
+format. When you inject a different format into the prompt instead, the format
+does not match the training, and measured hallucination rates for that mismatch
+are very high. The original ReAct method used free text action lines and a regular
+expression to read them, and parse failures were one of the main causes of agent
+breakage. Native formats also use fewer tokens.
+
+**Approach B — Constrained decoding (use together with A).** Send a `json_schema`
+(or `grammar`) field with the request. llama.cpp turns it into a GBNF grammar and
+permits only tokens that fit the shape. Malformed output becomes impossible, so a
+whole class of failure disappears. Three cautions:
+
+- The schema does not reach the model. Describe the shape in the prompt as well.
+- Only a subset of JSON Schema works. Do not mix `properties` with `anyOf` or
+  `oneOf`; avoid `prefixItems`, nested `$ref`, and `patternProperties`.
+- `additionalProperties` defaults to false, which is what you want.
+
+**Approach C — Hand-parsed JSON on `/completion` (fallback only).** The model
+returns one JSON object in `content`, and you parse it:
 
 ```json
 {
@@ -901,12 +1026,24 @@ model follows it. A simple rule is: the model returns one JSON object with an
 }
 ```
 
-K-Core reads the `content` field of the answer. Then it parses this small JSON. If
-the parse fails, K-Core makes an error observation and lets the model try again.
+This is the simplest request and it works with any model, with no template
+support needed. It is also the approach with the worst measured reliability, and
+you own the parser forever. Use it only if your model has no tool template. If you
+do use it, always add Approach B so that the JSON is at least well formed.
 
-Note: this format uses the plain `/completion` endpoint. The
-`/v1/chat/completions` endpoint has its own tool-call fields. Pick one endpoint
-and one format, and keep to it.
+**The recommendation: A + B.** Use native tool calls, and constrain the output.
+Keep C written down as the fallback.
+
+> **This does not cost you the learning.** Approach A removes the fragile
+> tool-call *extraction* work. It does not remove the JSON work. You still
+> hand-write the encoder that builds the request and the decoder that reads the
+> response, exactly as Section 9, item 2 describes. You give up a parser that
+> tends to break, not the part that teaches you the most.
+
+**Check this before you build anything.** Start the server with your model and one
+test tool, and read the server log. It states whether it used a native format or
+the generic fallback. If it says generic, change the model now rather than after
+you write the loop. Phase 0 in Section 10 makes this a step.
 
 ### 8.4 Stop conditions
 
@@ -939,6 +1076,87 @@ Rust study for this section: Chapter 5 (structs for the message and the action),
 Chapter 6 (enums and `match` for the states), Chapter 9 (`Result` and `?`), and
 Chapter 13 (iterators to walk the conversation). Read the Brown fork, Chapter 4.3
 "Fixing Ownership Errors", before you pass the conversation between functions.
+
+---
+
+### 8.7 How to define a tool
+
+A tool has four parts. Keep the shape below, because it maps straight into the
+`tools` array that `llama-server` expects, and it also matches the shape that the
+Model Context Protocol uses. That keeps a later move to MCP a mapping job instead
+of a rewrite.
+
+| Part | What it is |
+|------|-----------|
+| `name` | A short, action-based name, for example `read_file`. |
+| `description` | Plain words that say what the tool does and when to use it. |
+| `parameters` | A JSON Schema for the arguments. |
+| handler | The Rust function that runs the tool. |
+
+Rules that come from measured practice:
+
+- **The description carries as much weight as the schema.** The model chooses the
+  tool from the description. Write it for a reader who cannot see your code. Say
+  when *not* to use the tool as well.
+- **Set `additionalProperties` to false.** List `required` fields explicitly. Use
+  an enum where the value set is fixed. A tight schema removes guesswork.
+- **Give a tool one clear purpose.** Too broad, and the model picks it for the
+  wrong job. Too narrow, and you need many tools, which also confuses the model.
+- **Keep the tool count small.** Every extra tool makes the choice harder. Start
+  with three.
+- **Give every tool result the same envelope.** For example a status, a body, and
+  a flag that says whether the body was cut. One shape makes the loop simple and
+  makes the traces easy to read.
+
+### 8.8 What goes wrong, and what to do about it
+
+Local models fail at tool calls in four repeatable ways. Plan for each one.
+
+| Failure | What it looks like | What to do |
+|---------|-------------------|-----------|
+| Eager invocation | The model calls a tool when it does not need one. It answers "Hello" with a tool call. | Say in the instructions that a plain answer is allowed. Give an explicit `finish` tool. |
+| Wrong tool | It picks a tool that does not fit the task. | Improve the descriptions. Reduce the tool count. |
+| Invalid arguments | A field is missing, or has the wrong type. | Use constrained decoding (8.3, Approach B). Check the arguments before you call the handler, and return the error as an observation. |
+| Ignored result | The model does not use the tool output and repeats the call. | Put the result in the conversation in a clear form. Use the `repeat_limit` from Section 8.4. |
+
+Two more points that decide success before you write any code: use a model of at
+least 8B parameters, and keep the KV cache unquantized. Section 5.6 gives the
+detail on both.
+
+### 8.9 Safety: bound what the model can do
+
+The model chooses the actions, so the harness must set the limits. This is a
+requirement, not a feature.
+
+- **Read-only by default.** A tool that changes data goes on an explicit
+  allow-list, and asks for a confirmation first.
+- **Validate arguments before you run the handler.** Never pass model output
+  straight into a path, a command, or a query.
+- **Treat every tool result as untrusted text.** A file, a web page, or another
+  agent can carry instructions aimed at your model. Do not let a tool result act
+  as an instruction. Keep it clearly marked as data when you put it back in the
+  prompt.
+- **Cap the size of a result** before it enters the conversation.
+
+### 8.10 Two approaches considered and not chosen
+
+Design rule 6 says to write down the reason. These two are worth knowing about.
+
+**Code as action (CodeAct).** Instead of a JSON action, the model writes a short
+program, and the harness runs it. Measurements show it beats JSON actions: about a
+20% better success rate and roughly 30% fewer steps, because code carries loops
+and conditions, and models see a lot of code in training. The gain is real and it
+is largest for open models. **Not chosen** because it needs a sandboxed
+interpreter. That is a large dependency and a large security surface, and both
+work against the minimal, standard-library goal. Revisit only if Kinesin ever
+needs to compose many tools in one step.
+
+**Model Context Protocol (MCP).** MCP is now the common standard for tool
+interfaces, with wide industry support. **Not chosen for now** because Kinesin
+needs a working local loop first, and MCP adds a protocol and a transport that the
+harness does not yet need. The cheap step is the one in Section 8.7: shape the
+tool definition like an MCP tool. Then adopting MCP later is a mapping, not a
+redesign.
 
 ---
 
@@ -1038,12 +1256,43 @@ and the reason it comes at this point.
 
 | Phase | Goal | State |
 |-------|------|-------|
+| 0 | Prove the environment works | Do this first |
 | 1 | One prompt in, one answer out, one trace on disk | Build now |
 | 2 | The loop and the tools make it an agent | Later |
 | 3 | Long runs do not break | Later |
 | 4 | The trace log becomes useful | Later |
 | 5 | Kineserve moves to a bigger machine | Later |
 | 6 | Change the harness without fear | Later |
+
+---
+
+### Phase 0 — Pre-flight (before you write any Rust)
+
+**Goal.** Prove that the model and the server do what you need, before you build a
+harness on top of them. Every step here is done by hand. Each one removes a way
+for Phase 1 to fail for a reason that is not your code.
+
+1. **Install Rust.** Confirm that `cargo --version` answers.
+2. **Build or install `llama-server`.** Confirm it starts.
+3. **Choose a model and put it in `models/`.** Use 8B parameters or more. A Qwen 3
+   8B instruct GGUF is the safe first choice. (Section 5.6.)
+4. **Start the server by hand with `--jinja`.** Keep the KV cache at the default.
+   Write down the exact command line that works.
+5. **Check `/health`.** Confirm that it returns "ok" after the model loads. Note
+   how long the load takes; this sets `startup_timeout_s`.
+6. **Send one chat request by hand.** Confirm you receive an answer.
+7. **Send one request with a `tools` array.** Confirm that you receive
+   `tool_calls` back, and that `finish_reason` is `"tool"`.
+8. **Read the server log for the format.** It says whether it used a **native**
+   tool format or the **generic** fallback. If it says generic, change the model
+   now. This one check can save you a rewrite. (Section 8.3.)
+9. **Send one request with a `json_schema`.** Confirm the output matches the shape.
+10. **Save the working request bodies.** They are the targets that your Phase 1
+    code must reproduce.
+
+**Why this phase exists.** Steps 7 and 8 decide the design of your whole tool
+layer. If you find out after Phase 2 that your model has no tool template, you
+rewrite the loop. If you find out now, you change one file name.
 
 ---
 
@@ -1081,23 +1330,30 @@ Phase 1 you can rewrite cheaply. A wrong seam costs you the whole of Phase 5.
 
 **Goal.** Make it an agent. The model chooses an action, and K-Core runs it.
 
-1. **Build the ReAct loop.** Use the step cycle and the states in Section 8.
-2. **Design the tool interface.** This is the least designed part of Kinesin, and
-   it is the product surface of a general purpose harness. Decide four things:
-   - how you declare a tool: its name, its description, its argument names, and
-     its argument types;
-   - how the tool list reaches the model: in the instructions, or as a schema;
-   - how you check the arguments before you call the tool;
-   - what shape a tool result has, and how a tool error becomes an observation.
-3. **Add the capability model.** The model chooses the actions, so the harness
-   must bound them. Add an allow-list of tool names. Add a confirm step for any
-   tool that changes data. (Section 5.8.3.)
-4. **Add two or three real tools.** Keep them small: read a file, list a
-   directory, and finish.
-5. **Add the stop conditions and the step limit.** (Section 8.4.)
+1. **Move to the chat endpoint and native tool calls.** Send the `tools` array on
+   `/v1/chat/completions`, and read `tool_calls` from the reply. Add the
+   `json_schema` constraint. (Section 8.3, Approach A plus B.)
+2. **Build the tool definition.** Use the four parts and the rules in Section 8.7.
+   Shape it like an MCP tool so a later move is a mapping, not a rewrite.
+3. **Build the ReAct loop.** Use the step cycle and the states in Section 8.
+4. **Add the capability model.** An allow-list of tool names, read-only by
+   default, and a confirm step for any tool that changes data. Validate the
+   arguments before you call the handler. Treat every tool result as untrusted
+   text. (Section 8.9.)
+5. **Add three real tools.** For example read a file, list a directory, and
+   finish. Keep the count small; more tools make the choice harder.
+6. **Record the tool events.** Add the `tool_call` and `tool_result` directions to
+   the trace chain. (Section 7.5.)
+7. **Add the stop conditions and the step limit.** (Section 8.4.)
+8. **Write the minimal trace reader.** Sort the lookup table by `session` and
+   `step`, and print the chain in order. This is about twenty lines, and this is
+   the phase where multi-step runs start to go wrong, so it earns its place now.
+   Full replay stays in Phase 4. (Section 7.6.)
 
 **Why here.** The tools make the harness general purpose. Design the tool
-interface once and early, because every tool you add later takes its shape.
+interface once and early, because every tool you add later takes its shape. Expect
+the four failure modes in Section 8.8, and treat them as normal rather than as
+bugs in your code.
 
 ---
 
@@ -1233,3 +1489,23 @@ private.
 - **TOML specification:** https://toml.io/en/v1.0.0
 - **CommonMark (Markdown):** https://spec.commonmark.org/
 - **ReAct paper (the loop idea):** https://arxiv.org/abs/2210.03629
+
+### Tool calling
+
+- **llama.cpp function calling guide** — the `--jinja` flag, the `tools` array,
+  `tool_calls`, native versus generic formats, supported models, and the KV
+  quantization warning. Read this first:
+  https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md
+- **llama.cpp GBNF grammars** — constrained decoding, JSON schema conversion, the
+  supported subset, and the performance notes:
+  https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md
+- **Tool calling with local models, a practical evaluation** (Docker) — 21 models
+  over 3,570 cases; the 8B floor, the Qwen results, and the four failure modes:
+  https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/
+- **CodeAct, "Executable Code Actions Elicit Better LLM Agents"** — the case for
+  code as the action format, and the numbers behind it (Section 8.10):
+  https://arxiv.org/abs/2402.01030
+- **Model Context Protocol** — the common tool interface standard; shape your tool
+  definition to match it (Section 8.7): https://modelcontextprotocol.io/
+- **Tool schema design: inputs, outputs, and error handling:**
+  https://aiquinta.ai/blog/llm-tool-schema-design-inputs-outputs-error-handling/
