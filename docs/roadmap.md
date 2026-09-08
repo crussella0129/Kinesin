@@ -62,7 +62,7 @@ strict exit zero requires completed execution and passed contract checks.
 - [x] 28. [Add a batch command for independent agents](build-guide.md#28-add-a-batch-command-for-independent-agents).
 - [ ] 29. [Measure saturation before tuning concurrency](build-guide.md#29-measure-saturation-before-tuning-concurrency).
 - [x] 30. [Inspect stored runs and replay decisions](build-guide.md#30-inspect-stored-runs-and-replay-decisions).
-- [x] 31. [Stream output with bounded assembly](build-guide.md#31-stream-output-with-bounded-assembly).
+- [ ] 31. [Stream output with bounded assembly](build-guide.md#31-stream-output-with-bounded-assembly). Functional streaming proofs pass; the measured first-useful-text comparison with nonstreaming remains open.
 
 **Gate:** independent runs share bounded admission, model, tool, journal, and
 observer capacity without mixing state or releasing permits early. Saturation,

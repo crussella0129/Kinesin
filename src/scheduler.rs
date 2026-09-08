@@ -751,6 +751,99 @@ mod tests {
     }
 
     #[test]
+    fn writer_failure_during_two_active_effects_rejects_more_work_and_owned_shutdown_joins() {
+        let fixture = Fixture::new();
+        let config = fixture
+            .parse(
+                &BASE
+                    .replace("tools = [\"read_file\"]", "tools = []")
+                    .replace("verified_slots = 1", "verified_slots = 2"),
+            )
+            .unwrap();
+        let path = config.storage().path.clone();
+        let storage = Storage::start(path.clone(), QueueLimits::default()).unwrap();
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let limits = ConcurrencyConfig {
+                max_active_runs: 2,
+                max_queued_runs: 1,
+                max_inflight_model_requests: 2,
+                ..Default::default()
+            };
+            let resources = RunResources::single(2, limits.clone());
+            let (handle, controller) = Controller::start(limits, storage.client(), false).unwrap();
+            let first_job = job(&config, None, "first-active", 30_000, &resources);
+            let first_client = first_job.client.clone();
+            let second_job = job(&config, None, "second-active", 30_000, &resources);
+            let second_client = second_job.client.clone();
+            let mut first = handle.try_submit(first_job, None).unwrap();
+            let mut second = handle.try_submit(second_job, None).unwrap();
+            let first_id = first.admitted().await.unwrap().run_id;
+            let second_id = second.admitted().await.unwrap().run_id;
+            timeout(Duration::from_secs(5), async {
+                while first_client.captured_requests().unwrap().len() != 1
+                    || second_client.captured_requests().unwrap().len() != 1 {
+                    tokio::time::sleep(Duration::from_millis(2)).await;
+                }
+            }).await.unwrap();
+            assert_eq!(handle.stats().active_runs, 2);
+            assert_eq!(resources.models.available_permits(), 0);
+            let failure_path = path.clone();
+            let elapsed_ms = tokio::task::spawn_blocking(move || {
+                let connection = rusqlite::Connection::open(failure_path).unwrap();
+                connection.busy_timeout(Duration::from_secs(2)).unwrap();
+                connection.execute_batch("CREATE TRIGGER reject_events BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT,'test writer failure'); END;").unwrap();
+                let elapsed: i64 = connection.query_row("SELECT max(elapsed_ms) FROM events", [], |row|row.get(0)).unwrap();
+                u64::try_from(elapsed).unwrap()
+            }).await.unwrap();
+            let error = storage.client().execute(Command::Append {
+                owner_id: "local".into(),
+                run_id: first_id.clone(),
+                event: crate::storage::Event { seq:3, kind:"cancel_requested".into(), elapsed_ms, data:serde_json::json!({}) },
+                phase: None,
+            }, Instant::now() + Duration::from_secs(2)).await.unwrap_err();
+            assert_eq!(error.code, "storage_database");
+            assert!(!storage.client().is_accepting());
+            // Even before the caller initiates shutdown, durable admission
+            // rejects further work and cannot dispatch a third model effect.
+            let third_job = job(&config, None, "must-not-start", 0, &resources);
+            let third_client = third_job.client.clone();
+            let mut third = handle.try_submit(third_job, None).unwrap();
+            assert!(timeout(Duration::from_secs(2), third.admitted()).await.unwrap().unwrap_err().contains("storage_closed"));
+            assert!(third.finished().await.unwrap_err().contains("storage_closed"));
+            assert!(third_client.captured_requests().unwrap().is_empty());
+            // This is the documented caller-owned shutdown sequence after a
+            // journal error, not an automatic storage-health watcher.
+            handle.shutdown();
+            for pending in [first, second] {
+                assert!(timeout(Duration::from_secs(5), pending.finished()).await.unwrap().unwrap_err().contains("storage_closed"));
+            }
+            let stats = timeout(Duration::from_secs(5), controller.join()).await.unwrap().unwrap();
+            assert_eq!((stats.completed_runners, stats.runner_errors), (2, 2));
+            assert_eq!((stats.active_runs, stats.queued_runs, stats.queued_input_bytes), (0, 0, 0));
+            assert_eq!(resources.models.available_permits(), 2);
+            assert_eq!(storage.client().outstanding(), (0, 0));
+            assert_eq!(first_client.captured_requests().unwrap().len(), 1);
+            assert_eq!(second_client.captured_requests().unwrap().len(), 1);
+            storage.shutdown().await.unwrap();
+            tokio::task::spawn_blocking(move || {
+                let connection = rusqlite::Connection::open(&path).unwrap();
+                let settled: i64 = connection.query_row("SELECT count(*) FROM runs WHERE phase != 'running' OR acceptance_status='passed' OR acceptance_json IS NOT NULL", [], |row| row.get(0)).unwrap();
+                assert_eq!(settled, 0, "failed writer cannot claim persisted terminal success");
+                let events: i64 = connection.query_row("SELECT count(*) FROM events WHERE kind IN ('cancel_requested','run_finished')", [], |row| row.get(0)).unwrap();
+                assert_eq!(events, 0, "failed event transaction must roll back");
+                connection.execute_batch("DROP TRIGGER reject_events").unwrap();
+                drop(connection);
+                let mut restarted = crate::storage::Store::open(&path).unwrap();
+                for run_id in [first_id, second_id] {
+                    let Response::Run(Some(run)) = restarted.execute(Command::Get {owner_id:"local".into(),run_id}).unwrap() else {panic!("recovered run exists")};
+                    assert_eq!(run.phase, "interrupted");
+                    assert!(!run.task_accepted());
+                }
+            }).await.unwrap();
+        });
+    }
+
+    #[test]
     fn byte_overload_and_zero_queue_reject_immediately_without_retained_inputs() {
         for (queue, bytes) in [(1, 1), (0, 1_048_576)] {
             let fixture = Fixture::new();

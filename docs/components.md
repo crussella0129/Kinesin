@@ -6,7 +6,7 @@ organization boundary; separate packages/processes must earn their cost.
 
 | Module | Responsibility | Rust concepts to learn here |
 |--------|----------------|-----------------------------|
-| `main.rs` / `lib.rs` | CLI entry and small public library API | Modules, visibility, `Result`, exit status |
+| `main.rs` / `lib.rs` / `cli.rs` | CLI composition and public library API | Modules, visibility, `Result`, exit status |
 | `core.rs` | K-Core: messages, state, pure decisions | Owned `String`/`Vec`, structs/enums, pattern matching, borrowing |
 | `runner.rs` | Execute one run's effects in order | `async`/`await`, `select!`, cancellation, RAII |
 | `model.rs` | Koil: scripted and HTTP model clients | Typed serialization, enums, optional fields, bounded streams |
@@ -15,10 +15,18 @@ organization boundary; separate packages/processes must earn their cost.
 | `tools.rs` | Bounded read/list operations | Open directory handles, byte/UTF-8 limits, blocking-job ownership |
 | `verification.rs` | Frozen task contracts, scoped evidence, pure field checker, bounded receipts | Enums, typed deserialization, slices, exhaustive outcomes, small parsers |
 | `storage.rs` | Transactional journal and run queries | SQL parameters, transactions, thread ownership, bounded channels, acknowledgements |
-| `scheduler.rs` | Admission, queues, model permits, owner fairness | `VecDeque`, semaphores, `JoinSet`, capacity accounting |
-| `telemetry.rs` | Durations, counts, redacted diagnostics | `Instant`, measurements, structured fields |
-| `server.rs` | Later authenticated service | HTTP extractors, middleware order, resource authorization |
-| `kineserve.rs` | Optional model-process supervision | `Command`, `Child`, readiness, cleanup |
+| `scheduler.rs` / `dispatch.rs` | Admission, queues, shared effect permits, owner fairness | `VecDeque`, semaphores, `JoinSet`, capacity accounting |
+| `replay.rs` | Validate recorded decisions without effects | Versioned inputs, pure validation, exhaustive outcomes |
+| `service.rs` / `ingress.rs` | Authorized API and bounded HTTP connections | Extractors, middleware order, resource authorization, owned connections |
+| `auth.rs` / `private_state.rs` | Credential verification and native state checks | Fixed-size secrets, OS metadata and permissions |
+| `operator.rs` / `signal.rs` | Readiness, supervision and native shutdown | Concurrent owners, signals, failure propagation |
+
+The answer key records durations and counts at their owning runtime boundaries;
+`examples/measure.rs` collects repeatable measurements. A separate telemetry
+module is unnecessary until that extraction helps. Optional model-process
+supervision (`kineserve.rs` in the earlier design) remains unimplemented in the
+selected attach profile; it would introduce `Command`, `Child`, readiness and
+cleanup ownership.
 
 Keep most helpers private or `pub(crate)`. Integration tests should use the small
 public runtime API, not force every helper to become public. Pure unit tests can
@@ -51,7 +59,7 @@ or message is enough.
 | `rusqlite` with a verified SQLite build | Transactions, indexed owner-scoped queries, crash consistency |
 | `uuid` | Opaque run identifiers |
 | `sha2` | Versioned content/submission fingerprints and high-entropy credential verifiers |
-| `tracing` / subscriber | Structured redacted diagnostics, introduced with measurement |
+| `tracing` / subscriber (optional) | A possible structured diagnostics layer; current measurements use owned timing records and bounded exports |
 | Axum, relevant Tower layers | Later service HTTP boundary |
 | `getrandom`, `subtle` | Later credential generation and fixed-size verifier comparison |
 

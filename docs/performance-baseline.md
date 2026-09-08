@@ -13,6 +13,7 @@ directory beneath the ignored `validation-output` directory:
 cargo build --release --example measure
 .\target\release\examples\measure.exe validation-output/measure-warm --warm-only
 .\target\release\examples\measure.exe validation-output/measure-full --soak-seconds 600
+.\target\release\examples\measure.exe validation-output/measure-curves --curves-only
 ```
 
 The default is 1,000 recorded warm trials after twenty warmups. `--warm-only`
@@ -22,6 +23,17 @@ runs the explicitly requested soak. `--warm-trials` and `--cancel-trials` permit
 smaller smoke runs; their allowed maxima are 1,000 and 100. Existing output
 directories are rejected, preserving prior samples and avoiding old database
 contents changing the workload.
+
+`--curves-only` is a separate bounded experiment. With no controller queue and
+two shared fake backend slots, it runs twenty batches at each active-run cap
+1, 2, 4, and 8, always using the same 100 ms scripted delay. A second scenario
+keeps four active slots and the same controller alive through ten batches each
+at 100 ms, 400 ms, and 100 ms. It records all offered/admitted/rejected outcomes,
+each terminal-result latency, actual peak active counts, and final settlement.
+Failure to reach the intended concurrency fails the measurement. These are
+420 unchecked synthetic runs; their latency includes injected positive delay,
+and their small-sample percentiles are descriptive. They do not measure an
+open-loop authenticated service or additional slots on a live model server.
 
 These experiments call the library runner/controller directly with synthetic
 inputs. They do not time configuration parsing, private-state startup checks,

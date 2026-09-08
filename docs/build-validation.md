@@ -10,16 +10,16 @@ finishes. Teaching improvements for testing and SDLC follow the validation pass.
 - [x] Step 1: write operating profiles, resources, and observable goals below.
 - [x] Step 2: ownership exercise and toolchain verified.
 - [x] Step 3 local proof: package, deliberately failing/corrected test, format and Clippy.
-- [ ] Step 3 hosted proof: CI definition exists; hosted execution is not yet observed.
+- [ ] Step 3 hosted proof: the first run exposed an expiry race; the corrected checkpoint awaits a passing hosted result.
 - [x] Step 4: pin and preflight the available model/server combination.
 - [x] Steps 5–8: owned pure core, async exercise, scripted runner and failure proofs.
 - [x] Steps 9–14: validated authority, transactional storage, bounded live turn and cancellation.
-- [ ] Steps 15–22: core proofs pass; remaining filesystem-race and controlled context/layout exercises are being reconciled.
+- [ ] Steps 15–22: capability/checker proofs and live baseline pass their recorded scope; controlled context/layout comparisons remain open.
 - [ ] Steps 23–31: concurrent admission, resource ownership, measurements, replay, streaming.
 - [x] Steps 32–33: record not applicable for the selected local attach profile.
 - [x] Steps 34–40 local proofs: authenticated API, fairness, recovery and operations.
 - [ ] Step 38 deployment identity/egress and step 41 shared-service exposure gate.
-- [ ] Reconcile all original requirements against the evidence and record remaining gaps.
+- [x] Reconcile original requirements against the evidence and record remaining gaps below.
 
 ## Step 1: operating profiles
 
@@ -164,6 +164,15 @@ passed for exact field comparison, forged/wrong-source citations, strict answer
 grammar, incomplete/conflicting/malformed sources, source revisions, and evidence
 capacity. The integrated task evaluation is now recorded below.
 
+The final audit added two native filesystem race exercises. With the directory
+capability already open, a bounded mutator replaced a regular file with an
+outside-pointing link while reads continued; no result exposed the sentinel,
+which remained unchanged. A second mutator created and removed long-named
+entries during bounded listings. Results remained structured and within their
+byte limits, without assuming a directory snapshot. Both mutators were joined.
+All seven tool tests passed locally with actual symlink privileges; no
+unavailable-privilege case was counted as native evidence.
+
 The first live checked task, run `dc41fd73-f3c9-4b41-871f-4ec7e51101bd`, returned
 fenced JSON with invented values and references, without a tool read. The harness
 stored `completed/failed` and returned exit 2. A second configuration probe also
@@ -302,6 +311,17 @@ unfinished checked run as interrupted/inconclusive using its frozen criteria.
 A second reopen adds no recovery event or effect. The ignored child-worker entry
 in the test listing is invoked explicitly by all three parent tests.
 
+The final composed drills also passed. A real SQLite abort trigger failed the
+writer after two model requests were observed in flight. A subsequent submission
+failed storage admission before any third model effect; explicit controller
+shutdown joined both failed runners and returned their permits. No terminal
+success was invented, and reopening recovered the unfinished runs as interrupted.
+This tests the caller's cleanup composition, not a new automatic controller
+health watcher. Another service drill cancelled Alice's queued run, revoked her
+credential and still completed Bob's work. A checked retry after task-profile
+version and criterion edits returned the exact retained original receipt without
+a further model request.
+
 A final ordinary CLI checked run, `8ae7c104-7053-4b73-a7c3-67af5b1815cf`, used
 streaming and replay capture v2 on the separately measured zero-layer-offload
 fallback. It emitted 50 provisional text frames, performed the required file
@@ -341,6 +361,22 @@ Do not mark step 41 passed or describe this as a production shared deployment.
 The next teaching pass can integrate these actual failure discoveries and proofs
 into the handwritten build sequence; this validation pass preserves the guide's
 existing learning structure.
+
+The final audit separates implementation from a fully completed guide:
+
+| Original intent | Observed result and remaining boundary |
+|-----------------|-----------------------------------------|
+| Handwritten first Rust project | `answer-key` supplies a working reference. The guide now directs the learner to a separate empty directory and includes the former first-steps orientation. |
+| Completion versus correctness | Checked file-field tasks require a frozen independent contract and genuine run evidence. Freeform remains unchecked; four of fourteen original freeform evaluation samples missed their rubrics. General task correctness is not solved. |
+| Concurrent local agents | Admission, owner isolation, shared model/tool limits, durable outcomes, cancellation, batch execution and replay have local integration evidence. The ten-minute synthetic soak kept bounded ownership. |
+| Low latency and scaling | Results retain target misses and the workload/version that produced each sample. Synthetic measurements do not establish live concurrent accepted-task throughput or production arrival-rate capacity. |
+| Secure shared service later | Authenticated loopback API and native private-state checks work locally. Dedicated deployment identity, OS egress policy, TLS ingress and the actual shared exposure drill remain gates. |
+| Follow every guide exercise | The core implementation is present, but equal-byte organization versus selected-context-size comparisons, live concurrency/warm-cold performance, fixed-arrival service load and a measured streaming/nonstreaming first-text comparison remain unperformed. Steps 22, 29 and 31 therefore remain open in the roadmap. |
+
+This is an implemented answer key with scoped evidence, not a declaration that
+every original quality and deployment requirement has passed. Adding routine
+SDLC lessons throughout the learning sequence remains the user's next teaching
+pass; missing evidence is recorded rather than converted into a checked box.
 
 ## Open contract clarifications from implementation preparation
 

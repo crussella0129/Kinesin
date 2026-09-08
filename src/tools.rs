@@ -513,4 +513,169 @@ mod tests {
         assert!(result.body.is_empty());
         assert!(result.evidence_id.is_none());
     }
+
+    #[test]
+    fn capability_denies_outside_reads_while_a_regular_path_becomes_a_link() {
+        use std::sync::Barrier;
+
+        let fixture = Fixture::new();
+        let outside = fixture.root.join("outside-secret");
+        let changing = fixture.root.join("workspace/changing");
+        std::fs::write(&outside, "OUTSIDE-SENTINEL").unwrap();
+        let reader = fixture.reader();
+        #[cfg(windows)]
+        fn make_link(source: &Path, destination: &Path) -> std::io::Result<()> {
+            std::os::windows::fs::symlink_file(source, destination)
+        }
+        #[cfg(unix)]
+        fn make_link(source: &Path, destination: &Path) -> std::io::Result<()> {
+            std::os::unix::fs::symlink(source, destination)
+        }
+        match make_link(&outside, &changing) {
+            Ok(()) => {}
+            Err(error)
+                if error.kind() == ErrorKind::PermissionDenied
+                    || error.raw_os_error() == Some(1314) =>
+            {
+                eprintln!(
+                    "UNAVAILABLE: native changing-link test lacks OS symlink privilege: {error}"
+                );
+                return;
+            }
+            Err(error) => panic!("cannot prepare changing-link fixture: {error}"),
+        }
+        assert_ne!(
+            reader
+                .execute(ToolName::ReadFile, "changing", 256, None)
+                .status,
+            ToolStatus::Ok
+        );
+        std::fs::remove_file(&changing).unwrap();
+        std::fs::write(&changing, "INSIDE").unwrap();
+        assert_eq!(
+            reader
+                .execute(ToolName::ReadFile, "changing", 256, None)
+                .body,
+            "INSIDE"
+        );
+
+        // The capability is already open. The mutator changes only this fixture
+        // entry; a failed unlink never falls through to writing through a link.
+        let start = Barrier::new(2);
+        std::thread::scope(|scope| {
+            let mutator = scope.spawn(|| {
+                start.wait();
+                let mut replacements = 0;
+                for _ in 0..256 {
+                    match std::fs::remove_file(&changing) {
+                        Ok(()) => {}
+                        Err(error) if error.kind() == ErrorKind::NotFound => {}
+                        Err(error)
+                            if error.kind() == ErrorKind::PermissionDenied
+                                || error.raw_os_error() == Some(32) =>
+                        {
+                            continue;
+                        }
+                        Err(error) => panic!("cannot remove fixture entry: {error}"),
+                    }
+                    make_link(&outside, &changing).unwrap();
+                    replacements += 1;
+                    std::thread::yield_now();
+                    match std::fs::remove_file(&changing) {
+                        Ok(()) => {}
+                        Err(error)
+                            if error.kind() == ErrorKind::PermissionDenied
+                                || error.raw_os_error() == Some(32) =>
+                        {
+                            continue;
+                        }
+                        Err(error) => panic!("cannot remove fixture link: {error}"),
+                    }
+                    use std::io::Write;
+                    std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&changing)
+                        .unwrap()
+                        .write_all(b"INSIDE")
+                        .unwrap();
+                }
+                replacements
+            });
+            start.wait();
+            for _ in 0..512 {
+                let result = reader.execute(ToolName::ReadFile, "changing", 256, None);
+                assert!(result.encoded().unwrap().len() <= 256);
+                assert!(!result.body.contains("OUTSIDE-SENTINEL"));
+                if result.status == ToolStatus::Ok {
+                    // Opening while the regular file is being written can see
+                    // its empty prefix. A snapshot of the whole file is not promised.
+                    assert!("INSIDE".starts_with(&result.body));
+                } else {
+                    assert!(result.body.is_empty());
+                    assert!(matches!(
+                        result.error.unwrap().code.as_str(),
+                        "not_found" | "access_denied" | "io_error"
+                    ));
+                }
+            }
+            assert!(mutator.join().unwrap() > 0);
+        });
+        assert_eq!(
+            std::fs::read_to_string(outside).unwrap(),
+            "OUTSIDE-SENTINEL"
+        );
+    }
+
+    #[test]
+    fn listing_stays_bounded_while_long_named_entries_disappear() {
+        use std::sync::Barrier;
+
+        let fixture = Fixture::new();
+        let directory = fixture.root.join("workspace/nested");
+        for index in 0..64 {
+            fixture.write(
+                &format!("nested/stable-{index:03}-{}.txt", "s".repeat(80)),
+                "",
+            );
+        }
+        let reader = fixture.reader();
+        let start = Barrier::new(2);
+        std::thread::scope(|scope| {
+            let mutator = scope.spawn(|| {
+                start.wait();
+                for index in 0..256 {
+                    let path =
+                        directory.join(format!("volatile-{index:03}-{}.txt", "v".repeat(80)));
+                    std::fs::write(&path, "").unwrap();
+                    std::thread::yield_now();
+                    std::fs::remove_file(path).unwrap();
+                }
+            });
+            start.wait();
+            for _ in 0..256 {
+                let result = reader.execute(ToolName::ListFiles, "nested", 8_192, None);
+                assert!(result.encoded().unwrap().len() <= 8_192);
+                assert!(result.evidence_id.is_none());
+                if result.status == ToolStatus::Ok {
+                    let entries: Vec<ListedEntry> = serde_json::from_str(&result.body).unwrap();
+                    assert!(entries.len() <= MAX_VISITED_ENTRIES);
+                    assert!(entries.windows(2).all(|pair| pair[0].name <= pair[1].name));
+                    assert!(
+                        entries
+                            .iter()
+                            .all(|entry| entry.name.starts_with("nested/"))
+                    );
+                    // Neither membership nor completeness is stable under churn.
+                } else {
+                    assert!(result.body.is_empty());
+                    assert!(matches!(
+                        result.error.unwrap().code.as_str(),
+                        "not_found" | "access_denied" | "io_error"
+                    ));
+                }
+            }
+            mutator.join().unwrap();
+        });
+    }
 }

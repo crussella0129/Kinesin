@@ -819,11 +819,15 @@ Use explicit overload/queue-expired outcomes with no model or tool effects.
 
 A bounded channel alone is insufficient if unlimited tasks wait outside it
 holding prompts. Either reject immediately with nonblocking admission or bound
-the number and size of waiting submitters as well. Reserve count and byte
-capacity together and release both on every rejection, cancellation, or dequeue.
+the number and size of waiting submitters as well. Reserve queued-run count and
+bytes together. Return both on rejection or queued cancellation; when a run is
+dequeued, transfer ownership to its active-run allowance and release its queued
+count and bytes exactly once.
 
 Apply the same accounting to store commands. Commands have a maximum size;
-retained payloads and queued payloads cannot bypass the byte reservation.
+retained payloads and queued payloads cannot bypass the byte reservation. A store
+command keeps its count and byte permits after dequeue, through actual transaction
+completion, even if its acknowledgement receiver is dropped.
 Do not drop lifecycle events silently when their queue fills. Fail closed on
 store admission failure and use the bounded cleanup path for owned work.
 

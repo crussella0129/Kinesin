@@ -2,7 +2,7 @@
 
 A small Rust runtime for agents with explicit authority and bounded resources.
 
-**Status: implemented; release validation in progress.** The Rust CLI, concurrent
+**Status: working answer key with local validation evidence.** The Rust CLI, concurrent
 controller, file tools, checker, journal, replay, streaming, and authenticated
 loopback service run locally. The [validation ledger](docs/build-validation.md)
 separates passing proofs from model-quality failures and deployment gates that

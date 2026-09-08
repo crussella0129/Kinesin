@@ -494,6 +494,167 @@ async fn racing_retries_and_disconnect_after_controller_transfer_do_not_redispat
 }
 
 #[tokio::test]
+async fn checked_retry_retains_its_original_receipt_after_task_profile_changes() {
+    let script = [
+        ModelReply::ToolCalls {
+            content: None,
+            calls: vec![ToolCall {
+                id: "read0".into(),
+                name: "read_file".into(),
+                arguments: r#"{"path":"project.txt"}"#.into(),
+            }],
+        },
+        ModelReply::Answer(
+            json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]}).to_string(),
+        ),
+    ];
+    let harness = Harness::new(CONFIG, script.into_iter().map(ScriptStep::from)).await;
+    let submission = json!({"mode":"checked","task":"practice-fields","model":"local"});
+    let created = harness
+        .create("alice", "stable-contract", submission.clone())
+        .await;
+    let original = harness
+        .terminal("alice", created["run_id"].as_str().unwrap())
+        .await;
+    assert_eq!(original["task_accepted"], true);
+    assert_eq!(original["contract"]["profile_version"], "1");
+    let changed = CONFIG
+        .replace(
+            "id = \"practice-fields\"\nversion = 1",
+            "id = \"practice-fields\"\nversion = 2",
+        )
+        .replace("key = \"language\"", "key = \"project\"");
+    let changed =
+        Arc::new(Config::parse(&changed, &harness._fixture.0.join("kinesin.toml")).unwrap());
+    assert_eq!(changed.task("practice-fields").unwrap().version, 2);
+    let replacement = Arc::new(
+        ServiceState::new(
+            changed.clone(),
+            harness.credentials.clone(),
+            harness.controller.clone(),
+            harness.storage.client(),
+            Arc::new(RunResources::from_config(&changed).unwrap()),
+            Arc::new(BTreeMap::from([("local".into(), harness.client.clone())])),
+            harness.shutdown.clone(),
+        )
+        .unwrap(),
+    );
+    let response = timeout(
+        Duration::from_secs(5),
+        router(replacement).oneshot(harness.create_request("alice", "stable-contract", submission)),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    let retried = decode(response).await;
+    assert_eq!(
+        retried, original,
+        "retry must retain the entire historical public result"
+    );
+    assert_eq!(harness.client.captured_requests().unwrap().len(), 2);
+    harness.close().await;
+}
+
+#[tokio::test]
+async fn cancelling_queued_owner_then_revoking_credentials_preserves_other_owner_progress() {
+    let config = CONFIG.replace("verified_slots = 1", "verified_slots = 2");
+    let mut script = final_steps(1, Duration::from_secs(30));
+    script.extend(final_steps(2, Duration::ZERO));
+    let harness = Harness::new(&config, script).await;
+    let active = harness
+        .create("alice", "active-a", freeform("alice active"))
+        .await;
+    timeout(Duration::from_secs(5), async {
+        while harness.client.captured_requests().unwrap().len() != 1 {
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let queued = harness
+        .create("alice", "queued-a", freeform("alice queued"))
+        .await;
+    assert_eq!(harness.controller.stats().queued_runs, 1);
+    let queued_id = queued["run_id"].as_str().unwrap();
+    let response = harness
+        .send(harness.request(
+            "alice",
+            "POST",
+            &format!("/v1/runs/{queued_id}/cancel"),
+            Body::empty(),
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::ACCEPTED);
+    assert_eq!(decode(response).await["cancellation_requested"], true);
+    assert!(harness.credentials.revoke(&harness.alice_token_id));
+    let response = harness
+        .send(harness.create_request("alice", "revoked-a", freeform("denied")))
+        .await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    for index in 0..2 {
+        let run = harness
+            .create(
+                "bob",
+                &format!("progress-b-{index}"),
+                freeform("bob progress"),
+            )
+            .await;
+        let terminal = harness
+            .terminal("bob", run["run_id"].as_str().unwrap())
+            .await;
+        assert_eq!(terminal["phase"], "completed");
+    }
+    let requests = harness.client.captured_requests().unwrap();
+    assert_eq!(
+        requests.len(),
+        3,
+        "only active Alice and two Bob requests may execute"
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|bytes| std::str::from_utf8(bytes).unwrap().contains("alice queued"))
+    );
+    // Credential revocation does not rewrite already admitted authority. The
+    // trusted controller still owns cleanup of Alice's active and cancelled work.
+    harness.shutdown.cancel();
+    harness.controller.shutdown();
+    let stats = timeout(Duration::from_secs(5), harness.controller_task.join())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (
+            stats.active_runs,
+            stats.queued_runs,
+            stats.queued_input_bytes
+        ),
+        (0, 0, 0)
+    );
+    for id in [active["run_id"].as_str().unwrap(), queued_id] {
+        let kinesin::storage::Response::Run(Some(run)) = harness
+            .storage
+            .client()
+            .execute(
+                kinesin::storage::Command::Get {
+                    owner_id: "alice".into(),
+                    run_id: id.into(),
+                },
+                tokio::time::Instant::now() + Duration::from_secs(2),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("cancelled run is retained")
+        };
+        assert_eq!(run.phase, "cancelled");
+        assert!(!run.task_accepted());
+    }
+    harness.storage.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn checked_terminal_stream_carries_receipt_and_excludes_private_capture_with_stable_reconnect()
  {
     let script = vec![

@@ -1,4 +1,5 @@
 //! Synthetic measurements with the real journal; never contacts a live model.
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use kinesin::config::Config;
 use kinesin::core::ModelReply;
 use kinesin::model::{ModelClient, ScriptStep};
@@ -56,20 +57,23 @@ struct Options {
     cancel_trials: usize,
     soak_seconds: u64,
     warm_only: bool,
+    curves_only: bool,
 }
 
 fn options() -> Result<Options> {
     let mut args = std::env::args().skip(1);
     let mut options = Options {
-        output: args.next().ok_or("measure NEW_OUTPUT_DIRECTORY [--warm-only] [--soak-seconds 0..600] [--warm-trials 1..1000] [--cancel-trials 1..100]")?.into(),
+        output: args.next().ok_or("measure NEW_OUTPUT_DIRECTORY [--warm-only | --curves-only] [--soak-seconds 0..600] [--warm-trials 1..1000] [--cancel-trials 1..100]")?.into(),
         warm_trials: 1000,
         cancel_trials: 100,
         soak_seconds: 0,
         warm_only: false,
+        curves_only: false,
     };
     while let Some(flag) = args.next() {
         match flag.as_str() {
             "--warm-only" => options.warm_only = true,
+            "--curves-only" => options.curves_only = true,
             "--soak-seconds" => {
                 options.soak_seconds = args.next().ok_or("missing soak seconds")?.parse()?
             }
@@ -86,9 +90,10 @@ fn options() -> Result<Options> {
         || !(1..=100).contains(&options.cancel_trials)
         || options.soak_seconds > 600
         || (options.warm_only && options.soak_seconds != 0)
+        || (options.curves_only && (options.warm_only || options.soak_seconds != 0))
     {
         return Err(
-            "measurement options exceed bounded ranges or combine warm-only with soak".into(),
+            "measurement options exceed bounded ranges or combine incompatible modes".into(),
         );
     }
     Ok(options)
@@ -538,6 +543,147 @@ async fn soak(
     Ok(())
 }
 
+fn csv_cell(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
+/// Closed-loop phases; the futures below observe controller-owned runs and do
+/// not spawn another task or acquire ownership of the underlying runner.
+async fn curve_scenario(
+    options: &Options,
+    config: &Config,
+    store: &StorageClient,
+    resources: &RunResources,
+    name: &str,
+    active_cap: usize,
+    phases: &[(&str, usize, u64)],
+) -> Result<()> {
+    let mut output = csv(
+        &options.output.join(format!("{name}-runs.csv")),
+        "phase,cycle,slot,active_cap,backend_slots,script_delay_ms,elapsed_us,phase_outcome,acceptance,error",
+    )?;
+    let mut limits = config.concurrency().clone();
+    limits.max_active_runs = active_cap;
+    limits.max_queued_runs = 0;
+    let (controller, owner) = Controller::start(limits, store.clone(), false)?;
+    let mut summaries = Vec::new();
+    let work: Result<()> = async {
+        for &(phase, batches, delay_ms) in phases {
+            let started = Instant::now();
+            let (mut offered, mut admitted, mut rejected, mut completed, mut failed) = (0, 0, 0, 0, 0);
+            let mut peak_active = 0;
+            let phase_work: Result<()> = async {
+                for cycle in 0..batches {
+                    let mut completions = FuturesUnordered::new();
+                    for slot in 0..active_cap {
+                        let job = scripted_job(authority(config, None)?, resources, delay_ms);
+                        offered += 1;
+                        let submitted = Instant::now();
+                        match controller.try_submit(job, None) {
+                            Ok(pending) => {
+                                admitted += 1;
+                                peak_active = peak_active.max(controller.stats().active_runs);
+                                completions.push(async move {
+                                    let record = pending.finished().await;
+                                    (slot, submitted.elapsed().as_micros(), record)
+                                });
+                            }
+                            Err(error) => {
+                                rejected += 1;
+                                writeln!(output, "{phase},{cycle},{slot},{active_cap},2,{delay_ms},{},rejected,,{}", submitted.elapsed().as_micros(), csv_cell(&error))?;
+                            }
+                        }
+                    }
+                    while let Some((slot, elapsed_us, result)) = completions.next().await {
+                        match result {
+                            Ok(record) => {
+                                if record.phase == "completed" && record.acceptance_status == "unchecked" {
+                                    completed += 1;
+                                } else {
+                                    failed += 1;
+                                }
+                                writeln!(output, "{phase},{cycle},{slot},{active_cap},2,{delay_ms},{elapsed_us},{},{},", record.phase, record.acceptance_status)?;
+                            }
+                            Err(error) => {
+                                failed += 1;
+                                writeln!(output, "{phase},{cycle},{slot},{active_cap},2,{delay_ms},{elapsed_us},runner_error,,{}", csv_cell(&error))?;
+                            }
+                        }
+                    }
+                    idle(&controller).await?;
+                }
+                if rejected != 0 || failed != 0 || completed != batches * active_cap || peak_active != active_cap {
+                    return Err("curve did not achieve its intended concurrency and outcomes".into());
+                }
+                Ok(())
+            }.await;
+            let stats = controller.stats();
+            summaries.push(json!({
+                "phase":phase,"batches":batches,"script_delay_ms":delay_ms,"offered":offered,
+                "admitted":admitted,"rejected":rejected,"completed_unchecked":completed,"failed_outcomes":failed,
+                "elapsed_ms":started.elapsed().as_millis(),"peak_active":peak_active,
+                "final_active":stats.active_runs,"final_queued":stats.queued_runs,"final_queued_bytes":stats.queued_input_bytes,
+                "measurement_error":phase_work.as_ref().err().map(ToString::to_string)
+            }));
+            output.flush()?;
+            phase_work?;
+            println!("{name}/{phase}: {completed} completed, {rejected} rejected, peak {peak_active}");
+        }
+        Ok(())
+    }.await;
+    controller.shutdown();
+    let joined = owner.join().await;
+    let final_stats = joined.as_ref().ok().map(|stats| json!({
+        "active":stats.active_runs,"queued":stats.queued_runs,"queued_bytes":stats.queued_input_bytes,
+        "runner_errors":stats.runner_errors,"completed_runners":stats.completed_runners
+    }));
+    std::fs::write(
+        options.output.join(format!("{name}-summary.json")),
+        serde_json::to_vec_pretty(&json!({
+            "name":name,"active_cap":active_cap,"queue_cap":0,"backend_slots":2,"phases":summaries,
+            "final_stats":final_stats,"measurement_error":work.as_ref().err().map(ToString::to_string),
+            "scope":"closed-loop fixed batches; per-run latency includes injected positive delay; descriptive tails, not open-loop service load"
+        }))?,
+    )?;
+    work?;
+    settled(&joined?)
+}
+
+async fn curves(
+    options: &Options,
+    config: &Config,
+    store: &StorageClient,
+    resources: &RunResources,
+) -> Result<()> {
+    for active in [1, 2, 4, 8] {
+        curve_scenario(
+            options,
+            config,
+            store,
+            resources,
+            &format!("concurrency-{active}"),
+            active,
+            &[("steady", 20, 100)],
+        )
+        .await?;
+    }
+    // Keep the same controller/resources alive through slowdown and recovery.
+    curve_scenario(
+        options,
+        config,
+        store,
+        resources,
+        "slowdown",
+        4,
+        &[
+            ("initial", 10, 100),
+            ("slow", 10, 400),
+            ("recovered", 10, 100),
+        ],
+    )
+    .await
+}
+
 fn main() -> Result<()> {
     let options = options()?;
     // Fresh outputs preserve earlier negatives and avoid reusing accumulated state.
@@ -558,8 +704,8 @@ fn main() -> Result<()> {
             "executable_sha256":file_hash(&std::env::current_exe()?)?,"config_sha256":sha256(CONFIG.as_bytes()),
             "cargo_lock_sha256":file_hash(Path::new("Cargo.lock"))?,"sqlite_version":rusqlite::version(),
             "writer_startup_checks":"WAL, synchronous FULL, foreign_keys ON", "retention_policy":config.storage().policy,
-            "warmups":20,"warm_trials":options.warm_trials,"cancel_trials":if options.warm_only {0} else {options.cancel_trials},
-            "soak_seconds":options.soak_seconds,"warm_only":options.warm_only,
+            "warmups":if options.curves_only {0} else {20},"warm_trials":if options.curves_only {0} else {options.warm_trials},"cancel_trials":if options.warm_only || options.curves_only {0} else {options.cancel_trials},
+            "soak_seconds":options.soak_seconds,"warm_only":options.warm_only,"curves_only":options.curves_only,
             "scope":"synthetic freeform unchecked, metadata capture; real admission and SQLite journal; excludes configuration/authority construction"
         }))?,
     )?;
@@ -570,8 +716,12 @@ fn main() -> Result<()> {
     )?;
     let store = storage.client();
     let experiments: Result<()> = runtime.block_on(async {
-        warm(&options, &config, &store, &resources).await?;
-        if !options.warm_only {
+        if options.curves_only {
+            curves(&options, &config, &store, &resources).await?;
+        } else {
+            warm(&options, &config, &store, &resources).await?;
+        }
+        if !options.warm_only && !options.curves_only {
             cancellations(&options, &config, &store).await?;
             fairness(&options, &config, &store, &resources).await?;
             if options.soak_seconds > 0 { soak(&options, &config, &store, &resources).await?; }
