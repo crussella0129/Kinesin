@@ -441,6 +441,31 @@ supplies recorded model/tool/error/time/cancellation observations, and compares
 proposed effects plus prepared-request fingerprints. It never opens tool-target
 files, calls a model, or asks for new authority.
 
+Capture semantics version 2 records `control_dispatch` on each finished model
+or tool effect. This is the actual check after capacity/intent waits and before
+dispatch: elapsed microseconds from the run's accepted monotonic origin,
+whether cancellation was observed, and whether journal admission had already
+stopped the run. A model intent that commits after a stop gets a finished
+`unsent` observation and does not increment the model-attempt counter. Denied
+tools likewise do not become executed effects.
+
+The terminal event records `control_terminal`, sampled at the final check before
+the synchronous transfer into the storage inbox. Replay applies the same
+cancellation, execution-deadline, then journal-stop precedence to that observation.
+Later settlement time cannot replace this decision. A model queue stop also
+records its start, deadline, finish, and whether it timed out or capacity became
+unavailable. Replay checks those budgets and does not infer a queue timeout from
+today's clock. These bounded control fields contain no prompt or tool payload and
+can remain in metadata capture.
+
+Replay verifies control/event ordering, forbids dispatch after a recorded stop,
+and reconstructs cancelled/deadline/queue/journal-stop receipts as inconclusive
+for checked tasks. It never runs the checker to turn a stopped task into a pass.
+Missing control observations and version 1 captures are explicitly unavailable;
+retaining an old database row does not upgrade its capture. Recovery-interrupted
+runs also remain unavailable because outstanding external effects may be unknown.
+The same saved snapshot is never resumed or repaired by executing those effects.
+
 Compatibility checks cover core/adapter/tool versions, schemas, and inputs.
 Reject missing/redacted data, ordering errors, or a fingerprint mismatch at the
 first divergence. A fixed live sampling seed is not replay.

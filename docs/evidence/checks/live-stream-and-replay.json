@@ -1,0 +1,92 @@
+{
+  "profile": "b6500 Qwen2.5-Coder-7B Q4_K_M, original template, zero layer offload, one 4096-token slot",
+  "provider_streaming": true,
+  "provisional_frames": 50,
+  "actual_cli_exit": 0,
+  "capture_version": 2,
+  "replay_consistency": "consistent",
+  "replay_verification_replayed": true,
+  "event_count": 9,
+  "model_requests": 2,
+  "tool_observations": 1,
+  "result": {
+    "kind": "run",
+    "index": 1,
+    "task_accepted": true,
+    "exit_code": 0,
+    "run_id": "8ae7c104-7053-4b73-a7c3-67af5b1815cf",
+    "owner_id": "local",
+    "workspace_id": "practice",
+    "model_profile_id": "local",
+    "task_mode": "checked",
+    "task_profile_id": "practice-fields",
+    "task_profile_version": "1",
+    "task_spec_sha256": "b1dbff15bab95e21c1d4fcbc366d11c457412721fb81f157e1b42f1cf4ebb122",
+    "checker_id": "file_fields_v1",
+    "checker_version": "1",
+    "capture": "replay",
+    "phase": "completed",
+    "acceptance_status": "passed",
+    "created_unix_ms": 1788849267132,
+    "policy_version": "1",
+    "submission_sha256": "296d074a9b279b38d0d118426fb870e43a2bd05ed50f81283a0d0b9de143d15d",
+    "idempotency_key": null,
+    "terminal_reason": "answer_candidate",
+    "result": {
+      "candidate": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e0\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"Rust\",\n      \"evidence_id\": \"e0\"\n    }\n  ]\n}",
+      "verified_fields": [
+        {
+          "evidence_id": "e0",
+          "id": "project",
+          "value": "Kinesin"
+        },
+        {
+          "evidence_id": "e0",
+          "id": "language",
+          "value": "Rust"
+        }
+      ]
+    },
+    "result_sha256": "a2f2bd1c80f13b1073ff515ceb9e9ba7394d9d6c6146e95908ca6840c2ffc3ce",
+    "receipt": {
+      "candidate_sha256": "a2f2bd1c80f13b1073ff515ceb9e9ba7394d9d6c6146e95908ca6840c2ffc3ce",
+      "contract": {
+        "checker_id": "file_fields_v1",
+        "checker_version": "1",
+        "profile_id": "practice-fields",
+        "profile_version": "1",
+        "spec_sha256": "b1dbff15bab95e21c1d4fcbc366d11c457412721fb81f157e1b42f1cf4ebb122"
+      },
+      "criteria": [
+        {
+          "code": "field_matches",
+          "evidence": {
+            "effect_id": "tool-0",
+            "evidence_id": "e0",
+            "seq": 5,
+            "sha256": "8ed4ae17f137100d67f203458408f337752c07f9297bb82c76fb424450991aae"
+          },
+          "id": "project",
+          "status": "passed"
+        },
+        {
+          "code": "field_matches",
+          "evidence": {
+            "effect_id": "tool-0",
+            "evidence_id": "e0",
+            "seq": 5,
+            "sha256": "8ed4ae17f137100d67f203458408f337752c07f9297bb82c76fb424450991aae"
+          },
+          "id": "language",
+          "status": "passed"
+        }
+      ],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "all_required_fields_match",
+      "run_id": "8ae7c104-7053-4b73-a7c3-67af5b1815cf",
+      "scope": "Required fields match complete successful file observations from this run; no current-world or freshness claim.",
+      "status": "passed"
+    }
+  }
+}

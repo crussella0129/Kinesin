@@ -1,0 +1,356 @@
+[
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "comparison-explicit-actions",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 1367,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 612,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"amber.txt\"}",
+                "id": "88IG9HUgpRTeamS0SFkKy67IAgHN6w5g",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 706,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 245,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"blue.txt\"}",
+                "id": "o0yGNXd1vaZioe5a0MsUybzU82zJpBXY",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 980,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 311,
+          "effect_id": "model-2",
+          "replay": {
+            "kind": "answer",
+            "text": "The latency for reading \"blue.txt\" is lower than that for reading \"amber.txt\" by 7 milliseconds."
+          }
+        },
+        "elapsed_ms": 1334,
+        "seq": 11
+      }
+    ],
+    "model_turns": 3,
+    "phase": "completed",
+    "prompt": "Please use the read_file tool to open amber.txt. Then use read_file to open blue.txt. After both tool results arrive, compare their latency_ms values. Which is lower, and by how many milliseconds?",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "af36a6e7ddc2a02f0cdde86fc3e0fe5f91e7076e5a31ec48cf6dc73cd2a90d9e",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "64c95a98-70ff-4e88-8351-7bada7d66533",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "The latency for reading \"blue.txt\" is lower than that for reading \"amber.txt\" by 7 milliseconds."
+    },
+    "rubric": "Actual reads of both notes support Blue at 11 ms versus Amber at 18 ms, a difference of 7 ms. Arithmetic is assessed by this rubric, not by file_fields_v1.",
+    "run_id": "64c95a98-70ff-4e88-8351-7bada7d66533",
+    "sources": [
+      {
+        "body": "name=Amber\nlatency_ms=18\n",
+        "path": "amber.txt",
+        "sha256": "c528f617321777ff14befa943dc8d9cb92c7f553b48a30f64405b74e6ce4ac8c"
+      },
+      {
+        "body": "name=Blue\nlatency_ms=11\n",
+        "path": "blue.txt",
+        "sha256": "38e7290557b65a1f259f3abf3998bfa6e48f6e2fa2d1912356d7a4bdea8b5f55"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 2,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "88IG9HUgpRTeamS0SFkKy67IAgHN6w5g",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "name=Amber\nlatency_ms=18\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "amber.txt",
+          "result_bytes": 89,
+          "sha256": "c528f617321777ff14befa943dc8d9cb92c7f553b48a30f64405b74e6ce4ac8c",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 720,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "o0yGNXd1vaZioe5a0MsUybzU82zJpBXY",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": "e1",
+          "replay": {
+            "observation": {
+              "body": "name=Blue\nlatency_ms=11\n",
+              "evidence_id": "e1",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "blue.txt",
+          "result_bytes": 88,
+          "sha256": "38e7290557b65a1f259f3abf3998bfa6e48f6e2fa2d1912356d7a4bdea8b5f55",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 1009,
+        "seq": 9
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1186,
+        "request_sha256": "8429a21531489ea2264f3a5c1619462343a944ac3d5456dbf7a5457513e4961e"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1552,
+        "request_sha256": "135fb2f9d4508976e832359af3ea1e3d0fa2b0725354da738de028da9d307c64"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 1916,
+        "request_sha256": "2d9c318749c19a3fa6354df07e4b9269e86fe2b8f9f28eac5b8420308c897e16"
+      }
+    ],
+    "batch": "explicit-action-diagnostics",
+    "review_note": "Correct ordering and 7 ms arithmetic; wording says latency for reading instead of latency reported by the notes."
+  },
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "comparison-explicit-actions",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 1048,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 354,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"amber.txt\"}",
+                "id": "zQmkXE74tY1Uoclg47soCTbLuY54xL88",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 378,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 249,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"blue.txt\"}",
+                "id": "suXGK3UI0XoGsVnveX0fRrVMRYgeyDTd",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 685,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 312,
+          "effect_id": "model-2",
+          "replay": {
+            "kind": "answer",
+            "text": "The latency for reading \"blue.txt\" is lower than that for reading \"amber.txt\" by 7 milliseconds."
+          }
+        },
+        "elapsed_ms": 1039,
+        "seq": 11
+      }
+    ],
+    "model_turns": 3,
+    "phase": "completed",
+    "prompt": "Please use the read_file tool to open amber.txt. Then use read_file to open blue.txt. After both tool results arrive, compare their latency_ms values. Which is lower, and by how many milliseconds?",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "af36a6e7ddc2a02f0cdde86fc3e0fe5f91e7076e5a31ec48cf6dc73cd2a90d9e",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "07a334f4-8faa-4331-bfc9-b8c382276be0",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "The latency for reading \"blue.txt\" is lower than that for reading \"amber.txt\" by 7 milliseconds."
+    },
+    "rubric": "Actual reads of both notes support Blue at 11 ms versus Amber at 18 ms, a difference of 7 ms. Arithmetic is assessed by this rubric, not by file_fields_v1.",
+    "run_id": "07a334f4-8faa-4331-bfc9-b8c382276be0",
+    "sources": [
+      {
+        "body": "name=Amber\nlatency_ms=18\n",
+        "path": "amber.txt",
+        "sha256": "c528f617321777ff14befa943dc8d9cb92c7f553b48a30f64405b74e6ce4ac8c"
+      },
+      {
+        "body": "name=Blue\nlatency_ms=11\n",
+        "path": "blue.txt",
+        "sha256": "38e7290557b65a1f259f3abf3998bfa6e48f6e2fa2d1912356d7a4bdea8b5f55"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 2,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "zQmkXE74tY1Uoclg47soCTbLuY54xL88",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "name=Amber\nlatency_ms=18\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "amber.txt",
+          "result_bytes": 89,
+          "sha256": "c528f617321777ff14befa943dc8d9cb92c7f553b48a30f64405b74e6ce4ac8c",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 404,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "suXGK3UI0XoGsVnveX0fRrVMRYgeyDTd",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": "e1",
+          "replay": {
+            "observation": {
+              "body": "name=Blue\nlatency_ms=11\n",
+              "evidence_id": "e1",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "blue.txt",
+          "result_bytes": 88,
+          "sha256": "38e7290557b65a1f259f3abf3998bfa6e48f6e2fa2d1912356d7a4bdea8b5f55",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 703,
+        "seq": 9
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1186,
+        "request_sha256": "8429a21531489ea2264f3a5c1619462343a944ac3d5456dbf7a5457513e4961e"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1552,
+        "request_sha256": "bb1b5ff357a9147ce67ae86d46ab73311e91f407c0d2767efec99d781a5ae862"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 1916,
+        "request_sha256": "349f10baac02c492a3fe40be55691a1a029db6b667aed083e842f49ff9ac21b8"
+      }
+    ],
+    "batch": "explicit-action-diagnostics",
+    "review_note": "Correct ordering and 7 ms arithmetic; wording says latency for reading instead of latency reported by the notes."
+  }
+]

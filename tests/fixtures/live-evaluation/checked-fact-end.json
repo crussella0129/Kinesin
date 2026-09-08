@@ -1,0 +1,322 @@
+[
+  {
+    "acceptance": "passed",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "checked-fact-end",
+    "config_sha256": "665cf840a3e9722949f13de2209c1d78c138f147e94828176be1aad2d0654d47",
+    "denied_calls": 0,
+    "elapsed_ms": 1340,
+    "expected_scripted_acceptance": "passed",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 325,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"project.txt\"}",
+                "id": "hEc7RpUTH1AUdUfEMaWBKQjkFpdk9Qm9",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 349,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 952,
+          "effect_id": "model-1",
+          "replay": {
+            "kind": "answer",
+            "text": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e0\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"Rust\",\n      \"evidence_id\": \"e0\"\n    }\n  ]\n}"
+          }
+        },
+        "elapsed_ms": 1328,
+        "seq": 7
+      }
+    ],
+    "model_turns": 2,
+    "phase": "completed",
+    "prompt": "Please use the read_file tool to open project.txt. I need the exact project and language field values. Cite the evidence_id supplied by the tool. The final response must follow this schema: {\"facts\":[{\"id\":\"project\",\"value\":\"<observed project>\",\"evidence_id\":\"<read evidence id>\"},{\"id\":\"language\",\"value\":\"<observed language>\",\"evidence_id\":\"<read evidence id>\"}]}.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "a2f2bd1c80f13b1073ff515ceb9e9ba7394d9d6c6146e95908ca6840c2ffc3ce",
+      "contract": {
+        "checker_id": "file_fields_v1",
+        "checker_version": "1",
+        "profile_id": "fields",
+        "profile_version": "1",
+        "spec_sha256": "00898ed461cc6530463facebfb3dcaba3643a996042e86a2ddedfd8b9d3ef60b"
+      },
+      "criteria": [
+        {
+          "code": "field_matches",
+          "evidence": {
+            "effect_id": "tool-0",
+            "evidence_id": "e0",
+            "seq": 5,
+            "sha256": "c9ca79533da23bbd5c6ae4f8c1b4d77002204818e8a07f863cea7f3930aa1288"
+          },
+          "id": "project",
+          "status": "passed"
+        },
+        {
+          "code": "field_matches",
+          "evidence": {
+            "effect_id": "tool-0",
+            "evidence_id": "e0",
+            "seq": 5,
+            "sha256": "c9ca79533da23bbd5c6ae4f8c1b4d77002204818e8a07f863cea7f3930aa1288"
+          },
+          "id": "language",
+          "status": "passed"
+        }
+      ],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "all_required_fields_match",
+      "run_id": "26c0422e-fbcb-48a3-a9fa-0776407567ed",
+      "scope": "Required fields match complete successful file observations from this run; no current-world or freshness claim.",
+      "status": "passed"
+    },
+    "result": {
+      "candidate": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e0\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"Rust\",\n      \"evidence_id\": \"e0\"\n    }\n  ]\n}",
+      "verified_fields": [
+        {
+          "evidence_id": "e0",
+          "id": "project",
+          "value": "Kinesin"
+        },
+        {
+          "evidence_id": "e0",
+          "id": "language",
+          "value": "Rust"
+        }
+      ]
+    },
+    "rubric": "Same source lines and bytes with the required fields placed at start, middle or end. Require genuine read plus correct fields; this is an order probe, not a layout or speed claim.",
+    "run_id": "26c0422e-fbcb-48a3-a9fa-0776407567ed",
+    "sources": [
+      {
+        "body": "# irrelevant label 0: calm lake\n# irrelevant label 1: calm lake\n# irrelevant label 2: calm lake\n# irrelevant label 3: calm lake\n# irrelevant label 4: calm lake\n# irrelevant label 5: calm lake\n# irrelevant label 6: calm lake\n# irrelevant label 7: calm lake\n# irrelevant label 8: calm lake\n# irrelevant label 9: calm lake\n# irrelevant label 10: calm lake\n# irrelevant label 11: calm lake\n# irrelevant label 12: calm lake\n# irrelevant label 13: calm lake\n# irrelevant label 14: calm lake\n# irrelevant label 15: calm lake\n# irrelevant label 16: calm lake\n# irrelevant label 17: calm lake\n# irrelevant label 18: calm lake\n# irrelevant label 19: calm lake\n# irrelevant label 20: calm lake\n# irrelevant label 21: calm lake\n# irrelevant label 22: calm lake\n# irrelevant label 23: calm lake\n# irrelevant label 0: calm lake\n# irrelevant label 1: calm lake\n# irrelevant label 2: calm lake\n# irrelevant label 3: calm lake\n# irrelevant label 4: calm lake\n# irrelevant label 5: calm lake\n# irrelevant label 6: calm lake\n# irrelevant label 7: calm lake\n# irrelevant label 8: calm lake\n# irrelevant label 9: calm lake\n# irrelevant label 10: calm lake\n# irrelevant label 11: calm lake\n# irrelevant label 12: calm lake\n# irrelevant label 13: calm lake\n# irrelevant label 14: calm lake\n# irrelevant label 15: calm lake\n# irrelevant label 16: calm lake\n# irrelevant label 17: calm lake\n# irrelevant label 18: calm lake\n# irrelevant label 19: calm lake\n# irrelevant label 20: calm lake\n# irrelevant label 21: calm lake\n# irrelevant label 22: calm lake\n# irrelevant label 23: calm lake\nproject=Kinesin\nlanguage=Rust\n",
+        "path": "project.txt",
+        "sha256": "c9ca79533da23bbd5c6ae4f8c1b4d77002204818e8a07f863cea7f3930aa1288"
+      }
+    ],
+    "task_accepted": true,
+    "tool_calls": 1,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "hEc7RpUTH1AUdUfEMaWBKQjkFpdk9Qm9",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "# irrelevant label 0: calm lake\n# irrelevant label 1: calm lake\n# irrelevant label 2: calm lake\n# irrelevant label 3: calm lake\n# irrelevant label 4: calm lake\n# irrelevant label 5: calm lake\n# irrelevant label 6: calm lake\n# irrelevant label 7: calm lake\n# irrelevant label 8: calm lake\n# irrelevant label 9: calm lake\n# irrelevant label 10: calm lake\n# irrelevant label 11: calm lake\n# irrelevant label 12: calm lake\n# irrelevant label 13: calm lake\n# irrelevant label 14: calm lake\n# irrelevant label 15: calm lake\n# irrelevant label 16: calm lake\n# irrelevant label 17: calm lake\n# irrelevant label 18: calm lake\n# irrelevant label 19: calm lake\n# irrelevant label 20: calm lake\n# irrelevant label 21: calm lake\n# irrelevant label 22: calm lake\n# irrelevant label 23: calm lake\n# irrelevant label 0: calm lake\n# irrelevant label 1: calm lake\n# irrelevant label 2: calm lake\n# irrelevant label 3: calm lake\n# irrelevant label 4: calm lake\n# irrelevant label 5: calm lake\n# irrelevant label 6: calm lake\n# irrelevant label 7: calm lake\n# irrelevant label 8: calm lake\n# irrelevant label 9: calm lake\n# irrelevant label 10: calm lake\n# irrelevant label 11: calm lake\n# irrelevant label 12: calm lake\n# irrelevant label 13: calm lake\n# irrelevant label 14: calm lake\n# irrelevant label 15: calm lake\n# irrelevant label 16: calm lake\n# irrelevant label 17: calm lake\n# irrelevant label 18: calm lake\n# irrelevant label 19: calm lake\n# irrelevant label 20: calm lake\n# irrelevant label 21: calm lake\n# irrelevant label 22: calm lake\n# irrelevant label 23: calm lake\nproject=Kinesin\nlanguage=Rust\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "project.txt",
+          "result_bytes": 1706,
+          "sha256": "c9ca79533da23bbd5c6ae4f8c1b4d77002204818e8a07f863cea7f3930aa1288",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 355,
+        "seq": 5
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1382,
+        "request_sha256": "6761b397411b9fe03eaefe98d41700586c6be99df46972b23157f3008b82deaa"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 3415,
+        "request_sha256": "dbe6e9b5ab841718ea0fea192ef05b1f27a3b75f4fbf8d7b09d165536a6b62e1"
+      }
+    ],
+    "batch": "fixed-baseline"
+  },
+  {
+    "acceptance": "passed",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "checked-fact-end",
+    "config_sha256": "665cf840a3e9722949f13de2209c1d78c138f147e94828176be1aad2d0654d47",
+    "denied_calls": 0,
+    "elapsed_ms": 1358,
+    "expected_scripted_acceptance": "passed",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 326,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"project.txt\"}",
+                "id": "qCzq4RCPtpz3r1rkIii3VrGuHLVVMJ1M",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 339,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 950,
+          "effect_id": "model-1",
+          "replay": {
+            "kind": "answer",
+            "text": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e0\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"Rust\",\n      \"evidence_id\": \"e0\"\n    }\n  ]\n}"
+          }
+        },
+        "elapsed_ms": 1335,
+        "seq": 7
+      }
+    ],
+    "model_turns": 2,
+    "phase": "completed",
+    "prompt": "Please use the read_file tool to open project.txt. I need the exact project and language field values. Cite the evidence_id supplied by the tool. The final response must follow this schema: {\"facts\":[{\"id\":\"project\",\"value\":\"<observed project>\",\"evidence_id\":\"<read evidence id>\"},{\"id\":\"language\",\"value\":\"<observed language>\",\"evidence_id\":\"<read evidence id>\"}]}.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "a2f2bd1c80f13b1073ff515ceb9e9ba7394d9d6c6146e95908ca6840c2ffc3ce",
+      "contract": {
+        "checker_id": "file_fields_v1",
+        "checker_version": "1",
+        "profile_id": "fields",
+        "profile_version": "1",
+        "spec_sha256": "00898ed461cc6530463facebfb3dcaba3643a996042e86a2ddedfd8b9d3ef60b"
+      },
+      "criteria": [
+        {
+          "code": "field_matches",
+          "evidence": {
+            "effect_id": "tool-0",
+            "evidence_id": "e0",
+            "seq": 5,
+            "sha256": "c9ca79533da23bbd5c6ae4f8c1b4d77002204818e8a07f863cea7f3930aa1288"
+          },
+          "id": "project",
+          "status": "passed"
+        },
+        {
+          "code": "field_matches",
+          "evidence": {
+            "effect_id": "tool-0",
+            "evidence_id": "e0",
+            "seq": 5,
+            "sha256": "c9ca79533da23bbd5c6ae4f8c1b4d77002204818e8a07f863cea7f3930aa1288"
+          },
+          "id": "language",
+          "status": "passed"
+        }
+      ],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "all_required_fields_match",
+      "run_id": "8db6a46d-6fb1-4592-b235-28352b6555b3",
+      "scope": "Required fields match complete successful file observations from this run; no current-world or freshness claim.",
+      "status": "passed"
+    },
+    "result": {
+      "candidate": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e0\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"Rust\",\n      \"evidence_id\": \"e0\"\n    }\n  ]\n}",
+      "verified_fields": [
+        {
+          "evidence_id": "e0",
+          "id": "project",
+          "value": "Kinesin"
+        },
+        {
+          "evidence_id": "e0",
+          "id": "language",
+          "value": "Rust"
+        }
+      ]
+    },
+    "rubric": "Same source lines and bytes with the required fields placed at start, middle or end. Require genuine read plus correct fields; this is an order probe, not a layout or speed claim.",
+    "run_id": "8db6a46d-6fb1-4592-b235-28352b6555b3",
+    "sources": [
+      {
+        "body": "# irrelevant label 0: calm lake\n# irrelevant label 1: calm lake\n# irrelevant label 2: calm lake\n# irrelevant label 3: calm lake\n# irrelevant label 4: calm lake\n# irrelevant label 5: calm lake\n# irrelevant label 6: calm lake\n# irrelevant label 7: calm lake\n# irrelevant label 8: calm lake\n# irrelevant label 9: calm lake\n# irrelevant label 10: calm lake\n# irrelevant label 11: calm lake\n# irrelevant label 12: calm lake\n# irrelevant label 13: calm lake\n# irrelevant label 14: calm lake\n# irrelevant label 15: calm lake\n# irrelevant label 16: calm lake\n# irrelevant label 17: calm lake\n# irrelevant label 18: calm lake\n# irrelevant label 19: calm lake\n# irrelevant label 20: calm lake\n# irrelevant label 21: calm lake\n# irrelevant label 22: calm lake\n# irrelevant label 23: calm lake\n# irrelevant label 0: calm lake\n# irrelevant label 1: calm lake\n# irrelevant label 2: calm lake\n# irrelevant label 3: calm lake\n# irrelevant label 4: calm lake\n# irrelevant label 5: calm lake\n# irrelevant label 6: calm lake\n# irrelevant label 7: calm lake\n# irrelevant label 8: calm lake\n# irrelevant label 9: calm lake\n# irrelevant label 10: calm lake\n# irrelevant label 11: calm lake\n# irrelevant label 12: calm lake\n# irrelevant label 13: calm lake\n# irrelevant label 14: calm lake\n# irrelevant label 15: calm lake\n# irrelevant label 16: calm lake\n# irrelevant label 17: calm lake\n# irrelevant label 18: calm lake\n# irrelevant label 19: calm lake\n# irrelevant label 20: calm lake\n# irrelevant label 21: calm lake\n# irrelevant label 22: calm lake\n# irrelevant label 23: calm lake\nproject=Kinesin\nlanguage=Rust\n",
+        "path": "project.txt",
+        "sha256": "c9ca79533da23bbd5c6ae4f8c1b4d77002204818e8a07f863cea7f3930aa1288"
+      }
+    ],
+    "task_accepted": true,
+    "tool_calls": 1,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "qCzq4RCPtpz3r1rkIii3VrGuHLVVMJ1M",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "# irrelevant label 0: calm lake\n# irrelevant label 1: calm lake\n# irrelevant label 2: calm lake\n# irrelevant label 3: calm lake\n# irrelevant label 4: calm lake\n# irrelevant label 5: calm lake\n# irrelevant label 6: calm lake\n# irrelevant label 7: calm lake\n# irrelevant label 8: calm lake\n# irrelevant label 9: calm lake\n# irrelevant label 10: calm lake\n# irrelevant label 11: calm lake\n# irrelevant label 12: calm lake\n# irrelevant label 13: calm lake\n# irrelevant label 14: calm lake\n# irrelevant label 15: calm lake\n# irrelevant label 16: calm lake\n# irrelevant label 17: calm lake\n# irrelevant label 18: calm lake\n# irrelevant label 19: calm lake\n# irrelevant label 20: calm lake\n# irrelevant label 21: calm lake\n# irrelevant label 22: calm lake\n# irrelevant label 23: calm lake\n# irrelevant label 0: calm lake\n# irrelevant label 1: calm lake\n# irrelevant label 2: calm lake\n# irrelevant label 3: calm lake\n# irrelevant label 4: calm lake\n# irrelevant label 5: calm lake\n# irrelevant label 6: calm lake\n# irrelevant label 7: calm lake\n# irrelevant label 8: calm lake\n# irrelevant label 9: calm lake\n# irrelevant label 10: calm lake\n# irrelevant label 11: calm lake\n# irrelevant label 12: calm lake\n# irrelevant label 13: calm lake\n# irrelevant label 14: calm lake\n# irrelevant label 15: calm lake\n# irrelevant label 16: calm lake\n# irrelevant label 17: calm lake\n# irrelevant label 18: calm lake\n# irrelevant label 19: calm lake\n# irrelevant label 20: calm lake\n# irrelevant label 21: calm lake\n# irrelevant label 22: calm lake\n# irrelevant label 23: calm lake\nproject=Kinesin\nlanguage=Rust\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "project.txt",
+          "result_bytes": 1706,
+          "sha256": "c9ca79533da23bbd5c6ae4f8c1b4d77002204818e8a07f863cea7f3930aa1288",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 359,
+        "seq": 5
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1382,
+        "request_sha256": "6761b397411b9fe03eaefe98d41700586c6be99df46972b23157f3008b82deaa"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 3415,
+        "request_sha256": "e3bfb69a48f4a8c2866f2072a83bf616bea5f526ba53a5521ffa052be4a5c55f"
+      }
+    ],
+    "batch": "fixed-baseline"
+  }
+]

@@ -1,0 +1,57 @@
+[
+  {
+    "minute": "0",
+    "samples": 59,
+    "average_rss_mib": 15.856660487288135
+  },
+  {
+    "minute": "1",
+    "samples": 59,
+    "average_rss_mib": 17.20703125
+  },
+  {
+    "minute": "2",
+    "samples": 59,
+    "average_rss_mib": 17.262248411016948
+  },
+  {
+    "minute": "3",
+    "samples": 59,
+    "average_rss_mib": 17.27734375
+  },
+  {
+    "minute": "4",
+    "samples": 59,
+    "average_rss_mib": 17.28065413135593
+  },
+  {
+    "minute": "5",
+    "samples": 59,
+    "average_rss_mib": 17.431408898305083
+  },
+  {
+    "minute": "6",
+    "samples": 59,
+    "average_rss_mib": 17.43299788135593
+  },
+  {
+    "minute": "7",
+    "samples": 59,
+    "average_rss_mib": 17.421875
+  },
+  {
+    "minute": "8",
+    "samples": 59,
+    "average_rss_mib": 17.421875
+  },
+  {
+    "minute": "9",
+    "samples": 60,
+    "average_rss_mib": 17.42734375
+  },
+  {
+    "minute": "10",
+    "samples": 41,
+    "average_rss_mib": 17.4609375
+  }
+]

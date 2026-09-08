@@ -1,0 +1,452 @@
+[
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "recovery-explicit-actions",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 3420,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 669,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"report.txt\"}",
+                "id": "05p4ITubna42dosmbwqsrjC4A3TuQUt0",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 708,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 987,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\".\"}",
+                "id": "61HGQu0hFpcjDTaSUW8RyDYVP7NRHa6H",
+                "name": "list_files"
+              }
+            ],
+            "content": "<tool_response>\n{\"status\":\"error\",\"body\":\"\",\"truncated\":false,\"error\":{\"code\":\"not_found\",\"message\":\"The requested workspace resource was not found.\"}}\n</tool_response>\n\nIt seems that \"report.txt\" was not found. Let's list the files in the current directory to find the alternate report.\n\n",
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 2006,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 898,
+          "effect_id": "model-2",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"report-archive.txt\"}",
+                "id": "gFKeJaZHLfNqijqsjMZ8buPKt7QnJfNc",
+                "name": "read_file"
+              }
+            ],
+            "content": "The alternate report found is \"report-archive.txt\". Let's read this file to get its title.\n\n<tool_response>\n{\"status\":\"ok\",\"body\":\"[{\\\"name\\\":\\\"report-archive.txt\\\",\\\"kind\\\":\\\"file\\\"}]\",\"truncated\":false}\n</tool_response>\n\n<tool_request></tool_request>",
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 3148,
+        "seq": 11
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 256,
+          "effect_id": "model-3",
+          "replay": {
+            "kind": "answer",
+            "text": "The title of the alternate report \"report-archive.txt\" is \"Harbor Update\"."
+          }
+        },
+        "elapsed_ms": 3414,
+        "seq": 15
+      }
+    ],
+    "model_turns": 4,
+    "phase": "completed",
+    "prompt": "Please use the read_file tool to open report.txt. If the tool returns not_found, call list_files with path \".\" to find the alternate report. Then read the alternate report with read_file and report its title. A failed first read does not complete this task.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "3fd105e3c1147c753f7767a8d001aab49ec549728aaddbb7f5fd976456565210",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "32b26fd0-6c3a-4f79-aa4f-3828c82ec4bc",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "The title of the alternate report \"report-archive.txt\" is \"Harbor Update\"."
+    },
+    "rubric": "A correlated report.txt error is followed by discovery and reading report-archive.txt. Harbor Update must be supported by that read, without repeating the failed action.",
+    "run_id": "32b26fd0-6c3a-4f79-aa4f-3828c82ec4bc",
+    "sources": [
+      {
+        "body": "title=Harbor Update\n",
+        "path": "report-archive.txt",
+        "sha256": "98aac750ba3f66a55a36c3cecbf996833738a5f95489f8140887f42cba6f4099"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 3,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "05p4ITubna42dosmbwqsrjC4A3TuQUt0",
+          "classification": "error",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": null,
+          "replay": {
+            "observation": {
+              "body": "",
+              "error": {
+                "code": "not_found",
+                "message": "The requested workspace resource was not found."
+              },
+              "status": "error",
+              "truncated": false
+            }
+          },
+          "resource": "report.txt",
+          "result_bytes": 135,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 844,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "61HGQu0hFpcjDTaSUW8RyDYVP7NRHa6H",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": null,
+          "replay": {
+            "observation": {
+              "body": "[{\"name\":\"report-archive.txt\",\"kind\":\"file\"}]",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": ".",
+          "result_bytes": 96,
+          "sha256": "26eb1fe64684d882797fab9033a0b4316bdcbc6e9b24d4d94408b20201c31fa0",
+          "tool": "list_files"
+        },
+        "elapsed_ms": 2238,
+        "seq": 9
+      },
+      {
+        "data": {
+          "call_id": "gFKeJaZHLfNqijqsjMZ8buPKt7QnJfNc",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-2",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "title=Harbor Update\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "report-archive.txt",
+          "result_bytes": 83,
+          "sha256": "98aac750ba3f66a55a36c3cecbf996833738a5f95489f8140887f42cba6f4099",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 3153,
+        "seq": 13
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1249,
+        "request_sha256": "ffc7a66974b87b1c9017b77c257595406f6ab26cccbdedb693df1eead63d73d3"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1666,
+        "request_sha256": "e63de68f60309a9ddf449c72fbb86ecde986fe36e0d99777cc9c19bc9a3e0104"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 2357,
+        "request_sha256": "8485c4dfa68689a5551776e348ece693a435b05a4e67d95c9bdc4784f782b867"
+      },
+      {
+        "effect_id": "model-3",
+        "model_profile": "local",
+        "request_bytes": 3009,
+        "request_sha256": "a40c8c23e5b7d015418b4e9802ab5418ad8ad0d3375de96cd41ff04348ae72c6"
+      }
+    ],
+    "batch": "explicit-action-diagnostics"
+  },
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "recovery-explicit-actions",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 3508,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 324,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"report.txt\"}",
+                "id": "1bj0MjzrM95CTszKaXkAf0VqloNtHmyO",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 329,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 987,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\".\"}",
+                "id": "3ME53wg4uEQYsJnUoaPG4UacyDuR3C3E",
+                "name": "list_files"
+              }
+            ],
+            "content": "<tool_response>\n{\"status\":\"error\",\"body\":\"\",\"truncated\":false,\"error\":{\"code\":\"not_found\",\"message\":\"The requested workspace resource was not found.\"}}\n</tool_response>\n\nIt seems that \"report.txt\" was not found. Let's list the files in the current directory to find the alternate report.\n\n",
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 1337,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 903,
+          "effect_id": "model-2",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"report-archive.txt\"}",
+                "id": "OorKkU683vnhti5uJpjfHJAgZjd8C5gv",
+                "name": "read_file"
+              }
+            ],
+            "content": "The alternate report found is \"report-archive.txt\". Let's read this file to get its title.\n\n<tool_response>\n{\"status\":\"ok\",\"body\":\"[{\\\"name\\\":\\\"report-archive.txt\\\",\\\"kind\\\":\\\"file\\\"}]\",\"truncated\":false}\n</tool_response>\n\n<tool_request></tool_request>",
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 2761,
+        "seq": 11
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 250,
+          "effect_id": "model-3",
+          "replay": {
+            "kind": "answer",
+            "text": "The title of the alternate report \"report-archive.txt\" is \"Harbor Update\"."
+          }
+        },
+        "elapsed_ms": 3373,
+        "seq": 15
+      }
+    ],
+    "model_turns": 4,
+    "phase": "completed",
+    "prompt": "Please use the read_file tool to open report.txt. If the tool returns not_found, call list_files with path \".\" to find the alternate report. Then read the alternate report with read_file and report its title. A failed first read does not complete this task.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "3fd105e3c1147c753f7767a8d001aab49ec549728aaddbb7f5fd976456565210",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "7b0425e5-2ead-4f4c-9a23-af8e654f0adc",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "The title of the alternate report \"report-archive.txt\" is \"Harbor Update\"."
+    },
+    "rubric": "A correlated report.txt error is followed by discovery and reading report-archive.txt. Harbor Update must be supported by that read, without repeating the failed action.",
+    "run_id": "7b0425e5-2ead-4f4c-9a23-af8e654f0adc",
+    "sources": [
+      {
+        "body": "title=Harbor Update\n",
+        "path": "report-archive.txt",
+        "sha256": "98aac750ba3f66a55a36c3cecbf996833738a5f95489f8140887f42cba6f4099"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 3,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "1bj0MjzrM95CTszKaXkAf0VqloNtHmyO",
+          "classification": "error",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": null,
+          "replay": {
+            "observation": {
+              "body": "",
+              "error": {
+                "code": "not_found",
+                "message": "The requested workspace resource was not found."
+              },
+              "status": "error",
+              "truncated": false
+            }
+          },
+          "resource": "report.txt",
+          "result_bytes": 135,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 341,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "3ME53wg4uEQYsJnUoaPG4UacyDuR3C3E",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": null,
+          "replay": {
+            "observation": {
+              "body": "[{\"name\":\"report-archive.txt\",\"kind\":\"file\"}]",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": ".",
+          "result_bytes": 96,
+          "sha256": "26eb1fe64684d882797fab9033a0b4316bdcbc6e9b24d4d94408b20201c31fa0",
+          "tool": "list_files"
+        },
+        "elapsed_ms": 1598,
+        "seq": 9
+      },
+      {
+        "data": {
+          "call_id": "OorKkU683vnhti5uJpjfHJAgZjd8C5gv",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-2",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "title=Harbor Update\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "report-archive.txt",
+          "result_bytes": 83,
+          "sha256": "98aac750ba3f66a55a36c3cecbf996833738a5f95489f8140887f42cba6f4099",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 3008,
+        "seq": 13
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1249,
+        "request_sha256": "ffc7a66974b87b1c9017b77c257595406f6ab26cccbdedb693df1eead63d73d3"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1666,
+        "request_sha256": "710ea9bc00682fd039c25d6d8b371c43943cecef7aad954340e09743c03102c6"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 2357,
+        "request_sha256": "06c32ec711246be27c658bbf45fb7b142add00ed359b0e070ffc1076d544bfef"
+      },
+      {
+        "effect_id": "model-3",
+        "model_profile": "local",
+        "request_bytes": 3009,
+        "request_sha256": "506141c9327f9e8e4b723d05262c23500e6535893391d4308cbd626ddbad65c6"
+      }
+    ],
+    "batch": "explicit-action-diagnostics"
+  }
+]

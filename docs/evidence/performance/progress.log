@@ -1,0 +1,61 @@
+warm trials 0/1020
+warm trials 250/1020
+warm trials 500/1020
+warm trials 750/1020
+warm trials 1000/1020
+soak_seconds=1 cycles=0 active=8 queued=16 bytes=24736 rejected=1
+soak_seconds=12 cycles=7 active=8 queued=16 bytes=24736 rejected=8
+soak_seconds=27 cycles=10 active=8 queued=16 bytes=24736 rejected=11
+soak_seconds=38 cycles=17 active=8 queued=16 bytes=24736 rejected=18
+soak_seconds=49 cycles=23 active=8 queued=16 bytes=24736 rejected=24
+soak_seconds=60 cycles=30 active=8 queued=16 bytes=24736 rejected=31
+soak_seconds=71 cycles=37 active=8 queued=16 bytes=24736 rejected=38
+soak_seconds=82 cycles=44 active=8 queued=16 bytes=24736 rejected=45
+soak_seconds=93 cycles=51 active=8 queued=16 bytes=24736 rejected=52
+soak_seconds=104 cycles=58 active=8 queued=16 bytes=24736 rejected=59
+soak_seconds=115 cycles=64 active=8 queued=16 bytes=24736 rejected=65
+soak_seconds=132 cycles=68 active=8 queued=16 bytes=24736 rejected=69
+soak_seconds=143 cycles=74 active=8 queued=16 bytes=24736 rejected=75
+soak_seconds=153 cycles=80 active=8 queued=16 bytes=24736 rejected=81
+soak_seconds=164 cycles=87 active=8 queued=16 bytes=24736 rejected=88
+soak_seconds=175 cycles=93 active=8 queued=16 bytes=24736 rejected=94
+soak_seconds=187 cycles=99 active=8 queued=16 bytes=24736 rejected=100
+soak_seconds=197 cycles=103 active=8 queued=16 bytes=24736 rejected=104
+soak_seconds=209 cycles=109 active=8 queued=16 bytes=24736 rejected=110
+soak_seconds=220 cycles=115 active=8 queued=16 bytes=24736 rejected=116
+soak_seconds=231 cycles=121 active=8 queued=16 bytes=24736 rejected=122
+soak_seconds=242 cycles=128 active=8 queued=16 bytes=24736 rejected=129
+soak_seconds=253 cycles=135 active=8 queued=16 bytes=24736 rejected=136
+soak_seconds=263 cycles=142 active=8 queued=16 bytes=24736 rejected=143
+soak_seconds=274 cycles=149 active=8 queued=16 bytes=24736 rejected=150
+soak_seconds=284 cycles=155 active=8 queued=16 bytes=24736 rejected=156
+soak_seconds=295 cycles=162 active=8 queued=16 bytes=24736 rejected=163
+soak_seconds=306 cycles=169 active=8 queued=16 bytes=24736 rejected=170
+soak_seconds=317 cycles=175 active=8 queued=16 bytes=24736 rejected=176
+soak_seconds=327 cycles=181 active=8 queued=16 bytes=24736 rejected=182
+soak_seconds=338 cycles=188 active=8 queued=16 bytes=24736 rejected=189
+soak_seconds=349 cycles=195 active=8 queued=16 bytes=24736 rejected=196
+soak_seconds=359 cycles=202 active=8 queued=16 bytes=24736 rejected=203
+soak_seconds=370 cycles=209 active=8 queued=16 bytes=24736 rejected=210
+soak_seconds=382 cycles=216 active=8 queued=16 bytes=24736 rejected=217
+soak_seconds=392 cycles=223 active=8 queued=16 bytes=24736 rejected=224
+soak_seconds=403 cycles=230 active=8 queued=16 bytes=24736 rejected=231
+soak_seconds=415 cycles=237 active=8 queued=16 bytes=24736 rejected=238
+soak_seconds=426 cycles=244 active=8 queued=16 bytes=24736 rejected=245
+soak_seconds=436 cycles=251 active=8 queued=16 bytes=24736 rejected=252
+soak_seconds=447 cycles=258 active=8 queued=16 bytes=24736 rejected=259
+soak_seconds=458 cycles=265 active=8 queued=16 bytes=24736 rejected=266
+soak_seconds=468 cycles=272 active=8 queued=16 bytes=24736 rejected=273
+soak_seconds=481 cycles=279 active=8 queued=16 bytes=24736 rejected=280
+soak_seconds=491 cycles=284 active=8 queued=16 bytes=24736 rejected=285
+soak_seconds=502 cycles=291 active=8 queued=16 bytes=24736 rejected=292
+soak_seconds=512 cycles=298 active=8 queued=16 bytes=24736 rejected=299
+soak_seconds=523 cycles=305 active=8 queued=16 bytes=24736 rejected=306
+soak_seconds=534 cycles=312 active=8 queued=16 bytes=24736 rejected=313
+soak_seconds=544 cycles=318 active=8 queued=16 bytes=24736 rejected=319
+soak_seconds=556 cycles=325 active=8 queued=16 bytes=24736 rejected=326
+soak_seconds=566 cycles=331 active=8 queued=16 bytes=24736 rejected=332
+soak_seconds=577 cycles=338 active=8 queued=16 bytes=24736 rejected=339
+soak_seconds=588 cycles=345 active=8 queued=16 bytes=24736 rejected=346
+soak_seconds=599 cycles=352 active=8 queued=16 bytes=24736 rejected=353
+final cycles=354 stats=ControllerStats { active_runs: 0, queued_runs: 0, queued_input_bytes: 0, peak_active_runs: 8, peak_queued_runs: 16, peak_queued_input_bytes: 24736, rejected_runs: 354, completed_runners: 8496, runner_errors: 0 }

@@ -1,0 +1,122 @@
+[
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "greeting",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 137,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 82,
+          "effect_id": "model-0",
+          "replay": {
+            "kind": "answer",
+            "text": "Hello!"
+          }
+        },
+        "elapsed_ms": 108,
+        "seq": 3
+      }
+    ],
+    "model_turns": 1,
+    "phase": "completed",
+    "prompt": "Say hello in one short sentence.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "334d016f755cd6dc58c53a86e183882f8ec14f52fb05345887c8a5edd42c87b7",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "79505c9d-d79e-4121-a3e0-a35b21ee11a7",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "Hello!"
+    },
+    "rubric": "A greeting with no unnecessary tool calls; runtime remains unchecked.",
+    "run_id": "79505c9d-d79e-4121-a3e0-a35b21ee11a7",
+    "sources": [],
+    "task_accepted": false,
+    "tool_calls": 0,
+    "tool_observations": [],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1022,
+        "request_sha256": "6ca780456b78f9f8ace0e5acdb2726b42fd175ebe18efaa3aa56f618d737eec1"
+      }
+    ],
+    "batch": "fixed-baseline"
+  },
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "greeting",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 84,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 33,
+          "effect_id": "model-0",
+          "replay": {
+            "kind": "answer",
+            "text": "Hello!"
+          }
+        },
+        "elapsed_ms": 65,
+        "seq": 3
+      }
+    ],
+    "model_turns": 1,
+    "phase": "completed",
+    "prompt": "Say hello in one short sentence.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "334d016f755cd6dc58c53a86e183882f8ec14f52fb05345887c8a5edd42c87b7",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "4d4f565a-965a-4f36-907e-c631fd0ed94d",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "Hello!"
+    },
+    "rubric": "A greeting with no unnecessary tool calls; runtime remains unchecked.",
+    "run_id": "4d4f565a-965a-4f36-907e-c631fd0ed94d",
+    "sources": [],
+    "task_accepted": false,
+    "tool_calls": 0,
+    "tool_observations": [],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1022,
+        "request_sha256": "6ca780456b78f9f8ace0e5acdb2726b42fd175ebe18efaa3aa56f618d737eec1"
+      }
+    ],
+    "batch": "fixed-baseline"
+  }
+]

@@ -6,8 +6,9 @@ can expose those sessions through a shared service. The implementation sequence
 is in the [build guide](build-guide.md); this document defines the resource and
 measurement contract.
 
-**Every number below is a proposed starting point, not a measured result.**
-There is no implementation or benchmark yet. Minimality means a small system
+**The settings below are defaults and objectives, not benchmark results.**
+The implementation and measured distributions are recorded separately in the
+[performance baseline](performance-baseline.md). Minimality means a small system
 whose resource use and failure behavior you can explain.
 
 ## One owner per session, bounded work across sessions
@@ -29,7 +30,7 @@ limits are defined in [configuration](configuration.md).
 | `max_blocking_tools` | 4 | Filesystem tool jobs, including jobs still finishing after cancellation |
 | `journal_queue_events` | 64 | Outstanding event commands, including the command executing on the database writer |
 | `journal_queue_bytes` | 8,388,608 (8 MiB) | Combined serialized bytes of outstanding event commands, including the executing command |
-| `journal_admission_timeout_s` | 5 | Maximum wait to enter the writer inbox, constrained by the applicable execution or settlement budget |
+| `journal_admission_timeout_s` | 5 | Execution-time inbox wait before stopping; an admitted owner retains subsequent settlement work |
 | `settlement_grace_s` | 5 | One additional bounded wait for stop-related bookkeeping and owned-work settlement; never additional execution time |
 | `observer_queue_events` | 128 | Pending display events per observer, once event streaming exists |
 | `observer_queue_bytes` | 262,144 (256 KiB) | Pending display bytes per observer |

@@ -1,0 +1,1 @@
+{"stream":false,"temperature":0.2,"model":"kinesin-qwen25-coder-7b","messages":[{"content":"Reply with exactly Hello Kinesin.","role":"user"}],"n":1,"max_tokens":64}

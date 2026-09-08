@@ -2,11 +2,11 @@
 
 A small Rust runtime for agents with explicit authority and bounded resources.
 
-**Status: build-guide validation in progress.** The initial Cargo package builds;
-the harness and release gates are still being implemented. The commands and
-interfaces below remain targets until supported by evidence in the
-[validation ledger](docs/build-validation.md). The guide remains the path for
-your own handwritten implementation.
+**Status: implemented; release validation in progress.** The Rust CLI, concurrent
+controller, file tools, checker, journal, replay, streaming, and authenticated
+loopback service run locally. The [validation ledger](docs/build-validation.md)
+separates passing proofs from model-quality failures and deployment gates that
+remain unproven. The guide remains the path for your own handwritten implementation.
 
 Kinesin gives a model context, interprets its proposed tool calls, decides which
 may run, records outcomes, and controls how the run ends. It also controls how
@@ -31,6 +31,9 @@ rather than the fewest dependencies or source files.
   original plan gets right and the next concepts to master.
 - Use [the research and decisions](docs/research.md) to understand this redesign.
 - See [the paper review](docs/paper-review.md) for the research improvement pass.
+- Use [the CLI instructions](docs/cli.md) to run the implemented product.
+- Read the [live task evaluation](docs/live-evaluation.md) and
+  [performance baseline](docs/performance-baseline.md) before interpreting success.
 
 ## What the first complete release does
 
@@ -78,9 +81,7 @@ supervision. They are responsibilities, not three mandatory daemons.
 See [decisions](docs/decisions.md) for alternatives and
 [security](docs/security.md) for exactly what these boundaries protect.
 
-## Planned layout
-
-Add modules when the guide reaches them.
+## Implemented layout
 
 ```text
 Kinesin/
@@ -97,9 +98,15 @@ Kinesin/
 │   ├── verification.rs  # Frozen task contracts, evidence, pure acceptance checks
 │   ├── storage.rs       # Transactional events, status, owner-scoped queries
 │   ├── scheduler.rs     # Bounded admission and resource allocation
-│   ├── telemetry.rs     # Durations, counts, redacted diagnostic events
-│   ├── server.rs        # Later authenticated HTTP API
-│   └── kineserve.rs     # Optional process ownership
+│   ├── dispatch.rs      # Fair assignment of actual model capacity
+│   ├── auth.rs          # Credential provisioning and verification
+│   ├── private_state.rs # Native permissions and state-tree inspection
+│   ├── ingress.rs       # Bounded HTTP connections and shutdown
+│   ├── service.rs       # Authenticated owner-scoped API
+│   ├── operator.rs      # Private service startup and readiness supervision
+│   ├── signal.rs        # Native console cancellation registration
+│   ├── cli.rs           # Commands, batch pacing and exit policy
+│   └── replay.rs        # Pure recorded-decision verification
 ├── tests/fixtures/      # Synthetic protocol, tool, and event examples
 ├── docs/
 ├── models/              # Local GGUF artifacts, outside Git
