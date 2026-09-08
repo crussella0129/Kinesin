@@ -142,6 +142,25 @@ repeats finished in 2.21–2.66 s against unchanged five- and ten-second
 watchdogs. Repeats on one idle machine reduce the remaining margin for this
 timing assumption; they do not prove the clustered delay cannot recur.
 
+Hosted CI then failed that same corrected checkpoint while formatting and Clippy
+passed, which again shows local success was insufficient. One scheduler test
+timed out after cancellation, and its run reported unresolved journal
+settlement. The cause was a fixture assumption the earlier review had missed:
+the test watchdogs were five seconds, which is exactly the default
+`journal_admission_timeout_s` and `settlement_grace_s`. A watchdog equal to the
+production wait it encloses has no margin, so the moment the documented grace
+path legitimately engaged the test budget was already spent. The hosted runner
+took 33.5 s for a unit suite that takes 2.6 s locally, which is why only CI
+reached that path. The correction names one `WATCHDOG` bound above the sum of
+the enclosed waits and applies it to the scheduler waits; it does not weaken an
+assertion, shorten a production timeout, or treat the grace path as a fault.
+Watchdogs detect a hung wait, and latency remains the benchmarks' claim.
+
+The same shape exists in several integration tests, which have passed hosted CI
+repeatedly and did not execute in the failing run because Cargo stopped at the
+library target. They are recorded here as a known remaining assumption rather
+than changed without evidence.
+
 Environment finding: an unrelated invalid `%USERPROFILE%\Cargo.toml` caused
 Cargo ancestor-workspace discovery to fail. Adding an explicit `[workspace]`
 boundary to each new package stopped that search without editing the parent.

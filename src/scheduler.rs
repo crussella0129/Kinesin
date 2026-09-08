@@ -597,6 +597,12 @@ mod tests {
     use crate::storage::{QueueLimits, Storage};
     use tokio::time::timeout;
 
+    /// Detects a hung wait; it is not a latency assertion. A cancelled run can
+    /// legitimately wait through the journal admission timeout and then the
+    /// settlement grace, so this must exceed their sum rather than equal one of
+    /// them. Latency belongs to the separate benchmarks.
+    const WATCHDOG: Duration = Duration::from_secs(30);
+
     fn test_runtime() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -609,7 +615,7 @@ mod tests {
     /// captures the prepared bytes before its configured delay, so this observes
     /// a started request instead of inferring one from another run's finish.
     async fn started_model_request(client: &ModelClient, label: &str) {
-        timeout(Duration::from_secs(5), async {
+        timeout(WATCHDOG, async {
             loop {
                 if !client.captured_requests().unwrap().is_empty() {
                     return;
@@ -691,17 +697,14 @@ mod tests {
             assert!(!handle.cancel("another-owner", first.run_id()));
             assert!(handle.cancel("local", first.run_id()));
             assert_eq!(
-                timeout(Duration::from_secs(5), first.finished())
+                timeout(WATCHDOG, first.finished())
                     .await
                     .unwrap()
                     .unwrap()
                     .phase,
                 "cancelled"
             );
-            let second = timeout(Duration::from_secs(5), second.finished())
-                .await
-                .unwrap()
-                .unwrap();
+            let second = timeout(WATCHDOG, second.finished()).await.unwrap().unwrap();
             assert_eq!(second.result.unwrap()["candidate"], "second");
             handle.shutdown();
             let final_stats = controller.join().await.unwrap();
@@ -756,10 +759,7 @@ mod tests {
             // budget of the other.
             started_model_request(&slow_client, "slow-isolated").await;
             started_model_request(&fast_client, "fast-isolated").await;
-            let fast = timeout(Duration::from_secs(5), fast.finished())
-                .await
-                .unwrap()
-                .unwrap();
+            let fast = timeout(WATCHDOG, fast.finished()).await.unwrap().unwrap();
             assert_eq!(fast.result.unwrap()["candidate"], "fast-isolated");
             assert_eq!(handle.stats().peak_active_runs, 2);
             let slow_request =
@@ -809,7 +809,7 @@ mod tests {
             let mut second = handle.try_submit(second_job, None).unwrap();
             let first_id = first.admitted().await.unwrap().run_id;
             let second_id = second.admitted().await.unwrap().run_id;
-            timeout(Duration::from_secs(5), async {
+            timeout(WATCHDOG, async {
                 while first_client.captured_requests().unwrap().len() != 1
                     || second_client.captured_requests().unwrap().len() != 1 {
                     tokio::time::sleep(Duration::from_millis(2)).await;
@@ -838,16 +838,16 @@ mod tests {
             let third_job = job(&config, None, "must-not-start", 0, &resources);
             let third_client = third_job.client.clone();
             let mut third = handle.try_submit(third_job, None).unwrap();
-            assert!(timeout(Duration::from_secs(2), third.admitted()).await.unwrap().unwrap_err().contains("storage_closed"));
+            assert!(timeout(WATCHDOG, third.admitted()).await.unwrap().unwrap_err().contains("storage_closed"));
             assert!(third.finished().await.unwrap_err().contains("storage_closed"));
             assert!(third_client.captured_requests().unwrap().is_empty());
             // This is the documented caller-owned shutdown sequence after a
             // journal error, not an automatic storage-health watcher.
             handle.shutdown();
             for pending in [first, second] {
-                assert!(timeout(Duration::from_secs(5), pending.finished()).await.unwrap().unwrap_err().contains("storage_closed"));
+                assert!(timeout(WATCHDOG, pending.finished()).await.unwrap().unwrap_err().contains("storage_closed"));
             }
-            let stats = timeout(Duration::from_secs(5), controller.join()).await.unwrap().unwrap();
+            let stats = timeout(WATCHDOG, controller.join()).await.unwrap().unwrap();
             assert_eq!((stats.completed_runners, stats.runner_errors), (2, 2));
             assert_eq!((stats.active_runs, stats.queued_runs, stats.queued_input_bytes), (0, 0, 0));
             assert_eq!(resources.models.available_permits(), 2);
@@ -925,7 +925,7 @@ mod tests {
                 .unwrap();
             let run_id = pending.run_id().to_owned();
             drop(pending);
-            let record = timeout(Duration::from_secs(5), async {
+            let record = timeout(WATCHDOG, async {
                 loop {
                     let response = storage
                         .client()
@@ -1062,7 +1062,7 @@ allow_freeform = true
             handle.cancel("alice", first.run_id());
             first.finished().await.unwrap();
             assert_eq!(
-                timeout(Duration::from_secs(5), bob.finished())
+                timeout(WATCHDOG, bob.finished())
                     .await
                     .unwrap()
                     .unwrap()
