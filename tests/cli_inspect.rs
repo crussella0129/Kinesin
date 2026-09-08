@@ -109,6 +109,9 @@ allow_replay = true
                     }],
                 }
                 .into(),
+                // A checked run answers twice: prose, then the constrained
+                // candidate on a turn that carries no tools.
+                ModelReply::Answer("I read the file.".into()).into(),
                 ModelReply::Answer(
                     json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]})
                         .to_string(),

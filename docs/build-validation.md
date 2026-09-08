@@ -504,6 +504,30 @@ folding by default with exact matching on request, where a reported line keeps
 the file's own bytes rather than the folded form. The suite is 177 offline tests,
 with formatting and all-target Clippy clean.
 
+## Added after the first validation pass: a constrained candidate turn
+
+The first live checked run returned fenced JSON with invented values. Fencing is
+the failure constrained decoding removes, and the earlier note that grammar and
+tools conflict was accurate but drew too strong a conclusion. llama.cpp treats
+tool calling as a grammar case: with `--jinja` the server derives a lazy,
+trigger-activated grammar from the chat template, which is why a second custom
+grammar has no slot. Tool calls were therefore already constrained; the
+unconstrained part was the final candidate.
+
+A checked run now answers twice. Gather turns carry tools and no constraint. The
+prose answer proposes one more model effect whose request withdraws tools and
+carries `response_format` with a JSON Schema derived from the frozen contract.
+The two modes are disjoint branches in the request builder, so a constrained
+request cannot carry tools by construction. Replay mirrors the same decision, or
+it would rebuild different bytes and report a fingerprint mismatch that never
+happened.
+
+The cost is one extra model call per checked run, which the fixtures now show
+explicitly. The schema constrains shape only: llama.cpp skips unsupported
+keywords silently, so `enum` was deliberately not used to restrict criterion ids.
+Values, ids and evidence binding remain the checker's, and the adversarial
+counterexample still fails. The suite is 178 offline tests.
+
 ## Original intent and remaining exposure evidence
 
 The implemented product exercises the guide's local and loopback service paths.

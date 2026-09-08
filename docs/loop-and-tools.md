@@ -72,8 +72,22 @@ Koil prepares `POST /v1/chat/completions` with the approved model identity,
 structured messages, and explicit `n: 1`. Tools are omitted until enabled.
 When tools are present, use `tool_choice: "auto"` and
 `parallel_tool_calls: false`; still handle a returned batch safely.
-Keep top-level `grammar`, `json_schema`, and `response_format` absent in the
-initial tool loop.
+A request carries **either** `tools` **or** a constraint, never both. The server
+derives its own grammar for tool calls from the chat template, so a second
+constraint has no slot to occupy; supplying one alongside tools is rejected by
+request parsing. Build the two as disjoint branches so the exclusion holds by
+construction rather than by convention.
+
+A checked run therefore answers twice. While it gathers, requests carry tools and
+no constraint. When it produces a prose answer, the runtime asks once more with
+tools withdrawn and `response_format` set to a JSON Schema derived from the
+frozen contract. That turn's reply is the candidate.
+
+The schema constrains **shape only**. llama.cpp's converter skips unsupported
+keywords silently, so depending on one for correctness would mean believing a
+constraint that was never applied. Which ids are acceptable, which values are
+right, and whether the cited observation supports them stay with the checker: a
+well-formed candidate carrying a wrong value still fails.
 
 Require exactly one choice at index zero and an assistant message. For calls,
 require `type: "function"`, nonempty bounded IDs/names, and a string-valued

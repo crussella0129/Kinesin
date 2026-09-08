@@ -201,7 +201,16 @@ impl AssessmentContext for FrozenContext {
     }
 }
 impl FrozenContext {
-    fn options(&self) -> ModelOptions {
+    /// `finalizing` must mirror the runner: a constrained turn withdraws tools,
+    /// so a replay that ignored it would rebuild different bytes and report a
+    /// fingerprint mismatch that never happened.
+    fn options(&self, finalizing: bool) -> ModelOptions {
+        let constraint = match (finalizing, &self.task) {
+            (true, TaskContract::FileFieldsV1(profile)) => {
+                Some(crate::verification::candidate_schema(profile))
+            }
+            _ => None,
+        };
         ModelOptions {
             origin: self.model.base_url.clone(),
             served_model: self.model.model_id.clone(),
@@ -216,6 +225,7 @@ impl FrozenContext {
                 .iter()
                 .map(|tool| tool.as_str().into())
                 .collect(),
+            constraint,
         }
     }
     fn validate(&self, run: &RunRecord, accepted: &Event) -> Result<(), ReplayError> {
@@ -492,7 +502,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     "replay_limit_divergence",
                     Some(planned.seq),
                 )?;
-                let request = model::prepare(state.messages(), &frozen.options())
+                let request = model::prepare(state.messages(), &frozen.options(state.finalizing()))
                     .map_err(|_| error("replay_request_preparation", Some(planned.seq)))?;
                 let id = format!("model-{}", state.counters().model_turns);
                 ensure(
@@ -745,7 +755,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         } else if history_exceeds(&state, frozen.limits.max_history_bytes)? {
             Some("history_bytes_limit".into())
         } else {
-            model::prepare(state.messages(), &frozen.options()).err()
+            model::prepare(state.messages(), &frozen.options(state.finalizing())).err()
         };
         if let Some(reason) = reason {
             effect = stop_state(&mut state, &reason)?;

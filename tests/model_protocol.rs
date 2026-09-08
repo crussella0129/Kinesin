@@ -93,6 +93,7 @@ fn request_options(origin: &str, stream: bool, limit: usize) -> kinesin::model::
             max_response_bytes: limit,
             stream,
             tools: Vec::new(),
+            constraint: None,
         },
     )
     .unwrap()

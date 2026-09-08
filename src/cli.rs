@@ -1264,7 +1264,8 @@ mod tests {
         // next connect is refused, which reports as a model connection failure.
         let accept_deadline = Duration::from_secs(60);
         let provider = std::thread::spawn(move || {
-            for _ in 0..12 {
+            // Six checked tasks at three exchanges each.
+            for _ in 0..18 {
                 let deadline = std::time::Instant::now() + accept_deadline;
                 let (mut connection, _) = loop {
                     match listener.accept() {
@@ -1305,10 +1306,25 @@ mod tests {
                 let mut body = vec![0; length];
                 connection.read_exact(&mut body).unwrap();
                 let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
-                let last = request["messages"].as_array().unwrap().last().unwrap();
-                let (reason, message) = if last["role"] == "tool" {
-                    let observed: serde_json::Value =
-                        serde_json::from_str(last["content"].as_str().unwrap()).unwrap();
+                let messages = request["messages"].as_array().unwrap();
+                let last = messages.last().unwrap();
+                // A checked run takes three turns: the tool call, a prose
+                // answer, then the constrained candidate.
+                let (reason, message) = if request.get("response_format").is_some() {
+                    // ADR-010 end to end: a constrained request carries no tools.
+                    assert!(
+                        request.get("tools").is_none(),
+                        "a constrained turn must withdraw tools"
+                    );
+                    assert_eq!(request["response_format"]["type"], "json_schema");
+                    let observed: serde_json::Value = messages
+                        .iter()
+                        .rev()
+                        .find(|message| message["role"] == "tool")
+                        .map(|message| {
+                            serde_json::from_str(message["content"].as_str().unwrap()).unwrap()
+                        })
+                        .expect("the gather turn observed a file");
                     assert_eq!(observed["status"], "ok");
                     let value = observed["body"]
                         .as_str()
@@ -1318,6 +1334,11 @@ mod tests {
                         .unwrap();
                     let answer = json!({"facts":[{"id":"language","value":value,"evidence_id":observed["evidence_id"]}]}).to_string();
                     ("stop", json!({"role":"assistant","content":answer}))
+                } else if last["role"] == "tool" {
+                    (
+                        "stop",
+                        json!({"role":"assistant","content":"I read the file and found the language."}),
+                    )
                 } else {
                     (
                         "tool_calls",

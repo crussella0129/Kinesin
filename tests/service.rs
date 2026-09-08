@@ -510,6 +510,8 @@ async fn checked_retry_retains_its_original_receipt_after_task_profile_changes()
                 arguments: r#"{"path":"project.txt"}"#.into(),
             }],
         },
+        // A checked run answers twice: prose, then the constrained candidate.
+        ModelReply::Answer("I read the file.".into()),
         ModelReply::Answer(
             json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]}).to_string(),
         ),
@@ -558,7 +560,8 @@ async fn checked_retry_retains_its_original_receipt_after_task_profile_changes()
         retried, original,
         "retry must retain the entire historical public result"
     );
-    assert_eq!(harness.client.captured_requests().unwrap().len(), 2);
+    // Three turns for the checked run; the retry adds none.
+    assert_eq!(harness.client.captured_requests().unwrap().len(), 3);
     harness.close().await;
 }
 
@@ -672,6 +675,8 @@ async fn checked_terminal_stream_carries_receipt_and_excludes_private_capture_wi
                 arguments: r#"{"path":"project.txt"}"#.into(),
             }],
         },
+        // A checked run answers twice: prose, then the constrained candidate.
+        ModelReply::Answer("I read the file.".into()),
         ModelReply::Answer(
             json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]}).to_string(),
         ),
@@ -1058,13 +1063,19 @@ async fn a_slow_unpolled_stream_expires_at_its_total_lifetime() {
 
 #[tokio::test]
 async fn live_subscription_observes_terminal_commit_and_completed_wrong_answer_stays_unaccepted() {
-    let script = [ScriptStep {
-        delay: Duration::from_millis(75),
-        // A plausible answer without an actual observation is not evidence.
-        reply: ModelReply::Answer(
-            json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]}).to_string(),
-        ),
-    }];
+    let script = [
+        ScriptStep {
+            delay: Duration::from_millis(75),
+            reply: ModelReply::Answer("I considered the request.".into()),
+        },
+        ScriptStep {
+            delay: Duration::ZERO,
+            // A plausible answer without an actual observation is not evidence.
+            reply: ModelReply::Answer(
+                json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]}).to_string(),
+            ),
+        },
+    ];
     let harness = Harness::new(CONFIG, script).await;
     let run = harness
         .create(
@@ -1113,6 +1124,7 @@ async fn live_subscription_observes_terminal_commit_and_completed_wrong_answer_s
         .await;
     assert_eq!(retry["run_id"], run["run_id"]);
     assert_eq!(retry["task_accepted"], false);
-    assert_eq!(harness.client.captured_requests().unwrap().len(), 1);
+    // Two turns for the checked run; the idempotent retry adds none.
+    assert_eq!(harness.client.captured_requests().unwrap().len(), 2);
     harness.close().await;
 }

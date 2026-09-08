@@ -113,6 +113,11 @@ pub struct Counters {
     pub tool_calls: usize,
 }
 
+/// Harness-authored, never model-supplied. The schema constrains shape only and
+/// is not injected into the prompt by the server, so the required content is
+/// stated here.
+pub const FINALIZE_INSTRUCTION: &str = "Report your result now as the required JSON object and nothing else. Use only values you actually observed, and cite the evidence_id of the observation each value came from.";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Effect {
     Model,
@@ -142,6 +147,10 @@ pub struct RunState {
     acceptance: AcceptanceStatus,
     tools_enabled: bool,
     checked_task: bool,
+    /// True once the gather phase ended and the constrained candidate turn was
+    /// proposed. A checked run answers twice: freely while it reads, then under
+    /// the frozen contract's shape.
+    finalizing: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -213,6 +222,7 @@ pub fn initiate_with_tools(
             acceptance: AcceptanceStatus::Unchecked,
             tools_enabled,
             checked_task: false,
+            finalizing: false,
         },
         Effect::Model,
     ))
@@ -229,6 +239,12 @@ impl RunState {
 
     pub fn pending_batch(&self) -> &[ToolCall] {
         &self.pending_batch[self.next_tool..]
+    }
+
+    /// True while the constrained candidate turn is outstanding. The runner
+    /// withdraws tools and applies the contract's schema for that request.
+    pub fn finalizing(&self) -> bool {
+        self.finalizing
     }
 
     pub fn phase(&self) -> RunPhase {
@@ -277,6 +293,19 @@ impl RunState {
                 }
                 self.messages
                     .push(Message::text(Role::Assistant, answer.clone()));
+                // A checked run's prose answer is not its candidate. Ask once
+                // more with tools withdrawn, so the reply can be constrained to
+                // the frozen contract's shape instead of parsed hopefully.
+                if self.checked_task && !self.finalizing {
+                    self.finalizing = true;
+                    self.tools_enabled = false;
+                    self.messages
+                        .push(Message::text(Role::User, FINALIZE_INSTRUCTION.into()));
+                    // Proposed, not dispatched: the runner still starts it, so
+                    // the effect passes the same admission and budget checks.
+                    self.pending = Pending::ModelProposed;
+                    return Ok(Effect::Model);
+                }
                 self.pending = Pending::Candidate;
                 Ok(Effect::Candidate(answer))
             }
@@ -680,6 +709,14 @@ mod tests {
             state.require_acceptance_check().unwrap();
             assert_eq!(state.acceptance(), AcceptanceStatus::Pending);
             state.model_started().unwrap();
+            // A checked run answers twice: prose, then the constrained candidate.
+            assert_eq!(
+                state
+                    .observe_model(ModelReply::Answer("prose".into()))
+                    .unwrap(),
+                Effect::Model
+            );
+            state.model_started().unwrap();
             state
                 .observe_model(ModelReply::Answer("candidate".into()))
                 .unwrap();
@@ -707,6 +744,10 @@ mod tests {
     fn cancellation_before_finalization_replaces_candidate_with_inconclusive_stop() {
         let mut state = state(false);
         state.require_acceptance_check().unwrap();
+        state.model_started().unwrap();
+        state
+            .observe_model(ModelReply::Answer("prose".into()))
+            .unwrap();
         state.model_started().unwrap();
         state
             .observe_model(ModelReply::Answer("candidate".into()))

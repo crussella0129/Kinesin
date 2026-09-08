@@ -111,6 +111,10 @@ fn batch(calls: Vec<ToolCall>) -> ModelReply {
         calls,
     }
 }
+/// A checked run's prose turn, before its constrained candidate turn.
+fn prose() -> String {
+    "I read the file.".into()
+}
 fn candidate(value: &str, evidence_id: &str) -> String {
     json!({"facts": [{"id": "language", "value": value, "evidence_id": evidence_id}]}).to_string()
 }
@@ -209,6 +213,7 @@ async fn completed_run_with_a_genuine_citation_must_still_match_the_actual_file(
             &[("project.txt", SOURCE)],
             vec![
                 batch(vec![read("provider-call", "project.txt")]),
+                ModelReply::Answer(prose()),
                 ModelReply::Answer(text.clone()),
             ],
         )
@@ -233,7 +238,19 @@ async fn completed_run_with_a_genuine_citation_must_still_match_the_actual_file(
             receipt["contract"]["spec_sha256"],
             json!(case.authority.task_spec_sha256())
         );
-        assert_eq!(case.requests.len(), 2);
+        // Three turns: the tool call, the prose answer, and the constrained
+        // candidate.
+        assert_eq!(case.requests.len(), 3);
+        let finalize: Value = serde_json::from_slice(&case.requests[2]).unwrap();
+        assert_eq!(finalize["response_format"]["type"], "json_schema");
+        assert_eq!(
+            finalize["response_format"]["json_schema"]["schema"]["required"][0],
+            "facts"
+        );
+        assert!(
+            finalize.get("tools").is_none(),
+            "a constrained turn withdraws tools"
+        );
         let request: Value = serde_json::from_slice(&case.requests[1]).unwrap();
         let messages = request["messages"].as_array().unwrap();
         let tool_message = messages.iter().find(|m| m["role"] == "tool").unwrap();
@@ -288,6 +305,7 @@ async fn revision_requirement_compares_the_complete_observation_digest() {
             &[("project.txt", SOURCE)],
             vec![
                 batch(vec![read("read", "project.txt")]),
+                ModelReply::Answer(prose()),
                 ModelReply::Answer(candidate("Rust", "e0")),
             ],
         )
@@ -345,6 +363,7 @@ async fn forged_wrong_resource_missing_and_partial_evidence_cannot_pass() {
             &[("project.txt", body), ("other.txt", SOURCE)],
             vec![
                 batch(vec![read("read", path)]),
+                ModelReply::Answer(prose()),
                 ModelReply::Answer(candidate("Rust", cited)),
             ],
         )
@@ -376,7 +395,10 @@ async fn forged_wrong_resource_missing_and_partial_evidence_cannot_pass() {
     let case = run_case(
         CONFIG,
         &[("project.txt", SOURCE)],
-        vec![ModelReply::Answer(candidate("Rust", "e0"))],
+        vec![
+            ModelReply::Answer(prose()),
+            ModelReply::Answer(candidate("Rust", "e0")),
+        ],
     )
     .await;
     assert_eq!(case.criterion()["code"], "evidence_unknown");
@@ -401,6 +423,7 @@ async fn workspace_instructions_cannot_expand_tools_paths_or_the_output_contract
                     r#"{"path":"project.txt","workspace":"outside"}"#,
                 ),
             ]),
+            ModelReply::Answer(prose()),
             ModelReply::Answer(candidate("Rust", "e0")),
         ],
     )
@@ -446,6 +469,7 @@ async fn workspace_instructions_cannot_expand_tools_paths_or_the_output_contract
             &[("project.txt", SOURCE)],
             vec![
                 batch(vec![read("read", "project.txt")]),
+                ModelReply::Answer(prose()),
                 ModelReply::Answer(bad),
             ],
         )
@@ -468,6 +492,7 @@ async fn repeated_semantic_batches_stop_before_the_third_handler_invocation() {
                 "{ \n \"path\" : \"project.txt\" }",
             )]),
             batch(vec![read("third-id", "project.txt")]),
+            ModelReply::Answer(prose()),
             ModelReply::Answer(candidate("Rust", "e0")),
         ],
     )
@@ -498,6 +523,7 @@ async fn a_tool_batch_that_exceeds_remaining_budget_executes_no_partial_batch() 
                 read("over-a", "project.txt"),
                 read("over-b", "project.txt"),
             ]),
+            ModelReply::Answer(prose()),
             ModelReply::Answer(candidate("Rust", "e0")),
         ],
     )
@@ -542,6 +568,7 @@ async fn cancellation_while_waiting_for_tool_capacity_does_not_start_a_read_or_n
             read("never-start", "project.txt"),
         ])
         .into(),
+        ModelReply::Answer(prose()).into(),
         ModelReply::Answer(candidate("Rust", "e0")).into(),
     ]);
     let cancel = CancellationToken::new();

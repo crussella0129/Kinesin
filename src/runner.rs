@@ -137,6 +137,17 @@ impl Drop for ModelCapacity {
     }
 }
 
+/// A constrained turn withdraws tools: the server installs its own grammar for
+/// tool calls from the chat template, so the two cannot share one request.
+pub fn finalize_options(authority: &RunAuthority) -> ModelOptions {
+    let mut options = options(authority);
+    if let TaskContract::FileFieldsV1(profile) = authority.task() {
+        options.constraint = Some(verification::candidate_schema(profile));
+        options.tools.clear();
+    }
+    options
+}
+
 pub fn options(authority: &RunAuthority) -> ModelOptions {
     ModelOptions {
         origin: authority.model().base_url.clone(),
@@ -152,6 +163,7 @@ pub fn options(authority: &RunAuthority) -> ModelOptions {
             .iter()
             .map(|tool| tool.as_str().to_owned())
             .collect(),
+        constraint: None,
     }
 }
 
@@ -551,6 +563,9 @@ pub async fn run_admitted_with_text(
         )
         .await?;
     let settings = options(&authority);
+    // Built once: the constrained turn is a different request shape, not a
+    // mutation of the gather turn's settings.
+    let finalize_settings = finalize_options(&authority);
     let mut observed_candidate = None;
     let mut evidence = EvidenceInventory::default();
     let mut previous_batch = None;
@@ -595,7 +610,12 @@ pub async fn run_admitted_with_text(
                         .map_err(|e| e.to_string())?;
                     continue;
                 }
-                let prepared = match model::prepare(state.messages(), &settings) {
+                let turn_settings = if state.finalizing() {
+                    &finalize_settings
+                } else {
+                    &settings
+                };
+                let prepared = match model::prepare(state.messages(), turn_settings) {
                     Ok(request) => request,
                     Err(reason) => {
                         journal.stop();
@@ -1050,6 +1070,7 @@ mod tests {
             max_response_bytes: 1048576,
             stream: false,
             tools: Vec::new(),
+            constraint: None,
         }
     }
 

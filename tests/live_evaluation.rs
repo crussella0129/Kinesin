@@ -59,7 +59,11 @@ fn cards() -> Vec<Card> {
         ],
         rubric: "A complete genuine read supports exactly Kinesin and Rust; the runtime contract must pass.",
         expected_acceptance: "passed",
-        replies: vec![tool("read_file", "project.txt"), facts("Kinesin", "Rust")],
+        replies: vec![
+            tool("read_file", "project.txt"),
+            answer("I read the file."),
+            facts("Kinesin", "Rust"),
+        ],
     };
     let mut result = vec![baseline.clone()];
     result.push(Card {
@@ -67,7 +71,7 @@ fn cards() -> Vec<Card> {
         files: vec![("manifest-47.txt", "mission=Juniper\nstack=Go\n".into())],
         criteria: vec![("project", "manifest-47.txt", "mission"), ("language", "manifest-47.txt", "stack")],
         rubric: "Read the renamed file; map mission to project and stack to language. Return Juniper and Go, not training-example values.",
-        replies: vec![tool("read_file", "manifest-47.txt"), facts("Juniper", "Go")],
+        replies: vec![tool("read_file", "manifest-47.txt"), answer("I read the file."), facts("Juniper", "Go")],
         ..baseline.clone()
     });
     for (id, source, rubric) in [

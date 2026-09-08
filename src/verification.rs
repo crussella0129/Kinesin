@@ -191,6 +191,39 @@ pub struct CriterionResult {
     pub evidence: Option<EvidenceBinding>,
 }
 
+/// Shape of the candidate a checked run must emit, derived from the frozen
+/// contract so the request and the checker cannot describe different objects.
+///
+/// This constrains **shape only**. llama.cpp's converter skips unsupported
+/// keywords silently, so relying on one for correctness would mean believing a
+/// constraint that was never applied. Which ids are acceptable, which values are
+/// right, and whether the cited observation supports them stay with the checker.
+pub fn candidate_schema(profile: &TaskProfile) -> serde_json::Value {
+    let fields = profile.criteria.len();
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "facts": {
+                "type": "array",
+                "minItems": fields,
+                "maxItems": fields,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "value": {"type": "string"},
+                        "evidence_id": {"type": "string"}
+                    },
+                    "required": ["id", "value", "evidence_id"],
+                    "additionalProperties": false
+                }
+            }
+        },
+        "required": ["facts"],
+        "additionalProperties": false
+    })
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct VerifiedField {

@@ -11,7 +11,7 @@ use kinesin::config::{Config, ToolName};
 use kinesin::core::{self, Effect, ModelReply, ToolCall};
 use kinesin::model::{self, ModelClient};
 use kinesin::policy::{RunAuthority, Submission};
-use kinesin::runner::{RunResources, admit, options, run_admitted};
+use kinesin::runner::{RunResources, admit, finalize_options, options, run_admitted};
 use kinesin::storage::{
     Command, Event, QueueLimits, Response, RunRecord, Storage, StorageClient, Store,
 };
@@ -112,6 +112,8 @@ fn scripted() -> ModelClient {
             }],
         }
         .into(),
+        // A checked run answers twice: prose, then the constrained candidate.
+        ModelReply::Answer("I read the file.".into()).into(),
         ModelReply::Answer(
             json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]}).to_string(),
         )
@@ -309,7 +311,7 @@ fn process_killed_after_effect_intent_recovers_unknown_outcome() {
 }
 #[test]
 fn process_killed_after_checker_pass_does_not_publish_uncommitted_acceptance() {
-    kill_at_checkpoint("assessed", 8, 2);
+    kill_at_checkpoint("assessed", 10, 3);
 }
 
 struct ChildJournal<'a> {
@@ -405,6 +407,15 @@ fn process_checkpoint_child() {
                 state.model_started().unwrap();
                 let observation = model.send(&prepared).await.unwrap();
                 journal.append("model_finished", json!({"effect_id":"model-1","dispatch":"attempted","classification":"answer"})).await;
+                // A checked run answers twice. The prose turn proposes one more
+                // model effect, and that turn withdraws tools for its constraint.
+                assert_eq!(state.observe_model(observation).unwrap(), Effect::Model);
+                assert!(state.finalizing());
+                let prepared = model::prepare(state.messages(), &finalize_options(&authority)).unwrap();
+                journal.append("model_planned", json!({"effect_id":"model-2","request_sha256":prepared.sha256(),"request_bytes":prepared.bytes().len(),"model_profile":"local"})).await;
+                state.model_started().unwrap();
+                let observation = model.send(&prepared).await.unwrap();
+                journal.append("model_finished", json!({"effect_id":"model-2","dispatch":"attempted","classification":"answer"})).await;
                 let Effect::Candidate(candidate) = state.observe_model(observation).unwrap() else { panic!("expected candidate") };
                 let receipt = assess(&authority, &candidate, &evidence);
                 assert_eq!(receipt.status, "passed");

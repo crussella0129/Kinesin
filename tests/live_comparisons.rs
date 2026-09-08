@@ -244,6 +244,8 @@ fn scripted(card: &Card) -> ModelClient {
                     arguments: "{\"path\":\"bundle.txt\"}".into(),
                 }],
             },
+            // A checked run answers twice: prose, then the constrained candidate.
+            ModelReply::Answer("I read the bundle.".into()),
             ModelReply::Answer(
                 json!({"facts":[
                     {"id":"project","value":card.project,"evidence_id":"e0"},

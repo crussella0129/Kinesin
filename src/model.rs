@@ -26,6 +26,11 @@ pub struct ModelOptions {
     pub max_response_bytes: usize,
     pub stream: bool,
     pub tools: Vec<String>,
+    /// A JSON Schema for the whole reply. Mutually exclusive with `tools`: the
+    /// server installs its own grammar for tool calls from the chat template,
+    /// so a second constraint has no slot. The builder enforces this by
+    /// construction rather than by convention.
+    pub constraint: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -105,7 +110,13 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
         "n":1,"temperature":options.temperature,"max_tokens":options.max_output_tokens,
         "stream":options.stream
     });
-    if !options.tools.is_empty() {
+    if let Some(schema) = &options.constraint {
+        // Constrained turn: never carries tools.
+        request["response_format"] = json!({
+            "type": "json_schema",
+            "json_schema": {"name": "kinesin_candidate", "schema": schema, "strict": true}
+        });
+    } else if !options.tools.is_empty() {
         let definitions = options.tools.iter().map(|name| {
             let (description, parameters) = match name.as_str() {
                 "read_file" => ("Read bounded UTF-8 file contents inside the workspace. Use a relative path. Output reports truncation and an evidence_id for the actual observation.", json!({
@@ -962,6 +973,57 @@ fn merge_identity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn base(tools: Vec<String>, constraint: Option<Value>) -> ModelOptions {
+        ModelOptions {
+            origin: "http://127.0.0.1:8080".into(),
+            served_model: "fixture".into(),
+            temperature: 0.0,
+            max_output_tokens: 64,
+            max_request_bytes: 131_072,
+            max_response_bytes: 65_536,
+            stream: false,
+            tools,
+            constraint,
+        }
+    }
+
+    fn body(options: &ModelOptions) -> Value {
+        let messages = [Message::text(Role::User, "hello".into())];
+        let prepared = prepare(&messages, options).expect("prepared request");
+        serde_json::from_slice(prepared.bytes()).expect("request is JSON")
+    }
+
+    #[test]
+    fn a_constrained_request_never_carries_tools() {
+        // The server installs its own grammar for tool calls from the chat
+        // template, so a second constraint has no slot to occupy.
+        let schema = json!({"type":"object"});
+        let constrained = body(&base(vec!["read_file".into()], Some(schema.clone())));
+        assert_eq!(constrained["response_format"]["type"], "json_schema");
+        assert_eq!(
+            constrained["response_format"]["json_schema"]["schema"],
+            schema
+        );
+        assert_eq!(
+            constrained["response_format"]["json_schema"]["strict"],
+            true
+        );
+        assert!(
+            constrained.get("tools").is_none(),
+            "a constrained turn withdraws tools by construction"
+        );
+        assert!(constrained.get("tool_choice").is_none());
+
+        let gathering = body(&base(vec!["read_file".into()], None));
+        assert!(gathering.get("response_format").is_none());
+        assert_eq!(gathering["tools"][0]["function"]["name"], "read_file");
+        assert_eq!(gathering["tool_choice"], "auto");
+
+        let plain = body(&base(Vec::new(), None));
+        assert!(plain.get("tools").is_none() && plain.get("response_format").is_none());
+    }
+
     use crate::core;
 
     pub(crate) fn options() -> ModelOptions {
@@ -974,6 +1036,7 @@ mod tests {
             max_response_bytes: 1048576,
             stream: false,
             tools: Vec::new(),
+            constraint: None,
         }
     }
 

@@ -81,6 +81,10 @@ fn read_file() -> ModelReply {
         }],
     }
 }
+/// A checked run's prose turn, before its constrained candidate turn.
+fn prose() -> ModelReply {
+    ModelReply::Answer("I read the file.".into())
+}
 fn answer(value: &str, evidence: &str) -> ModelReply {
     ModelReply::Answer(
         json!({"facts":[{"id":"language","value":value,"evidence_id":evidence}]}).to_string(),
@@ -505,7 +509,7 @@ async fn checked_capture_replays_after_workspace_and_controller_are_removed() {
     let captured = capture(
         true,
         CaptureMode::Replay,
-        vec![read_file(), answer("Rust", "e0")],
+        vec![read_file(), prose(), answer("Rust", "e0")],
     )
     .await;
     assert_eq!(captured.run.acceptance_status, "passed");
@@ -515,7 +519,8 @@ async fn checked_capture_replays_after_workspace_and_controller_are_removed() {
     assert_eq!(report.consistency, "consistent");
     assert_eq!(report.phase, "completed");
     assert_eq!(report.acceptance_status, "passed");
-    assert_eq!(report.model_requests, 2);
+    // Three: the tool call, the prose answer, and the constrained candidate.
+    assert_eq!(report.model_requests, 3);
     assert_eq!(report.tool_observations, 1);
     assert!(report.verification_replayed);
     assert!(report.scope.contains("no origin authentication"));
@@ -536,10 +541,12 @@ async fn checked_capture_replays_after_workspace_and_controller_are_removed() {
 #[tokio::test]
 async fn completed_wrong_and_unsupported_answers_keep_their_original_verdicts() {
     for (replies, status) in [
-        (vec![read_file(), answer("Python", "e0")], "failed"),
-        (vec![answer("Rust", "invented")], "failed"),
+        (vec![read_file(), prose(), answer("Python", "e0")], "failed"),
+        (vec![prose(), answer("Rust", "invented")], "failed"),
+        // A checked run still reaches its candidate turn; prose there is not
+        // the contract's shape, so the checker fails it.
         (
-            vec![ModelReply::Answer("ordinary freeform text".into())],
+            vec![prose(), ModelReply::Answer("ordinary freeform text".into())],
             "failed",
         ),
     ] {
@@ -620,14 +627,14 @@ async fn missing_capture_versions_bodies_and_sequence_are_explicit_refusals() {
     let metadata = capture(
         true,
         CaptureMode::Metadata,
-        vec![read_file(), answer("Rust", "e0")],
+        vec![read_file(), prose(), answer("Rust", "e0")],
     )
     .await;
     assert_eq!(replay_code(&metadata), "replay_unavailable_metadata");
     let original = capture(
         true,
         CaptureMode::Replay,
-        vec![read_file(), answer("Rust", "e0")],
+        vec![read_file(), prose(), answer("Rust", "e0")],
     )
     .await;
     for (pointer, code) in [
@@ -674,7 +681,7 @@ async fn correlation_fingerprint_candidate_evidence_and_receipt_tampering_diverg
     let original = capture(
         true,
         CaptureMode::Replay,
-        vec![read_file(), answer("Rust", "e0")],
+        vec![read_file(), prose(), answer("Rust", "e0")],
     )
     .await;
     for (kind, field, value, code) in [
@@ -743,7 +750,7 @@ async fn checker_duration_is_compared_as_recorded_metadata_not_remeasured_time()
     let mut captured = capture(
         true,
         CaptureMode::Replay,
-        vec![read_file(), answer("Rust", "e0")],
+        vec![read_file(), prose(), answer("Rust", "e0")],
     )
     .await;
     captured.run.receipt.as_mut().unwrap()["duration_ms"] = json!(123);
