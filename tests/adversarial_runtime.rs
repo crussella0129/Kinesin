@@ -75,6 +75,7 @@ async fn inbox_capacity_expiry_settles_the_run_within_its_one_time_grace() {
         .authorize_local(Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: "Question".into(),
             limits: None,
             capture: None,
@@ -171,6 +172,7 @@ async fn every_accepted_response_size_can_be_durably_settled() {
         .authorize_local(Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: "Question".into(),
             limits: None,
             capture: None,
@@ -248,6 +250,7 @@ async fn every_accepted_journal_byte_capacity_can_settle_a_tiny_run() {
         .authorize_local(Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: "Question".into(),
             limits: None,
             capture: None,

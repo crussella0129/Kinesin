@@ -180,6 +180,8 @@ struct FrozenContext {
     task_spec_sha256: String,
     instructions: String,
     prompt: String,
+    #[serde(default)]
+    prior: Option<crate::policy::PriorAnswer>,
     submission_sha256: String,
     input_sources: Vec<InputSource>,
 }
@@ -465,8 +467,9 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         "replay_start_missing",
         Some(1),
     )?;
-    let (mut state, mut effect) = core::initiate_with_tools(
+    let (mut state, mut effect) = core::initiate_continued(
         frozen.instructions.clone(),
+        frozen.prior.as_ref().map(|prior| prior.answer.clone()),
         frozen.prompt.clone(),
         !frozen.workspace.tools.is_empty(),
     )

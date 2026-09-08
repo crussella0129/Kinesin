@@ -528,6 +528,34 @@ keywords silently, so `enum` was deliberately not used to restrict criterion ids
 Values, ids and evidence binding remain the checker's, and the adversarial
 counterexample still fails. The suite is 178 offline tests.
 
+## Added after the first validation pass: a session and cited answers
+
+Every run was independent, and there was no way to follow up on one. The first
+attempt added a `--continue RUN_ID` flag to `run`, which the operator rejected as
+the wrong shape: a command should be short, and following up should not require
+naming what you just did. The entry point is now `kinesin` with no arguments,
+which opens a session and asks what to do. That is the usual way to use it; the
+flag-based commands remain for scripted and operator work.
+
+Continuity keeps runs immutable. Each entry is a new run that cites the previous
+one's recorded answer, so nothing reopens or rewrites an earlier run and the
+journal stays an append-only chain. Only the answer travels: metadata capture
+deliberately does not retain a prompt, and a thread whose content depended on the
+capture mode would answer the same words differently for two owners. The cited
+answer is bounded, and it enters the conversation as its own message with its own
+input-inventory entry marked as earlier model output, so its trust class is
+visible rather than implied by position. It is data, exactly as a tool
+observation is.
+
+A checked run cannot continue one: its acceptance is a single verdict against a
+frozen contract, and unverified prose beside criteria that only file observations
+may satisfy would blur that. Resolution reads the cited run under the owner's own
+scope and accepts only a finished one, since a run still in flight has no
+recorded answer to quote. A session inherits the cited run's workspace and model
+rather than letting a thread change authority halfway through, and authorization
+still checks those aliases: inheriting repeats an earlier decision, it does not
+bypass one. The suite is 181 offline tests.
+
 ## Original intent and remaining exposure evidence
 
 The implemented product exercises the guide's local and loopback service paths.

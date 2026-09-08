@@ -565,6 +565,16 @@ impl Config {
         crate::policy::authorize(self, None, submission)
     }
 
+    /// `prior` is resolved by the caller, which owns the storage read and its
+    /// owner check.
+    pub fn authorize_local_continued(
+        &self,
+        submission: Submission,
+        prior: Option<crate::policy::PriorAnswer>,
+    ) -> Result<RunAuthority, String> {
+        crate::policy::authorize_with_prior(self, None, submission, prior)
+    }
+
     pub fn instructions(&self) -> &str {
         &self.instructions
     }

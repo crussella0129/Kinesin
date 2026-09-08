@@ -20,6 +20,10 @@ pub enum Submission {
         workspace: String,
         model: String,
         prompt: String,
+        /// A prior run of the same owner whose recorded answer starts this one.
+        /// Runs stay immutable: this cites earlier work, it does not reopen it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        continues: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         limits: Option<LimitOverrides>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -132,6 +136,20 @@ impl TaskContract {
     }
 }
 
+/// A prior run's recorded answer, resolved by the caller before authorization.
+/// Only the answer travels: metadata capture deliberately does not retain a
+/// prompt, and a continuation whose content depended on the capture mode would
+/// answer the same request differently for two owners.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PriorAnswer {
+    pub run_id: String,
+    pub answer: String,
+}
+
+/// Bound on the cited answer carried into a continuation.
+pub const MAX_PRIOR_ANSWER_BYTES: usize = 8_192;
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct InputSource {
@@ -158,6 +176,8 @@ pub struct RunAuthority {
     task_spec_sha256: String,
     instructions: String,
     prompt: String,
+    /// The cited run's recorded answer, carried as untrusted reference data.
+    prior: Option<PriorAnswer>,
     submission_sha256: String,
     input_sources: Vec<InputSource>,
 }
@@ -202,6 +222,10 @@ impl RunAuthority {
     pub fn submission_sha256(&self) -> &str {
         &self.submission_sha256
     }
+    /// The cited earlier answer, if this run continues one.
+    pub fn prior(&self) -> Option<&PriorAnswer> {
+        self.prior.as_ref()
+    }
     pub fn input_sources(&self) -> &[InputSource] {
         &self.input_sources
     }
@@ -214,6 +238,17 @@ pub(crate) fn authorize(
     config: &Config,
     owner_id: Option<&str>,
     submission: Submission,
+) -> Result<RunAuthority, String> {
+    authorize_with_prior(config, owner_id, submission, None)
+}
+
+/// `prior` is resolved by the caller, which owns the storage read and its
+/// owner check. Authorization stays pure and cannot reach another owner's run.
+pub(crate) fn authorize_with_prior(
+    config: &Config,
+    owner_id: Option<&str>,
+    submission: Submission,
+    prior: Option<PriorAnswer>,
 ) -> Result<RunAuthority, String> {
     let owner = match owner_id {
         Some(id) => Some(
@@ -231,9 +266,26 @@ pub(crate) fn authorize(
             workspace,
             model,
             prompt,
+            continues,
             limits,
             capture,
         } => {
+            match (&continues, &prior) {
+                (Some(id), Some(resolved)) if *id == resolved.run_id => {}
+                (None, None) => {}
+                // A resolved answer that does not match the requested run, or a
+                // request the caller never resolved, is a caller fault. Never
+                // continue from something the submission did not name.
+                _ => return Err("continuation does not match its resolved run".into()),
+            }
+            if let Some(resolved) = &prior {
+                validate_id(&resolved.run_id)?;
+                if resolved.answer.trim().is_empty()
+                    || resolved.answer.len() > MAX_PRIOR_ANSWER_BYTES
+                {
+                    return Err("cited answer must be nonempty and within its byte limit".into());
+                }
+            }
             if owner.is_some_and(|v| !v.allow_freeform) {
                 return Err("owner may not submit freeform work".into());
             }
@@ -255,6 +307,12 @@ pub(crate) fn authorize(
             limits,
             capture,
         } => {
+            // A checked run's acceptance is one verdict against one frozen
+            // contract. Citing an earlier answer would put unverified text
+            // beside criteria that only file observations may satisfy.
+            if prior.is_some() {
+                return Err("a checked task cannot continue an earlier run".into());
+            }
             validate_id(&task)?;
             if owner.is_some_and(|v| !v.tasks.contains(&task)) {
                 return Err("task is not authorized".into());
@@ -314,7 +372,7 @@ pub(crate) fn authorize(
     if task_bytes.len() > crate::config::MAX_TASK_SPEC_BYTES {
         return Err("frozen specification exceeds 8 KiB".into());
     }
-    let input_sources = vec![
+    let mut input_sources = vec![
         source(
             "instructions",
             "system instructions",
@@ -332,6 +390,16 @@ pub(crate) fn authorize(
             &prompt,
         ),
     ];
+    if let Some(resolved) = &prior {
+        // Named in the inventory as model-produced text, so its trust class is
+        // visible beside the trusted instructions rather than implied by order.
+        input_sources.push(source(
+            "prior_answer",
+            "cited earlier answer",
+            "earlier model output",
+            &resolved.answer,
+        ));
+    }
     Ok(RunAuthority {
         owner: owner_id.unwrap_or(LOCAL_OWNER).to_owned(),
         run_id: Uuid::new_v4().to_string(),
@@ -345,6 +413,7 @@ pub(crate) fn authorize(
         task_spec_sha256: sha256(&task_bytes),
         instructions,
         prompt,
+        prior,
         submission_sha256,
         input_sources,
     })
@@ -417,6 +486,115 @@ pub fn sha256(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_continuation_cites_an_answer_without_inheriting_authority() {
+        let fixture = Fixture::new();
+        let config = fixture.parse(BASE).unwrap();
+        let prior = PriorAnswer {
+            run_id: "11111111-1111-4111-8111-111111111111".into(),
+            answer: "The language is Rust.".into(),
+        };
+        let submission = |continues: Option<String>| Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues,
+            prompt: "Why?".into(),
+            limits: None,
+            capture: None,
+        };
+
+        let authority = crate::policy::authorize_with_prior(
+            &config,
+            None,
+            submission(Some(prior.run_id.clone())),
+            Some(prior.clone()),
+        )
+        .unwrap();
+        assert_eq!(authority.prior().unwrap().answer, prior.answer);
+        // The cited text is named in the inventory as model output, so its trust
+        // class is visible rather than implied by its position.
+        let cited = authority
+            .input_sources()
+            .iter()
+            .find(|source| source.id == "prior_answer")
+            .expect("the cited answer is an declared input");
+        assert_eq!(cited.origin, "earlier model output");
+        assert_eq!(cited.bytes, prior.answer.len());
+
+        // A run that cites nothing declares nothing.
+        let plain =
+            crate::policy::authorize_with_prior(&config, None, submission(None), None).unwrap();
+        assert!(plain.prior().is_none());
+        assert!(
+            plain
+                .input_sources()
+                .iter()
+                .all(|source| source.id != "prior_answer")
+        );
+    }
+
+    #[test]
+    fn a_continuation_must_match_its_resolved_run_and_stay_bounded() {
+        let fixture = Fixture::new();
+        let config = fixture.parse(BASE).unwrap();
+        let id = "11111111-1111-4111-8111-111111111111";
+        let other = "22222222-2222-4222-8222-222222222222";
+        let freeform = |continues: Option<String>| Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues,
+            prompt: "Why?".into(),
+            limits: None,
+            capture: None,
+        };
+        let answer = |text: &str, run: &str| PriorAnswer {
+            run_id: run.into(),
+            answer: text.into(),
+        };
+
+        for (submission, prior) in [
+            // Resolved from a run the submission never named.
+            (freeform(Some(id.into())), Some(answer("hi", other))),
+            // Requested but never resolved by the caller.
+            (freeform(Some(id.into())), None),
+            // Resolved without being requested.
+            (freeform(None), Some(answer("hi", id))),
+        ] {
+            assert!(crate::policy::authorize_with_prior(&config, None, submission, prior).is_err());
+        }
+
+        for text in ["", "   ", &"x".repeat(MAX_PRIOR_ANSWER_BYTES + 1)] {
+            assert!(
+                crate::policy::authorize_with_prior(
+                    &config,
+                    None,
+                    freeform(Some(id.into())),
+                    Some(answer(text, id)),
+                )
+                .is_err(),
+                "{} bytes must be refused",
+                text.len()
+            );
+        }
+
+        // A checked run has one verdict against one frozen contract.
+        assert!(
+            crate::policy::authorize_with_prior(
+                &config,
+                None,
+                Submission::Checked {
+                    task: "practice-fields".into(),
+                    model: "local".into(),
+                    limits: None,
+                    capture: None,
+                },
+                Some(answer("hi", id)),
+            )
+            .is_err()
+        );
+    }
+
     use super::*;
     use crate::config::test_support::*;
 
@@ -424,6 +602,7 @@ mod tests {
         Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: "Say hello".into(),
             limits: None,
             capture: None,

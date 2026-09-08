@@ -127,6 +127,7 @@ fn authority(config: &Config, owner: Option<&str>) -> Result<RunAuthority> {
     let submission = Submission::Freeform {
         workspace: "practice".into(),
         model: "fake".into(),
+        continues: None,
         prompt: "measurement".into(),
         limits: None,
         capture: None,

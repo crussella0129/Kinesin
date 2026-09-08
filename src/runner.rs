@@ -541,8 +541,9 @@ pub async fn run_admitted_with_text(
         capacity_stopped: false,
         queue_stop: None,
     };
-    let (mut state, mut effect) = core::initiate_with_tools(
+    let (mut state, mut effect) = core::initiate_continued(
         authority.instructions().into(),
+        authority.prior().map(|prior| prior.answer.clone()),
         authority.prompt().into(),
         !authority.workspace().tools.is_empty(),
     )

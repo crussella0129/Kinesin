@@ -80,6 +80,7 @@ fn authority(config: &Config, capture: CaptureMode) -> RunAuthority {
         .authorize_local(Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: "private prompt sentinel".into(),
             limits: None,
             capture: Some(capture),
@@ -365,6 +366,7 @@ fn malformed_configuration_and_unauthorized_aliases_cannot_construct_run_authori
             .authorize_local(Submission::Freeform {
                 workspace: "unknown".into(),
                 model: "local".into(),
+                continues: None,
                 prompt: "private prompt".into(),
                 limits: None,
                 capture: None

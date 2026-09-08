@@ -19,7 +19,8 @@ use crate::runner::RunResources;
 use crate::scheduler::{Controller, ControllerHandle, Job, PendingRun};
 use crate::storage::{Command, Event, QueueLimits, Response, RunRecord, Storage, StorageClient};
 
-pub const USAGE: &str = "kinesin run --config PATH --workspace ALIAS --model ALIAS --prompt TEXT [--allow-unchecked]\nkinesin run --config PATH --task ALIAS --model ALIAS\nkinesin batch --config PATH --input PATH\nkinesin inspect --config PATH --run ID\nkinesin export --config PATH --run ID --output NEW_FILE\nkinesin replay --input FILE\nkinesin retain --config PATH [--limit 100]\nkinesin backup --config PATH --output NEW_FILE\nkinesin serve --config PATH\nkinesin provision --config PATH --owner ALIAS --hours HOURS";
+pub const USAGE: &str = "kinesin
+kinesin run --config PATH --workspace ALIAS --model ALIAS --prompt TEXT [--allow-unchecked]\nkinesin run --config PATH --task ALIAS --model ALIAS\nkinesin batch --config PATH --input PATH\nkinesin inspect --config PATH --run ID\nkinesin export --config PATH --run ID --output NEW_FILE\nkinesin replay --input FILE\nkinesin retain --config PATH [--limit 100]\nkinesin backup --config PATH --output NEW_FILE\nkinesin serve --config PATH\nkinesin provision --config PATH --owner ALIAS --hours HOURS";
 pub const MAX_BATCH_ENTRIES: usize = 1_024;
 pub const MAX_BATCH_LINE_BYTES: usize = 65_536;
 pub const MAX_BATCH_BYTES: usize = 16 * 1_048_576;
@@ -55,6 +56,11 @@ pub struct BackupCommand {
     pub output: PathBuf,
 }
 pub enum CliCommand {
+    /// No arguments: an interactive session. Each entry continues the one
+    /// before it, so following up needs no run id and no flag.
+    Session {
+        config: PathBuf,
+    },
     Run(RunCommand),
     Batch(BatchCommand),
     Inspect(InspectCommand),
@@ -72,9 +78,24 @@ pub enum CliCommand {
     },
 }
 
+pub const DEFAULT_CONFIG: &str = "kinesin.toml";
+
 pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, String> {
     let mut args = args.into_iter();
-    let command = args.next().ok_or(USAGE)?.into_string().map_err(|_| USAGE)?;
+    let Some(first) = args.next() else {
+        return Ok(CliCommand::Session {
+            config: PathBuf::from(DEFAULT_CONFIG),
+        });
+    };
+    let command = first.into_string().map_err(|_| USAGE)?;
+    if command == "--config" {
+        // `kinesin --config other.toml` still opens a session.
+        let config = PathBuf::from(args.next().ok_or("missing value for --config")?);
+        if args.next().is_some() {
+            return Err(USAGE.into());
+        }
+        return Ok(CliCommand::Session { config });
+    }
     if ![
         "run",
         "batch",
@@ -227,6 +248,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, Str
             workspace: take_text(&mut values, "--workspace")?,
             model,
             prompt: take_text(&mut values, "--prompt")?,
+            continues: None,
             limits: None,
             capture,
         }
@@ -332,8 +354,33 @@ struct Startup {
     resources: BTreeMap<String, RunResources>,
 }
 impl Startup {
+    /// A session takes no aliases. With one workspace and one model there is
+    /// nothing to choose; with several the operator must say which, because
+    /// guessing would silently pick an authority.
+    fn session_defaults(&self) -> Result<(String, String), String> {
+        let workspaces = self.config.workspaces();
+        let models = self.config.models();
+        let workspace = match workspaces {
+            [only] => only.id.clone(),
+            _ => return Err("a session needs exactly one configured workspace".into()),
+        };
+        let model = match models {
+            [only] => only.id.clone(),
+            _ => return Err("a session needs exactly one configured model".into()),
+        };
+        Ok((workspace, model))
+    }
+
     fn job(&self, submission: Submission) -> Result<Job, String> {
-        let authority = self.config.authorize_local(submission)?;
+        self.job_continued(submission, None)
+    }
+
+    fn job_continued(
+        &self,
+        submission: Submission,
+        prior: Option<crate::policy::PriorAnswer>,
+    ) -> Result<Job, String> {
+        let authority = self.config.authorize_local_continued(submission, prior)?;
         let model = &authority.model().id;
         Ok(Job {
             display: None,
@@ -475,6 +522,7 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
     }
     // Startup filesystem work and writer readiness occur before entering Tokio.
     let path = match &command {
+        CliCommand::Session { config } => config,
         CliCommand::Run(command) => &command.config,
         CliCommand::Batch(command) => &command.config,
         CliCommand::Inspect(command) => &command.config,
@@ -486,7 +534,10 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
         }
     };
     let config = BoundedConfig::load(path)?;
-    if !matches!(command, CliCommand::Run(_) | CliCommand::Batch(_)) {
+    if !matches!(
+        command,
+        CliCommand::Session { .. } | CliCommand::Run(_) | CliCommand::Batch(_)
+    ) {
         return execute_operator(command, config);
     }
     let resources = RunResources::from_config(&config)?;
@@ -505,12 +556,16 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
         models,
         resources,
     };
-    let (single, batch) = match command {
+    // A continuation reads a prior run, so its job is built inside the runtime
+    // where storage exists rather than before it opens.
+    let (session, single, batch) = match command {
+        CliCommand::Session { .. } => (true, None, None),
         CliCommand::Run(command) => (
-            Some((startup.job(command.submission)?, command.allow_unchecked)),
+            false,
+            Some((command.submission, command.allow_unchecked)),
             None,
         ),
-        CliCommand::Batch(command) => (None, Some(BatchReader::open(&command.input)?)),
+        CliCommand::Batch(command) => (false, None, Some(BatchReader::open(&command.input)?)),
         _ => unreachable!("operator commands handled before model startup"),
     };
     let limits = startup.config.concurrency().clone();
@@ -550,10 +605,18 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
                 }
             })
         };
-        let outcome = match (single, batch) {
-            (Some((job, allow_unchecked)), None) => run_single(&handle, job, allow_unchecked).await,
-            (None, Some(reader)) => run_batch(&handle, &startup, reader, &interrupted).await,
-            _ => Err("invalid prepared command".into()),
+        let outcome = if session {
+            run_session(&handle, &startup, &storage.client(), &interrupted).await
+        } else {
+            match (single, batch) {
+                (Some((mut submission, allow_unchecked)), None) => {
+                    let prior = resolve_continuation(&storage.client(), &mut submission).await?;
+                    let job = startup.job_continued(submission, prior)?;
+                    run_single(&handle, job, allow_unchecked).await
+                }
+                (None, Some(reader)) => run_batch(&handle, &startup, reader, &interrupted).await,
+                _ => Err("invalid prepared command".into()),
+            }
         };
         // This also handles input/output failure without detaching live effects.
         handle.shutdown();
@@ -631,6 +694,45 @@ async fn query(store: &StorageClient, command: Command) -> Result<Response, Stri
         .await
         .map_err(|e| e.to_string())
 }
+/// Read the cited run under this owner's scope, and accept only a finished one.
+/// A run in flight has no recorded answer to quote, and citing one would depend
+/// on when the read happened.
+async fn resolve_continuation(
+    store: &StorageClient,
+    submission: &mut Submission,
+) -> Result<Option<crate::policy::PriorAnswer>, String> {
+    let Submission::Freeform {
+        workspace,
+        model,
+        continues: Some(run_id),
+        ..
+    } = submission
+    else {
+        return Ok(None);
+    };
+    let run_id = run_id.clone();
+    let record = retained_run(store, run_id.clone()).await?;
+    if !matches!(
+        record.phase.as_str(),
+        "completed" | "stopped" | "failed" | "cancelled" | "interrupted"
+    ) {
+        return Err("cited run has not finished".into());
+    }
+    let answer = record
+        .result
+        .as_ref()
+        .and_then(|result| result["candidate"].as_str())
+        .ok_or("cited run retained no answer to continue from")?;
+    // Authorization still checks these aliases against the owner's permissions:
+    // inheriting them repeats an earlier decision, it does not bypass one.
+    workspace.clone_from(&record.workspace_id);
+    model.clone_from(&record.model_profile_id);
+    Ok(Some(crate::policy::PriorAnswer {
+        run_id,
+        answer: answer.to_owned(),
+    }))
+}
+
 async fn retained_run(store: &StorageClient, run: String) -> Result<RunRecord, String> {
     match query(
         store,
@@ -941,6 +1043,91 @@ async fn complete_one(
     }
 }
 
+/// One interactive thread. Each entry becomes its own run that cites the
+/// previous one, so the transcript stays a chain of immutable runs rather than
+/// a mutable conversation the harness edits in place.
+async fn run_session(
+    handle: &ControllerHandle,
+    startup: &Startup,
+    store: &StorageClient,
+    interrupted: &CancellationToken,
+) -> Result<u8, String> {
+    let (workspace, model) = startup.session_defaults()?;
+    let mut previous: Option<String> = None;
+    let mut code = 0;
+    loop {
+        let Some(prompt) = read_entry(interrupted).await? else {
+            return Ok(code);
+        };
+        if prompt.trim().is_empty() {
+            continue;
+        }
+        let mut submission = Submission::Freeform {
+            workspace: workspace.clone(),
+            model: model.clone(),
+            prompt,
+            continues: previous.clone(),
+            limits: None,
+            capture: None,
+        };
+        // A failed entry ends its own thread rather than silently continuing
+        // from an answer the run never produced.
+        let prior = match resolve_continuation(store, &mut submission).await {
+            Ok(prior) => prior,
+            Err(error) => {
+                previous = None;
+                emit(OutputLine::Error {
+                    index: None,
+                    reason: format!("cannot continue the previous entry: {error}"),
+                })
+                .await?;
+                continue;
+            }
+        };
+        let job = match startup.job_continued(submission, prior) {
+            Ok(job) => job,
+            Err(error) => {
+                emit(OutputLine::Error {
+                    index: None,
+                    reason: error,
+                })
+                .await?;
+                continue;
+            }
+        };
+        let run_id = job.authority.run_id().to_owned();
+        code = run_single(handle, job, true).await?;
+        previous = Some(run_id);
+        if interrupted.is_cancelled() {
+            return Ok(code);
+        }
+    }
+}
+
+/// Read one entry without holding a runtime thread on the console.
+async fn read_entry(interrupted: &CancellationToken) -> Result<Option<String>, String> {
+    if interrupted.is_cancelled() {
+        return Ok(None);
+    }
+    let line = tokio::task::spawn_blocking(|| {
+        use std::io::Write;
+        let mut out = std::io::stderr();
+        let _ = out.write_all(b"> ");
+        let _ = out.flush();
+        let mut line = String::new();
+        match std::io::stdin().read_line(&mut line) {
+            Ok(0) => Ok(None),
+            Ok(_) => Ok(Some(line)),
+            Err(error) => Err(error.to_string()),
+        }
+    });
+    tokio::select! {
+        biased;
+        _ = interrupted.cancelled() => Ok(None),
+        joined = line => joined.map_err(|_| "console reader failed".to_owned())?,
+    }
+}
+
 async fn run_batch(
     handle: &ControllerHandle,
     startup: &Startup,
@@ -1111,6 +1298,43 @@ pub fn aggregate_exit(current: u8, next: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_bare_command_opens_a_session_and_continuation_needs_no_flag() {
+        let args = |items: &[&str]| {
+            items
+                .iter()
+                .map(|item| OsString::from(*item))
+                .collect::<Vec<_>>()
+        };
+        // The common entry point takes no arguments at all.
+        let CliCommand::Session { config } = parse(args(&[])).unwrap() else {
+            panic!("no arguments opens a session");
+        };
+        assert_eq!(config, PathBuf::from(DEFAULT_CONFIG));
+
+        let CliCommand::Session { config } = parse(args(&["--config", "other.toml"])).unwrap()
+        else {
+            panic!("a config override still opens a session");
+        };
+        assert_eq!(config, PathBuf::from("other.toml"));
+
+        // Continuation is a property of the session, not a flag on run.
+        assert!(
+            parse(args(&[
+                "run",
+                "--config",
+                "kinesin.toml",
+                "--continue",
+                "11111111-1111-4111-8111-111111111111",
+                "--prompt",
+                "and why?",
+            ]))
+            .is_err(),
+            "run has no continuation flag"
+        );
+    }
+
     use super::*;
     use crate::config::test_support::Fixture;
     fn args(values: &[&str]) -> Vec<OsString> {

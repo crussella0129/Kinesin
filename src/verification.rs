@@ -887,6 +887,7 @@ mod tests {
             .authorize_local(Submission::Freeform {
                 workspace: "practice".into(),
                 model: "local".into(),
+                continues: None,
                 prompt: "Say hello".into(),
                 limits: None,
                 capture: None,

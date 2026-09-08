@@ -207,6 +207,7 @@ async fn evaluate(card: &Card, root: &Path, live: bool) -> Value {
         Some(prompt) => Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: prompt.into(),
             limits: None,
             capture: Some(CaptureMode::Replay),

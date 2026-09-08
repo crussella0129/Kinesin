@@ -886,6 +886,7 @@ idempotency_retention_hours = 24
         let submission = Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: "hello".into(),
             limits: None,
             capture: None,

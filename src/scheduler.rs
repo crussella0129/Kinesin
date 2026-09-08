@@ -642,6 +642,7 @@ mod tests {
         let submission = Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: label.into(),
             limits: None,
             capture: None,

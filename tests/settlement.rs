@@ -44,6 +44,7 @@ temperature = 0.0
         .authorize_local(Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: "Question".into(),
             limits: None,
             capture: None,

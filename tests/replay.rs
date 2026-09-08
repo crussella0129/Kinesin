@@ -104,6 +104,7 @@ async fn capture(checked: bool, mode: CaptureMode, replies: Vec<ModelReply>) -> 
         Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
+            continues: None,
             prompt: "Please inspect the file".into(),
             limits: None,
             capture: Some(mode),
