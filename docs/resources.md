@@ -1,79 +1,94 @@
-# Learning resources index
+# Reference index
 
-## Rust core
+The [build guide](build-guide.md) links readings at the step where they become
+useful. Use this page to find them again, not as a reading assignment to finish
+before writing code.
 
-- **The Rust Programming Language (standard):** https://doc.rust-lang.org/book/
-  - Ch 2 (guessing game: first `stdin`), Ch 3 (common concepts).
-  - Ch 5 (structs), Ch 6 (enums and `match`), Ch 7 (modules).
-  - Ch 8 (collections: 8.1 `Vec`, 8.2 `String`, 8.3 `HashMap`).
-  - Ch 9 (error handling: `Result` and `?`).
-  - Ch 11 (tests), Ch 12 (I/O project: args, files, stderr).
-  - Ch 13 (iterators and closures).
-  - Ch 15 (smart pointers: `Box`, `Rc`, `RefCell` — only if you share state).
-  - Ch 16 (concurrency: 16.1 threads, 16.2 channels, 16.3 `Arc`/`Mutex`).
-  - Ch 21 (final project: a std-only multithreaded web server — the HTTP model).
-- **The Rust Programming Language (Brown University fork):**
-  https://rust-book.cs.brown.edu/
-  - Ch 4 (Understanding Ownership, expanded): 4.1 What is Ownership?, 4.2
-    References and Borrowing, 4.3 Fixing Ownership Errors, 4.4 The Slice Type, 4.5
-    Ownership Recap (the Read/Write/Own permission model). Read this Ch 4 first.
-- **Rust by Example:** https://doc.rust-lang.org/rust-by-example/
-  - Std Misc → child processes, threads, channels, file I/O. Fills the gaps that
-    the book skips for process spawning.
-- **Standard library API docs:** https://doc.rust-lang.org/std/
-  - `std::process::Command`, `std::net::{TcpStream, TcpListener}`,
-    `std::io::{Read, Write, BufReader, BufRead}`, `std::fs`, `std::thread`,
-    `std::sync::{Arc, Mutex, mpsc}`, `std::collections::HashMap`, `std::time`.
-- **The Cargo Book:** https://doc.rust-lang.org/cargo/
-  - "Workspaces" and "The Manifest Format".
+## Rust foundations
 
-## Non-Rust dependencies
+- [The Rust Book](https://doc.rust-lang.org/book/): ownership, enums, errors,
+  modules, tests, then async when the guide reaches it.
+- [Brown ownership-error explanations](https://rust-book.cs.brown.edu/ch04-03-fixing-ownership-errors.html):
+  an additional explanation after encountering an actual borrow/move error.
+- [Rust by Example](https://doc.rust-lang.org/rust-by-example/): small focused
+  examples for an unfamiliar standard-library operation.
+- [Cargo Book](https://doc.rust-lang.org/cargo/): package targets, dependencies,
+  lockfiles, tests, and eventual workspaces.
+- [Clippy usage](https://doc.rust-lang.org/clippy/usage.html): warnings as useful
+  feedback while learning idiomatic Rust.
+- [Rust File locking](https://doc.rust-lang.org/std/fs/struct.File.html#method.try_lock):
+  retained ownership of the controller state directory.
 
-- **llama.cpp / `llama-server`:** https://github.com/ggml-org/llama.cpp
-  - Server README (endpoints, flags, JSON fields):
-    https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
-  - Read: start flags (`-m`, `--host`, `--port`, `-c`); endpoints (`/health`,
-    `/completion`, `/v1/chat/completions`, `/props`, `/tokenize`); fields
-    (`prompt`, `n_predict`, `temperature`, `stream`; `content`, `stop_type`,
-    `timings`).
-- **GGUF format:** https://github.com/ggml-org/ggml/blob/master/docs/gguf.md
-- **WireGuard:** https://www.wireguard.com/
-  - Quick Start; Conceptual Overview; `wg` and `wg-quick` man pages; Protocol &
-    Cryptography and the Whitepaper (only for a userspace Koil).
-  - **GotaTun** (Mullvad userspace WireGuard in Rust; a fork of BoringTun; use as
-    a crate for Path B1): https://github.com/mullvad/gotatun and
-    https://lib.rs/crates/gotatun
-  - `boringtun` (Cloudflare userspace WireGuard in Rust; the parent of GotaTun):
-    https://github.com/cloudflare/boringtun
-- **WSL:** https://learn.microsoft.com/windows/wsl/
-  - Install; basic commands; networking; file system interop.
-- **PowerShell:** https://learn.microsoft.com/powershell/scripting/overview
-- **GitHub Actions:** https://docs.github.com/actions/quickstart
+## Async runtime and network boundary
 
-## Formats and background
+| Reference | Look for |
+|-----------|----------|
+| [Tokio tutorial](https://tokio.rs/tokio/tutorial) | Runtime, owned tasks, channels |
+| [Spawning](https://tokio.rs/tokio/tutorial/spawning) | `Send`, `'static`, task ownership |
+| [Channels](https://tokio.rs/tokio/tutorial/channels) | Bounded coordination and backpressure |
+| [Shutdown](https://tokio.rs/tokio/topics/shutdown) | Detect, notify, wait |
+| [Blocking work](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html) | Actual closure lifetime and cancellation limits |
+| [reqwest Client](https://docs.rs/reqwest/latest/reqwest/struct.Client.html) | Reused pooled connections |
+| [ClientBuilder](https://docs.rs/reqwest/latest/reqwest/struct.ClientBuilder.html) | Explicit timeout, redirect, proxy, retry policy |
+| [SSE standard](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream) | Incremental event framing |
+| [Axum](https://docs.rs/axum/latest/axum/) | Later authenticated service boundary |
+| [Tower layer ordering](https://docs.rs/tower/latest/tower/struct.ServiceBuilder.html#order) | How limits and buffers compose |
 
-- **HTTP messages (MDN):** https://developer.mozilla.org/docs/Web/HTTP/Messages
-- **JSON grammar:** https://www.json.org/
-- **TOML specification:** https://toml.io/en/v1.0.0
-- **CommonMark (Markdown):** https://spec.commonmark.org/
-- **ReAct paper (the loop idea):** https://arxiv.org/abs/2210.03629
+## Data, capabilities, and persistence
 
-## Tool calling
+- [Serde](https://serde.rs/), [serde_json](https://docs.rs/serde_json/latest/serde_json/),
+  [TOML](https://docs.rs/toml/latest/toml/): typed formats rather than private parsers.
+- [cap-std](https://github.com/bytecodealliance/cap-std) and
+  [Dir](https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html):
+  capabilities and their security limits.
+- [rusqlite](https://docs.rs/rusqlite/latest/rusqlite/),
+  [transactions](https://www.sqlite.org/lang_transaction.html),
+  [WAL](https://www.sqlite.org/wal.html),
+  [synchronization](https://www.sqlite.org/pragma.html#pragma_synchronous),
+  [backup](https://www.sqlite.org/backup.html): commit, query, and recovery contracts.
+- [tracing](https://docs.rs/tracing/latest/tracing/): structured redacted diagnostics.
+- [Security](security.md): authoritative credential, authorization, and platform
+  references for the later service.
 
-- **llama.cpp function calling guide** — the `--jinja` flag, the `tools` array,
-  `tool_calls`, native versus generic formats, supported models, and the KV
-  quantization warning. Read this first:
-  https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md
-- **llama.cpp GBNF grammars** — constrained decoding, JSON schema conversion, the
-  supported subset, and the performance notes:
-  https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md
-- **Tool calling with local models, a practical evaluation** (Docker) — 21 models
-  over 3,570 cases; the 8B floor, the Qwen results, and the four failure modes:
-  https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/
-- **CodeAct, "Executable Code Actions Elicit Better LLM Agents"** — the case for
-  code as the action format, and the numbers behind it ([loop-and-tools.md](loop-and-tools.md), approaches not chosen):
-  https://arxiv.org/abs/2402.01030
-- **Model Context Protocol** — the common tool interface standard; shape your tool
-  definition to match it ([loop-and-tools.md](loop-and-tools.md), how to define a tool): https://modelcontextprotocol.io/
-- **Tool schema design: inputs, outputs, and error handling:**
-  https://aiquinta.ai/blog/llm-tool-schema-design-inputs-outputs-error-handling/
+## Model boundary and evaluation
+
+- [llama.cpp server](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+  and [function calls](https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md):
+  read the pinned version's contract, not only current `master`.
+- [llama.cpp builds](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md):
+  native Windows/Linux backend setup.
+- [ReAct](https://arxiv.org/abs/2210.03629): the action/observation loop idea.
+- [SWE-agent](https://arxiv.org/abs/2405.15793): why the model-facing interface is
+  worth evaluating, without transferring benchmark percentages to Kinesin.
+- [Open versus closed load](https://grafana.com/docs/k6/latest/using-k6/scenarios/concepts/open-vs-closed/):
+  why overload tests should control arrival rate.
+- [Task acceptance](verification.md): frozen requirements, actual evidence,
+  deterministic field checks, result receipts, and explicit unchecked outcomes.
+- [Demystifying evals for AI agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents):
+  outcome-based evaluation and complementary grader types.
+- [Adversarial attacks on LLM-as-a-judge systems](https://arxiv.org/abs/2504.18333):
+  why evaluator prompts and model verdicts create another attack surface.
+
+## Paper-guided improvements
+
+The [paper review](paper-review.md) maps the supplied PDFs and related research
+to concrete decisions, limitations, and experiments. Read the relevant section
+alongside the guide: ICM for context selection, ReAct for feedback, PDDL-INSTRUCT
+and PlanBench for independent checks, and OoO-Spec/ToolSpec/LLMCompiler for the
+different optimization boundaries. Lost in the Middle and AgentDojo inform
+context-quality and hostile-input evaluations.
+
+## Later integrations
+
+- [WireGuard](https://www.wireguard.com/quickstart/): an OS network route to remote
+  inference, separate from API ownership.
+- [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools):
+  an external adapter with its own trust, version, and authorization requirements.
+- [Rust process](https://doc.rust-lang.org/std/process/struct.Child.html):
+  optional owned server lifecycle.
+- [WSL networking](https://learn.microsoft.com/windows/wsl/networking):
+  only if a deployment crosses that OS boundary.
+
+Use the exact versions selected during implementation. A reference to a moving
+documentation page is not a lockfile or a guarantee that every option exists in
+an older executable.

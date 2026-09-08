@@ -1,0 +1,11 @@
+[package]
+name = "kinesin"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+
+# Do not inherit an unrelated ancestor manifest.
+[workspace]
+resolver = "3"
+
+[dependencies]

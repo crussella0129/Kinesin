@@ -1,159 +1,465 @@
-# Trace schema
+# Journal, results, and replay
 
-A trace is the record of one message that crosses Koil. Koil writes one trace as
-one JSON file in `traces/logs/`. The file name is the trace ID. The file is
-immutable after Koil writes it.
+## Use a transactional store
 
-This section gives a first schema. Change it to fit your needs. But keep the field
-names stable after you start, because the lookup table and any later tool depend
-on them.
+Use SQLite through `rusqlite` for the first persistent journal. This replaces
+per-event files and a hand-maintained lookup/index. A database earns its dependency
+by keeping an event and its run-status update atomic, supporting owner-scoped
+queries, and giving the shared-service phase a usable storage boundary.
 
-## Fields of one trace
+One dedicated OS thread owns the connection. The initial synchronous store can
+be tested directly; asynchronous runners access it through a bounded command
+channel and a one-shot acknowledgement. Never call blocking SQLite operations
+on a Tokio runtime worker.
 
-| Field | Type | Required | Meaning |
-|-------|------|----------|---------|
-| `id` | string | yes | The random trace ID. It is also the file name. |
-| `time` | string | yes | The time Koil wrote the trace, in ISO 8601 (for example `2026-09-07T14:03:22Z`). |
-| `session` | string | yes | The ID of the run that this trace belongs to. One run has many traces. |
-| `step` | number | yes | The step number inside the session. It starts at 0 and counts up. |
-| `direction` | string | yes | `to_model` or `from_model`. |
-| `source` | string | yes | The part that sent the message (for example `k-core`). |
-| `destination` | string | yes | The part that received the message (for example `kineserve`). |
-| `endpoint` | string | for `to_model` | The `llama-server` path, for example `/completion`. |
-| `model` | string | yes | The model file name from `models/`. |
-| `payload` | object | yes | The exact JSON body that crossed the channel (see below). |
-| `timings` | object | for `from_model` | The timing block from `llama-server`, if it is present. |
-| `prev` | string or null | yes | The ID of the trace before this one in the session, or null for the first. |
+Use a private state directory containing `controller.lock`, `kinesin.sqlite`,
+and any SQLite WAL/shared-memory sidecars. Before recovery, acquire and retain an
+exclusive lock on the lock file. A second controller using the same state
+directory must fail clearly. The lock file's existence alone proves nothing;
+retain the locked handle for the controller lifetime. Current Rust has
+`File::try_lock` (stable since 1.89).
+[Rust file locking](https://doc.rust-lang.org/std/fs/struct.File.html#method.try_lock)
 
-The `payload` field is the key to the phrase "works with `llama-server`". For a
-`to_model` trace, the payload is the request that you sent to `llama-server`, with
-no change. For a `from_model` trace, the payload is the answer that `llama-server`
-returned, with no change. So a trace holds the real `llama-server` body plus the
-metadata around it. The `prev` field links the traces in order, so you can replay
-a session from first to last.
+## Proposed schema v2
 
-## Example trace to the model
+This is the proposed second revision of the design, not a migration for an
+existing implementation or database. Use parameterized statements. Enable foreign
+keys on every connection. Set/check schema version at startup; future migrations
+must be explicit transactions before accepting work. Execution and acceptance
+have separate meanings defined in [verification](verification.md).
 
-```json
-{
-  "id": "b1c4f9a2e8d74630",
-  "time": "2026-09-07T14:03:22Z",
-  "session": "9f2a77c0",
-  "step": 0,
-  "direction": "to_model",
-  "source": "k-core",
-  "destination": "kineserve",
-  "endpoint": "/completion",
-  "model": "your-model.gguf",
-  "payload": {
-    "prompt": "System instructions...\nUser: list the files\n",
-    "n_predict": 256,
-    "temperature": 0.2,
-    "stream": false
-  },
-  "prev": null
-}
+```sql
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE runs (
+    run_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    model_profile_id TEXT NOT NULL,
+    task_mode TEXT NOT NULL CHECK (task_mode IN ('freeform', 'checked')),
+    task_profile_id TEXT,
+    task_profile_version TEXT,
+    task_spec_sha256 TEXT,
+    checker_id TEXT,
+    checker_version TEXT,
+    capture TEXT NOT NULL CHECK (capture IN ('metadata', 'replay')),
+    phase TEXT NOT NULL CHECK (phase IN (
+        'queued', 'running', 'cancelling', 'completed',
+        'stopped', 'failed', 'cancelled', 'interrupted'
+    )),
+    acceptance_status TEXT NOT NULL CHECK (acceptance_status IN (
+        'unchecked', 'pending', 'passed', 'failed', 'inconclusive'
+    )),
+    created_unix_ms INTEGER NOT NULL,
+    policy_version TEXT NOT NULL,
+    submission_sha256 TEXT NOT NULL,
+    idempotency_key TEXT,
+    terminal_reason TEXT,
+    result_json TEXT,
+    result_sha256 TEXT,
+    acceptance_json TEXT,
+    CHECK (
+        (task_mode = 'freeform' AND acceptance_status = 'unchecked'
+            AND task_profile_id IS NULL AND task_profile_version IS NULL
+            AND task_spec_sha256 IS NULL
+            AND checker_id IS NULL AND checker_version IS NULL)
+        OR
+        (task_mode = 'checked' AND acceptance_status != 'unchecked'
+            AND task_profile_id IS NOT NULL AND task_profile_version IS NOT NULL
+            AND task_spec_sha256 IS NOT NULL
+            AND checker_id IS NOT NULL AND checker_version IS NOT NULL)
+    ),
+    CHECK (task_spec_sha256 IS NULL OR length(task_spec_sha256) = 64),
+    CHECK (result_sha256 IS NULL OR length(result_sha256) = 64),
+    CHECK (
+        (result_json IS NULL AND result_sha256 IS NULL)
+        OR (result_json IS NOT NULL AND result_sha256 IS NOT NULL)
+    ),
+    CHECK (
+        phase IN ('queued', 'running', 'cancelling')
+        OR (acceptance_status != 'pending' AND acceptance_json IS NOT NULL)
+    ),
+    CHECK (
+        phase NOT IN ('queued', 'running', 'cancelling')
+        OR acceptance_status IN ('unchecked', 'pending')
+    ),
+    CHECK (acceptance_status != 'passed' OR phase = 'completed'),
+    CHECK (
+        phase != 'completed'
+        OR (result_json IS NOT NULL AND result_sha256 IS NOT NULL
+            AND acceptance_json IS NOT NULL)
+    ),
+    UNIQUE (owner_id, idempotency_key)
+);
+
+CREATE TABLE events (
+    run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+    seq INTEGER NOT NULL CHECK (seq >= 0),
+    schema_version INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    elapsed_ms INTEGER NOT NULL CHECK (elapsed_ms >= 0),
+    data_json TEXT NOT NULL,
+    PRIMARY KEY (run_id, seq)
+);
+
+CREATE INDEX runs_owner_created
+    ON runs(owner_id, created_unix_ms, run_id);
+
+PRAGMA user_version = 2;
 ```
 
-## Example trace from the model
+`runs` is the current projection: phase, ownership, frozen task identity,
+acceptance status/receipt, and final result. `completed` replaces the earlier
+name `succeeded`; it does not mean a task passed. Derive `task_accepted` only from
+`phase = completed AND acceptance_status = passed`, never from a stored
+client/model assertion. A checked run begins `pending`; freeform begins and
+remains `unchecked`. All terminal phases require a receipt and prohibit pending
+acceptance. A completed run additionally requires its candidate/result and digest;
+a run stopped without a candidate may have a null result.
 
-```json
-{
-  "id": "7d0e5a13c9b28f44",
-  "time": "2026-09-07T14:03:24Z",
-  "session": "9f2a77c0",
-  "step": 1,
-  "direction": "from_model",
-  "source": "kineserve",
-  "destination": "k-core",
-  "model": "your-model.gguf",
-  "payload": {
-    "content": "{\"action\": \"list_files\", \"args\": {\"path\": \".\"}}",
-    "stop_type": "eos"
-  },
-  "timings": {
-    "prompt_n": 42,
-    "predicted_n": 18,
-    "predicted_ms": 640.5
-  },
-  "prev": "b1c4f9a2e8d74630"
-}
-```
+`events` is ordered history. Sequence starts at zero separately for every run.
+The v2 typed event/receipt format carries the same outcome distinction. The
+application enforces legal transitions, event order, receipt/projection agreement,
+canonical digest encoding, and all serialized byte bounds; SQL constraints are
+an additional check, not a verifier. UUID run IDs are opaque identifiers, not
+access tokens.
 
-## The lookup table `trace_hash.json`
+For a checked task, freeze profile ID/version, checker ID/version, specification
+digest, generated instruction, and criteria before admission. The digest covers
+the versioned effective specification, including source-parser and output
+semantics. Keep its identity in the projection and acceptance event; replay
+capture additionally retains the exact frozen specification. Do not resolve the
+task alias again to reinterpret an existing result.
 
-`traces/trace_hash.json` maps each trace ID to its file. It gives quick access
-without a scan of the directory. A simple shape is one object. Each key is a trace
-ID. Each value holds the file path, the session, the step, and the time.
+A model turn counts generation attempts, not database events. A request can have
+many events. Give every proposed external effect an `effect_id`, for example
+`model-0` or `model-0/tool-0`. Preserve the provider's `call_id` separately;
+correlate it with its originating model effect. Never use provider IDs as paths.
 
-```json
-{
-  "b1c4f9a2e8d74630": {
-    "file": "traces/logs/b1c4f9a2e8d74630.json",
-    "session": "9f2a77c0",
-    "step": 0,
-    "time": "2026-09-07T14:03:22Z"
-  },
-  "7d0e5a13c9b28f44": {
-    "file": "traces/logs/7d0e5a13c9b28f44.json",
-    "session": "9f2a77c0",
-    "step": 1,
-    "time": "2026-09-07T14:03:24Z"
-  }
-}
-```
+## Event vocabulary
 
-Rules for the recorder:
+| Kind | Purpose and required information |
+|------|----------------------------------|
+| `run_accepted` | Principal-derived owner, approved aliases, submission mode, frozen task/checker identities, required criterion IDs and specification digest, initial acceptance status, effective policy/limits, capture mode, versions, submission identity; initial inputs and exact frozen specification additionally in replay mode |
+| `run_started` | Scheduler admission, queue duration, start observation |
+| `model_planned` | Effect/turn ID, prepared-request fingerprint, request byte count, profile identity, input event references, effective sampling |
+| `model_finished` | Same effect ID, sent/unsent status, normalized reply/error classification, counts/timings; actual normalized input additionally in replay mode |
+| `tool_planned` | Effect/model/call IDs, tool name, validation/authorization decision; full arguments additionally in replay mode |
+| `tool_finished` | Same IDs, executed/denied/unsent status, duration, bounded result classification; eligible evidence ID/resource identity/completeness/digest bound to this observation sequence; exact observation additionally in replay mode |
+| `cancel_requested` | Authorized caller/reason and runner-visible cancellation observation |
+| `run_finished` | Execution phase/reason, acceptance status and bounded receipt, counters, elapsed time, exact candidate digest when present; result and acceptance projection saved in the same transaction |
+| `recovery_interrupted` | Startup marks unfinished work interrupted with an inconclusive checked receipt or unchecked freeform receipt; identify any pending effect as outcome unknown |
 
-- Write the trace file first. Add the lookup entry second. This order makes sure
-  the table never points to a missing file.
-- Do not change a trace after you write it. To correct a record, write a new trace
-  and link it with `prev`.
-- The ID scheme (random bytes or a hash) is a separate decision. See [decisions.md](decisions.md),
-  items 4 and 5.
+Within one run, only its runner assigns the next event sequence after acceptance.
+Admission creates sequence zero; recovery takes over only while holding the
+controller lock after the previous process is gone. Active-run events are never
+appended independently by tool threads, model clients, or stream subscribers.
 
-## Record the tool events too
+The cancellation API signals the owning runner, which records and handles the
+request. It does not race a second writer against that runner's sequence. Queued
+runs are owned by the scheduler and can terminate without starting a runner.
+Neither cancellation nor an observer creates a separate acceptance verdict.
 
-The first purpose of the trace log is to find out what went wrong. That purpose
-sets a requirement that the fields above do not yet meet.
+## Capture policy and final results
 
-Koil sees only the messages between K-Core and Kineserve. **A tool runs inside
-K-Core, so a tool call never crosses Koil.** With the fields above, a tool result
-survives only as text inside the next prompt. That is the wrong shape for
-debugging, because "what went wrong" is often "the tool returned something
-unexpected".
+**Metadata** is the default. Keep identifiers, aliases, classifications, byte
+counts, timing, policy versions, and outcomes. Do not retain prompts, intermediate
+model messages, tool arguments/results, or raw provider bodies. Fingerprints and
+filenames/identifiers can still disclose information; metadata is private too.
 
-So let K-Core write tool events into the same chain, with the same schema. Add two
-values to `direction`:
+**Replay** additionally stores the exact effective instruction text, initial
+prompt, tool definitions/versions, and normalized model/tool/error inputs that
+changed the core. Record each conversation input once. Include any provider
+continuation data needed by the supported adapter, under the same bounds.
+For checked tasks include the frozen task specification and the actual evidence
+observations needed by its checker. Evidence references reuse those observations;
+do not add another durable copy of each body.
 
-- `tool_call` — K-Core is about to run a tool. The payload holds the tool name and
-  the arguments.
-- `tool_result` — the tool finished. The payload holds the status, the result or
-  the error, the duration, and a flag if the result was cut.
+A final answer candidate is a bounded, owner-scoped result in `runs.result_json`,
+committed with its acceptance receipt and terminal event. Retain rejected and
+unchecked candidates as well as passed ones so an asynchronous client can inspect
+the outcome after restart. The result envelope identifies the exact candidate
+and, for a passed checked task, the harness-rendered verified fields. A terminal
+run without a candidate still has a receipt explaining its outcome.
 
-The log then holds the whole session, not only the model traffic. The `prev` chain
-still puts every event in order.
+`result_sha256` and the receipt's candidate digest hash the exact candidate UTF-8
+bytes after provider decoding, before trimming, parsing, JSON reserialization,
+or rendering. They do not hash the serialized result envelope. Keep original
+candidate bytes unchanged. A checked candidate above 8 KiB fails the output
+contract before parsing; retained candidates remain under the existing bounded
+model-response/result limits. Evidence digests cover exact observed tool-body
+bytes, and a full-content claim requires a complete observation.
 
-## Keep the log readable by hand
+An acceptance receipt is bounded to 8 KiB and binds owner/run, status/reason,
+contract/checker IDs and versions, specification digest, candidate digest when
+present, required criterion outcomes, evidence IDs/sequences/digests, scope, and
+assessment duration. Generate it through one typed path and validate agreement
+with the projection before the terminal transaction. Missing candidate/evidence
+is explicit, never replaced by a fabricated digest or a default pass.
 
-Manual reading is a valid way to use this log, and it needs no extra program. Two
-small choices keep it that way:
+Results and receipts may disclose sensitive file contents, resource identities,
+or rejected output even in metadata mode. Apply the same authorization and
+retention to every verdict. Public diagnostics use stable codes and sanitized
+bounded messages, never hidden expected values, unrelated paths, raw exceptions,
+or a backend error body. Metadata capture does not retain intermediate evidence
+bodies; its receipt is a historical verdict, not enough data to recompute one.
 
-- **Write the JSON with indentation, not on one line.** A trace is then readable
-  as soon as you open it.
-- **Make the lookup table do the sorting.** `trace_hash.json` already holds
-  `session` and `step`. Sort on those two fields and you have the file order for a
-  whole session, with no parser at all.
+Operational `tracing` output is a separate redacted channel. It contains no
+prompt/result text, credential headers, raw environment, or unbounded metric
+labels. SQLite does not encrypt records or implement application authorization;
+the service and operating-system permissions do that work.
 
-That covers one trace and one session. A reader program only earns its place when
-you want replay ([roadmap.md](roadmap.md), Phase 4), because replay must rebuild the loop state,
-not just show the files.
+## Recording a prepared request
 
-**If you want rewind, watch this constraint.** Rewind means: return to step N and
-continue differently. It works only if every input to the loop state appears
-somewhere in the chain. If K-Core holds state that never reaches a trace, rewind
-breaks at that point. The tool events above close the largest hole. Keep the rule
-in mind as you add fields: **if it changes the loop, record it.**
+Keep source provenance with the recorded inputs: stable source ID, purpose,
+origin/trust class, known revision or content fingerprint, and byte count in a
+deterministic order. Initially this covers configured instructions and user input;
+tool observations reference their originating call and the bytes actually seen.
+Store these bounded fields in the existing event payloads; no additional database
+table or copy of the conversation is required.
 
----
+Metadata capture retains only permitted source descriptors/hashes/counts; these
+remain private. Replay capture retains the exact selected input bytes once.
+Do not promote a workspace file to trusted instructions because of its name or
+location. Do not reread today's source files to recreate yesterday's request.
+Provenance means a source was supplied; it does not prove the model relied on it
+or that it caused a particular sentence.
 
+A human-edited export may be explicitly submitted as input to a new authorized
+run. It does not alter the original events, inherit another owner's authority,
+or resume an interrupted effect. Apply normal capture and input-size limits.
+
+Prepare provider bytes without I/O. Serialize the typed request deterministically
+for the adapter version and compute SHA-256 with a library. The journal records
+that fingerprint, byte count, profile/version, and references to the inputs used.
+The HTTP client sends those same prepared bytes after the intent commits.
+
+In replay mode, initial inputs plus recorded deltas allow the adapter to rebuild
+the body and compare its fingerprint. Metadata mode cannot do exact replay.
+Do not reconstruct from today's files or quietly substitute missing text.
+
+Do not store each growing full request as another snapshot. Across many turns,
+that repeatedly writes the same history. Do not store every streaming delta
+durably either: aggregate bounded deltas into the final normalized input.
+A failed/incomplete stream records its classification and counts. Actual bounded
+partial content may be retained only under replay capture. Displaying provisional
+text never upgrades metadata capture or authorizes retaining that text.
+
+Display deltas are provisional and are not replayed as tool actions. Exact UI
+timing replay is outside the initial format. Core replay concerns decision inputs
+and effects.
+
+## Commit and acknowledgement rules
+
+Configure/check `journal_mode=WAL` and `synchronous=FULL`. Pin a verified SQLite
+engine including the WAL-reset fix in 3.51.3 or a documented fixed backport.
+Keep WAL files on a local supported filesystem, not a network share.
+[SQLite WAL and version caveat](https://www.sqlite.org/wal.html)
+
+An acknowledgement means the transaction committed under that durability
+configuration, subject to SQLite's filesystem/storage guarantees. It does not mean
+the external action happened. A transaction is also not tamper evidence.
+[SQLite synchronous semantics](https://www.sqlite.org/pragma.html#pragma_synchronous)
+
+For each lifecycle change:
+
+1. Bound/serialize the event before queueing. Use a 2 MiB maximum serialized
+   event as an initial implementation bound. Reject overflow; do not silently
+   truncate a replay input and call it exact.
+2. Reserve command-count and byte capacity within the run deadline and journal
+   admission timeout. Accepted runners/ingress are themselves bounded, so
+   arbitrary blocked senders cannot accumulate elsewhere.
+3. The storage owner begins a transaction, appends the event, and updates the
+   relevant projection/result/acceptance/idempotency record together.
+4. It commits, then acknowledges. Count and byte reservations include the
+   executing command and are released only on completion or definitive rejection.
+5. The runner rechecks time/cancellation after acknowledgement before an external
+   effect begins.
+
+Ordinary journal admission uses the remaining execution budget. After a stop,
+use the smaller of the journal admission timeout and the remaining one-time
+5-second settlement grace from [performance](performance.md) for outcome and
+terminal bookkeeping. This avoids a zero remaining run budget preventing the
+timeout itself from being recorded. Grace expiry reports unresolved settlement;
+it cannot abandon an in-progress commit or release capacity early. The controller
+keeps supervising late completion and may finish its bounded bookkeeping later;
+no model/tool effect, new/repeated checker, or automatic retry is permitted during
+settlement.
+
+Finalization follows [verification](verification.md): acknowledge the complete
+model observation, release the model permit, and retain active-run ownership.
+Assess within the remaining execution budget using the bounded pure checker,
+then build the candidate/result and receipt. Reserve storage-inbox count/byte
+capacity before the final time/cancellation check. After that wait, an observed
+cancel/expiry changes the proposed execution outcome and makes checked acceptance
+inconclusive. Transfer the command synchronously through the reservation, with no
+unchecked await between arbitration and submission.
+
+One terminal transaction persists the candidate/result and exact digest, the
+acceptance receipt and both outcome projections, and the terminal event. It
+cannot publish a completed phase first and fill in the verdict afterward.
+There is no checker queue, post-terminal reassessment, or automatic repair turn.
+Observers and command callers receive a final outcome only after this combined
+commit; a persistence error never becomes a durable pass.
+
+**Acceptance into the storage inbox is the terminal cancellation boundary.**
+Before terminal-command submission, observed cancellation/expiry wins. After
+submission the controller settles that command: a later cancel/deadline cannot
+recall it or overwrite its committed outcome, including a passed receipt. A later
+cancel request returns the settled state. Retain active-run ownership and all
+still-running work until actual completion, even if an acknowledgement wait or
+the settlement grace expires.
+
+Start with individual transactions. If measured storage overhead matters, group
+a bounded number of ready commands into one transaction while preserving each
+run's order. A failed batch fails all its commands; none are acknowledged early.
+Do not change to weaker synchronization without a separately named decision and
+updated crash contract.
+
+The writer's inbox bounds are in [performance.md](performance.md). A storage
+failure closes admission and prevents further unrecorded effects. If an effect
+already completed, preserve that uncertainty; do not repeat it to make the log
+look complete. Telemetry/stderr can report persistence failure even when the
+journal cannot record its own failure.
+
+A task cancelled after a database command entered the inbox must still settle
+the acknowledgement, including when the command has not started executing. Do
+not release resources and assume rollback merely because its receiver stopped
+waiting. Nonterminal acknowledgements still require a fresh time/cancellation
+check before any subsequent effect or terminal-command submission.
+
+## Submission idempotency
+
+The API bounds the `Idempotency-Key` header and scopes it to authenticated
+`owner_id`. Hash a versioned serialization of the validated submission:
+the requested mode and model alias, requested lower limits, capture choice, and
+the mode-specific fields. Freeform includes workspace alias and exact prompt;
+checked includes task alias and rejects extra prompt/instructions, criteria,
+expected answers, or a workspace override. Any future typed task parameters must
+also enter this identity. Field order in incoming JSON does not change it.
+Keep the requested-submission hash separate from the frozen effective
+specification digest/version.
+
+After owner/alias authorization, perform a bounded existing-key lookup. A matching
+submission returns its existing run without acquiring new run capacity, even when
+the run queue is full or an operator has since edited the task profile. Return
+that run's original frozen identity, result, and verdict; do not resolve today's
+profile to rerun or reinterpret it. Recheck current owner access to the original
+run/resources. A different submission, including a changed mode or task alias,
+is a conflict. Reads still use bounded service/storage resources; unavailable
+storage can prevent a lookup. A new evaluation requires a new run/key.
+
+For an absent key, reserve scheduler capacity, then atomically insert the run,
+`run_accepted`, and the idempotency association. Recheck the key in this transaction
+to handle concurrent first submissions. Release unused reservation on a duplicate
+or definitive failure. Do not acknowledge new acceptance before commit.
+
+A controller-owned submission operation settles commit and scheduling independently
+of the HTTP receiver. Transfer that ownership before acceptance can commit. A
+disconnect between commit and dispatch/202 must not abandon the accepted run.
+An uncertain acknowledgement is settled by the controller, not assumed rolled back.
+
+Require a key for service submissions. CLI runs may use null. Keep the key at
+least for the configured minimum retry period (initially 24 hours from acceptance).
+Do not delete its run row earlier to satisfy count/byte pressure; close admission
+if necessary. After its record is eligible for purge and deleted, the service can
+no longer recognize that retry. This deduplicates run creation,
+not model requests or external tool effects.
+
+## Querying and exporting
+
+Every service query joins ownership, for example selecting events only through
+a run whose owner matches the verified principal. Use parameterized SQL and
+bounded pages; do not fetch every run/event into memory and filter afterward.
+
+Reserve the global/per-run observer capacity before subscribing. Subscribe to
+bounded notifications before the first catch-up query, then read bounded pages
+after the last durable sequence cursor. Notifications are wakeups to query the
+journal, not the authoritative event payload. Requery after wakeups; deduplicate
+by sequence and include a bounded periodic catch-up so a coalesced/lost wakeup
+cannot strand a terminal update. Never hold a database read transaction while
+waiting on or writing to a subscriber. A terminal run's stream ends after catch-up.
+The terminal projection includes the receipt from the same committed transaction;
+never emit a completed/accepted notification while acceptance is still pending.
+
+The `/events` API emits only a whitelisted public lifecycle/status projection,
+never raw `events.data_json` or private replay inputs. Optional transient display
+text is provisional and has no durable cursor/reconnect guarantee. Reconnection
+retrieves durable status after its authorized cursor; GET returns the final result.
+GET, list, CLI, and export expose both execution and acceptance outcomes and the
+derived `task_accepted`; successful retrieval or HTTP 202 admission is not a pass.
+Keep slow subscriber buffers separate from the journal queue and disconnect a
+subscriber at its bounds. Hold observer reservations until the stream ends;
+[performance](performance.md) defines both global and per-run caps.
+
+An export reconstructs a versioned readable JSON/JSONL document through a
+bounded stream. Export is a view, not the authoritative storage format. Private
+replay exports require owner permission. A metadata export must clearly state
+that exact replay, including recomputing acceptance, is unavailable. Rejected
+candidates receive the same private-result handling as passed candidates.
+
+## Recovery, retention, and backup
+
+Acquire the controller lock before opening for recovery. Let SQLite recover its
+transaction log. In one explicit recovery pass, mark queued, running, or
+cancelling runs interrupted and append `recovery_interrupted`. No automatic
+requeue, model regeneration, tool re-execution, or verification occurs. In the
+same transaction set pending checked acceptance to inconclusive and write a
+bounded interruption receipt using the frozen identities/criterion IDs. Freeform
+remains unchecked and also gets an interruption receipt. Any already committed
+terminal candidate, receipt, and event remain unchanged; an acknowledgement lost
+before the crash does not justify reassessment or a replacement verdict.
+
+A pre-terminal crash cannot leave a completed row without its receipt because
+they share one transaction. Recovery does not infer a pass from a complete model
+observation or reconstruct missing evidence from today's files. A missing receipt
+in an unsupported imported/legacy format is not acceptance; reject incompatible
+data until an explicit migration/import policy handles it.
+
+A committed planned effect without its finished event is outcome unknown.
+A crash can happen after an effect takes place but before its result commits.
+SQLite transactions cannot close that external-system gap.
+
+Retain completed/interrupted runs under an operator policy with count/byte/age
+budgets. Delete complete runs, not random event rows, only after their minimum
+idempotency window has elapsed. Retain active runs regardless of age. If space
+cannot satisfy these guarantees, reject new work; do not silently shorten the
+promised retry window. Document when eligible deletion loses deduplication memory.
+Keep active-run data and storage-headroom checks
+separate. Monitor database/WAL size and checkpoint behavior.
+
+Use SQLite's backup API or a verified stopped/checkpointed backup procedure.
+Do not copy only a live main database while ignoring its WAL. Restore into a
+separate private directory, validate schema/integrity/results, and rehearse the
+recovery policy before relying on a backup.
+[SQLite backup API](https://www.sqlite.org/backup.html)
+
+## Replay contract
+
+Replay loads a compatible versioned replay capture, initializes the pure core,
+supplies recorded model/tool/error/time/cancellation observations, and compares
+proposed effects plus prepared-request fingerprints. It never opens tool-target
+files, calls a model, or asks for new authority.
+
+Compatibility checks cover core/adapter/tool versions, schemas, and inputs.
+Reject missing/redacted data, ordering errors, or a fingerprint mismatch at the
+first divergence. A fixed live sampling seed is not replay.
+
+Verification replay additionally requires the exact frozen task specification,
+compatible checker/source-parser/output semantics, the exact candidate bytes,
+and the actual observed evidence bodies bound to their owner/run/effect/sequence.
+Rerun only the bounded pure checker against captured inputs and compare its
+criterion outcomes/receipt identities. A digest or stored verdict alone is not
+an evidence body. Missing inputs mean verification replay is unavailable; never
+substitute the current task profile or workspace contents. Freeform remains
+unchecked during replay.
+Compare semantic verdicts and bindings, not equality of a newly measured checker
+duration with the original recorded duration.
+
+Imported receipts are untrusted source data, not live accepted results. Replay
+can establish internal consistency against its captured inputs; it does not
+authenticate their origin or create a cryptographically signed attestation.
+
+Branching or resuming is a future execution feature, not a side effect of reading
+events. It must define changed policy/configuration, world-state changes,
+pending-effect reconciliation, and a new run identity.

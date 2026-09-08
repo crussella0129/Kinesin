@@ -1,164 +1,100 @@
-# Development process
+# Working on the harness yourself
 
-This document takes the useful parts of a software development life cycle and
-keeps only what helps one person. Most process exists to keep many people in
-agreement. You do not need that part. You do need the parts that catch mistakes
-and that keep a record of your reasons.
+Implement the [build guide](build-guide.md) one proof at a time. Its code is
+intentionally yours to write. The architecture and contracts are proposed
+requirements; a checked box means you have demonstrated behavior, not merely
+created a file with the expected name.
 
----
+## A repeatable session
 
-## 1. The cycle for one phase
+1. Select one guide step and state its observable success condition.
+2. Read only the linked material needed for that step. Try unfamiliar Rust
+   ownership/async behavior in a separate scratch project.
+3. Write the smallest change that satisfies the contract. Keep a compiling
+   checkpoint before widening the behavior.
+4. Run that step's normal proof and failure exercise. Use deterministic fakes
+   for failure timing and saved fixtures for protocol boundaries.
+5. Run the relevant format/lint/test checks, inspect the diff for credentials
+   and generated state, then commit a coherent result.
+6. Check the corresponding [roadmap](roadmap.md) box and leave a sentence about
+   the next unresolved proof.
 
-Each phase in [roadmap.md](roadmap.md) goes through the same five steps.
+Split a step into several commits if necessary. Ask for help with a diagnostic
+or a design decision while keeping implementation ownership: show the error,
+the smallest relevant code, your expected behavior, and your current hypothesis.
 
-```
-Ready  ->  Build  ->  Prove  ->  Record  ->  Merge
-```
+## Rust checkpoints
 
-- **Ready** — the decisions the phase needs are settled.
-- **Build** — write the code in small commits.
-- **Prove** — the tests for the phase pass.
-- **Record** — write down any decision you made and the reason.
-- **Merge** — the branch goes to `main`, and you tag it.
+Once the package exists:
 
----
-
-## 2. Definition of ready
-
-Do not start a phase until all three are true:
-
-1. Every decision that the phase needs is settled in
-   [decisions.md](decisions.md).
-2. You can say in one sentence what the phase produces.
-3. You know how you will prove that it works.
-
-Point 3 is the one people skip. If you cannot say how you will prove it, you do
-not yet understand the phase.
-
----
-
-## 3. Definition of done
-
-A phase is done when all of these are true:
-
-- The code does what the phase goal says.
-- Unit tests cover the pure core that the phase added.
-- At least one integration test proves the phase from end to end.
-- `cargo fmt --check`, `cargo clippy`, and `cargo test` all pass.
-- The documents are updated where the phase changed something.
-- Any new choice has its reason written next to it (design rule 6).
-
-**What proves each phase:**
-
-| Phase | The proof |
-|-------|-----------|
-| 0 | The saved request bodies work by hand, and the server log reports a native tool format |
-| 1 | Config loads from a real file; a trace round trip rebuilds a session; one real answer arrives |
-| 2 | Unit tests cover the loop state machine; the loop runs end to end against a fake model |
-| 3 | The context limit and the size caps have tests; a long run finishes without a break |
-| 4 | Replay of a recorded session produces the same actions |
-| 5 | The harness passes the same tests with the remote transport as with the local one |
-| 6 | The golden traces pass, and CI is green on every push |
-
----
-
-## 4. Branches and tags
-
-You work alone, so keep this light. Do not make it sloppy.
-
-- One branch for each phase, for example `phase-1-foundations`.
-- Small commits inside the branch.
-- Merge to `main` only when the definition of done is met.
-- Tag `main` at the end of each phase, for example `phase-1`.
-
-**Why.** `main` then holds only work that passed its own test. Your history
-becomes a list of states that each worked. That is what makes `git` useful to you
-in the same way that the trace chain is useful: you can go back to a known point.
-
----
-
-## 5. Commits
-
-- One logical change for each commit.
-- Write the subject in the imperative: "Add the trace writer", not "Added" or
-  "Adding".
-- Keep the subject short. Put the detail in the body.
-- The body says **why**. The diff already says what.
-- Never push a broken build to `main`.
-
----
-
-## 6. Decision records
-
-Design rule 6 says to write down the reason. Make it a habit with one file, not a
-system.
-
-Use [decisions.md](decisions.md) as the single log:
-
-- An open item lists the choices and a suggested start.
-- When you decide, mark the item settled, and write the reason and the date.
-- **Never delete a settled item.** A decision you later reverse is still useful,
-  because the reason tells you what you knew at the time.
-
-This is an Architecture Decision Record in its smallest useful form. The Koil
-entry is the worked example: the tunnel looked like too much work until the reason
-was written down, and then it was clearly correct.
-
----
-
-## 7. CI is the gate
-
-Run three commands on every push:
-
-```
-cargo fmt --check
-cargo clippy
+```text
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
-Treat a clippy warning as work to do, not as noise. It is the closest thing you
-have to a second reader.
+Run `cargo fmt --all` to apply formatting. During an edit, a focused test or
+`cargo check` provides faster feedback. Run the full small package checks at
+coherent checkpoints; do not run a model/GPU-dependent evaluation for every
+formatting change.
 
-CI runs the fast tests only. The tests marked `#[ignore]`, which need a real
-model, stay manual. See [testing.md](testing.md).
+Set a tested stable toolchain and edition in the implementation. The proposed
+`std::fs::File::try_lock` requires Rust 1.89 or later; dependency requirements
+may raise that floor. Record the actual tested versions rather than treating
+a date in a tutorial as a compiler specification.
+[Rust toolchains](https://rust-lang.github.io/rustup/concepts/toolchains.html),
+[Cargo rust-version](https://doc.rust-lang.org/cargo/reference/rust-version.html)
 
----
+Add CI at guide step 3. Initially it only builds and tests the available package;
+expand it with the implementation. Keep fast tests independent of model downloads,
+API credentials, GPUs, and remote services. Add native Windows and Linux
+filesystem/lifecycle checks when those boundaries exist and both platforms are
+claimed as supported. A WSL run does not prove native Windows behavior.
 
-## 8. What to skip, and why
+## Dependencies and interfaces
 
-These are normal in a team and pointless for one person. They exist to keep people
-in agreement, and there is one of you.
+Commit `Cargo.lock` for this application. Add a dependency when its guide step
+needs it; check current features and minimum Rust requirements before copying
+a command. Use maintained libraries for HTTP, TOML, JSON, SQLite, cryptography,
+and capability path resolution. Hand-writing the harness means writing its
+policy and orchestration, not implementing every underlying protocol yourself.
 
-- Sprints, story points, and stand-ups.
-- A formal review board.
-- A changelog, until somebody other than you uses the harness.
-- A branch protection rule that only you would approve.
+Keep provider JSON in `model.rs`, SQLite in `storage.rs`, and filesystem access
+in `tools.rs`. Prefer owned domain values across asynchronous boundaries.
+An `Arc` means shared ownership; it does not establish access authority or a
+capacity limit. Introduce a trait or separate crate after a real second use
+makes its contract clearer.
 
-**What replaces code review:** read your own diff before you commit. Let `clippy`
-and the tests be the second reader. A day between writing and reading also works
-well, and costs nothing.
+Document an architectural change in [decisions](decisions.md), update the
+authoritative contract, and then update the affected guide/checklist references.
+Do not leave two conflicting descriptions of the same behavior.
 
----
+## Tests and experiments have different jobs
 
-## 9. Traceability
+Unit and integration tests prove specified behavior under controlled inputs.
+Live evaluations measure whether a selected model/template can use that behavior
+to solve useful tasks. Benchmarks measure a named workload on a named machine.
+Neither passing fake tests nor a convincing live answer establishes all three.
 
-Keep a straight line from a goal to the proof:
+Follow [testing](testing.md) for invariants and evaluation gates. Save the
+baseline with its server/model/template identity, limits, hardware, offered load,
+latency distributions, useful completion count, errors, and rejected work.
+Change one important variable per comparison.
 
-```
-phase goal  ->  the tests that prove it  ->  the commit that closed it  ->  the tag
-```
+Keep a short experiment note: hypothesis, setup, observation, decision. Write
+“not measured” when it is not measured. Do not infer secure deployment or
+latency guarantees from a documentation review.
 
-When you return to this project after a break, that line tells you where you
-stopped and what was true when you stopped.
+## Repository hygiene
 
----
+Exclude credentials, private configs, model weights, runtime state, databases
+and their sidecars, exported captures, real workspace data, and benchmark inputs
+containing private content. Sanitize fixtures before committing them.
 
-## Study
+Use ordinary feature commits or branches. Version control protects committed
+history; it does not automatically preserve an uncommitted edit or secret that
+was accidentally published. Review `git diff` before staging.
 
-- **The Cargo Book, "cargo fmt", "cargo clippy", "cargo test":**
-  https://doc.rust-lang.org/cargo/commands/
-- **GitHub Actions quickstart** (the CI gate in section 7):
-  https://docs.github.com/actions/quickstart
-- **Rust API Guidelines** — useful when you decide what to make `pub`, which is
-  the same decision as what an integration test can reach:
-  https://rust-lang.github.io/api-guidelines/
+When changing a storage schema or authority contract, update the version and
+migration/compatibility tests deliberately. Replay incompatibility should be
+explicit; old captures must not silently acquire today's policy or tool behavior.

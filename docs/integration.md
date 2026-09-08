@@ -1,180 +1,335 @@
-# The non-Rust parts and how to connect them
+# Connecting the harness to its model
 
-Kinesin joins Rust code to three outside tools: `llama-server`, WireGuard, and
-WSL. This section explains each link.
+The Rust CLI talks directly to a manually started `llama-server` over HTTP.
+Keep the state machine synchronous; add Tokio and async reqwest for the first
+real network operation. Later, the same adapter supports several admitted runs
+and streaming. Kineserve is an optional process owner after those features work.
+There is no FFI or extra forwarding process in this path.
 
-## Rust to `llama-server` (the most important link)
+Follow the [build guide](build-guide.md) in order. The
+[loop contract](loop-and-tools.md), [security policy](security.md), and
+[resource limits](performance.md) define behavior the adapter must preserve.
+[Task acceptance](verification.md) distinguishes a complete provider answer from
+a checked task result.
 
-`llama-server` is a C++ program. It is a normal HTTP server. Your Rust code does
-**not** call C++ functions. Your Rust code starts the server and then talks to it
-over local HTTP. This keeps the two languages fully separate.
+## Prove one server and model combination
 
-**Step 1 — Start the server.** Kineserve runs `llama-server` with
-`std::process::Command`. Set these flags:
+Use a native build appropriate for the target OS/GPU, or build a pinned llama.cpp
+revision. Record server commit/build, backend, GGUF provenance and checksum,
+weight quantization, template, actual context capacity, and launch arguments.
+Native Windows is supported; WSL is a deployment choice.
+[llama.cpp build guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md)
 
-- `-m` — the path to your model in `models/`.
-- `--host 127.0.0.1` — bind to localhost only.
-- `--port 8080` — the port (the default is 8080).
-- `-c` — the context size.
+Start with one slot. This is a command shape, not a command to run with a literal
+placeholder:
 
-**Step 2 — Wait for ready.** The model takes time to load. Do not send a request
-too early. Poll `GET /health` until it returns "ok". Then send real requests.
+```text
+llama-server -m <model.gguf> --host 127.0.0.1 --port 8080 -c 4096 -np 1 --jinja --no-context-shift
+```
 
-**Step 3 — Send a request.** The standard library has no HTTP client. You write a
-small one over `std::net::TcpStream`:
+On Windows the executable may be `llama-server.exe`. Supply a real quoted model
+path and choose acceleration flags from that build's help. Check startup logs
+for the actual context and template. Do not infer readiness from an open socket.
 
-1. Open a `TcpStream` to `127.0.0.1:8080`.
-2. Write the request line, for example `POST /completion HTTP/1.1`.
-3. Write the headers. You must send `Host:`, `Content-Type: application/json`,
-   and `Content-Length:` with the exact byte length of the body.
-4. Write a blank line.
-5. Write the JSON body.
-6. Read the response bytes. Find the blank line that ends the headers. The JSON
-   body follows it.
+Before connecting Rust, exercise these exchanges using an ordinary HTTP client.
+Save bounded, sanitized request/response fixtures under `tests/fixtures` when
+you implement; that directory does not yet contain the completed test suite.
 
-**Step 4 — Choose the endpoint.**
+| Exchange | Required evidence |
+|----------|-------------------|
+| `GET /health` | Ready status from the actual server, with loading/failure distinguished |
+| `GET /v1/models` | A verified model identifier for the profile |
+| Plain `POST /v1/chat/completions` | One complete answer and understood finish reason |
+| Same endpoint with one read-only tool | Identified tool call with valid argument encoding |
+| Assistant tool call plus correlated tool result | Model uses the supplied result in its next reply |
+| Greeting with tools available | Final answer can arrive without any tool call |
+| Too-large prompt and generation near the context boundary | Context-error and truncation cases are classified without executing tools |
+| Streaming text and streaming tool reply | Complete framing, finish marker, and assembly behavior verified |
 
-- `POST /completion` takes a single `prompt` field and returns a `content` field.
-  It is the simplest to start with.
-- `POST /v1/chat/completions` takes a `messages` array of role and content pairs.
-  It matches the chat shape and the OpenAI format. Use it when you need multi-turn
-  chat.
+The server documents these APIs but does not make a blanket compatibility
+guarantee for every OpenAI-shaped client or model. `--jinja` enables template
+support; successful tool use still depends on the model/template combination.
+Verify it again when the server, model, or template changes.
+[Server API](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md),
+[function-calling guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md)
 
-**Key request fields:** `prompt` (or `messages`), `n_predict` (max tokens),
-`temperature`, and `stream`. Set `stream` to false at first, so you read one
-whole answer.
+## Add one async HTTP adapter
 
-**Key response fields:** `content` (the text), `stop_type` (why it stopped), and
-`timings` (performance). For the chat endpoint, read
-`choices[0].message.content`.
+Use `serde` and `serde_json` for typed wire values. A concrete `ModelClient` enum
+with `Scripted` and `Http` variants is sufficient initially. Give it ordinary
+async methods and keep provider DTOs inside `model.rs` (the Koil responsibility).
+The core consumes domain observations and never depends on reqwest or provider
+JSON. Introduce a trait
+only when a real caller benefits from it; a dynamically dispatched async trait
+is not a prerequisite for this project.
 
-**Step 5 — Use the server's tool support.** `llama-server` can format and parse
-tool calls for you. This matters a lot, and [loop-and-tools.md](loop-and-tools.md), how the model asks for an action explains why. The short
-version:
+Create a configured `reqwest::Client` once per endpoint/security profile and
+clone it when a runner needs a handle. The client already contains a connection
+pool and shared ownership; an extra `Arc<Client>` is unnecessary. Keep-alive
+reuse avoids repeated connection setup but does not limit concurrent requests.
+[reqwest Client](https://docs.rs/reqwest/latest/reqwest/struct.Client.html)
 
-- Start the server with the `--jinja` flag. This makes the server use the model's
-  own chat template.
-- Send your tool list in a `tools` array on `/v1/chat/completions`. Each entry has
-  a `type`, and a `function` with a `name`, a `description`, and a JSON Schema in
-  `parameters`.
-- The server formats those tools the way the model was trained to receive them. It
-  then parses the reply and returns `tool_calls` in the response message, with
-  `finish_reason` set to `"tool"`.
-- The server log tells you whether it used a **native** format for your model or
-  the **generic** fallback. Native uses fewer tokens and works better. If the log
-  says generic, change the model.
-- Parallel tool calls are off by default. Turn them on with
-  `"parallel_tool_calls": true` only when you need them.
+The configured `base_url` is an origin such as `http://127.0.0.1:8080`, without
+`/v1`. Append the fixed chat path in the adapter. Model output cannot change the
+endpoint. The initial policy is:
 
-**Step 6 — Constrain the output when you need a fixed shape.** Send a
-`json_schema` or a `response_format` field on the chat endpoint, or a `grammar`
-field on `/completion`. llama.cpp turns the schema into a GBNF grammar and allows
-only tokens that fit it. The model then cannot produce malformed JSON. Note two
-limits: the schema does **not** go into the prompt, so you must still describe the
-shape in words; and only a subset of JSON Schema is supported.
+| HTTP behavior | Required configuration |
+|---------------|------------------------|
+| Redirects | Reject; a reply cannot choose a new model destination |
+| Proxy | Disable automatic system/environment proxy use for the private model profile |
+| Retries | Explicitly disable automatic retries for generation attempts |
+| Connection | `connect_timeout_s` from the model profile |
+| Total exchange | `request_timeout_s`, capped by remaining run time, including response-body consumption |
+| Read stall | `read_timeout_s`, in addition to the total deadline |
+| TLS | Validate certificates and hostname for HTTPS; never disable verification to make a connection work |
+| Response size | Bound decoded bytes while consuming the body |
 
-**Study.**
-- llama.cpp function calling guide (the `--jinja` flag, the `tools` array,
-  `tool_calls`, native and generic formats, supported models):
-  https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md
-- llama.cpp GBNF grammars and JSON schema conversion (the supported subset and the
-  performance notes):
-  https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md
+These settings require explicit choices: current reqwest defaults include
+redirects, automatic proxy behavior, no total/read deadline, and protocol-NACK
+retries. Use the selected release's documented feature names and lock it in
+`Cargo.lock`. Do not copy dependency flags from an older tutorial unchecked.
+[ClientBuilder](https://docs.rs/reqwest/latest/reqwest/struct.ClientBuilder.html),
+[retry::never](https://docs.rs/reqwest/latest/reqwest/retry/fn.never.html)
 
-**Study.**
-- llama.cpp server README (endpoints, flags, and fields):
-  https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md
-- llama.cpp main README (how to build `llama-server`):
-  https://github.com/ggml-org/llama.cpp
-- MDN "HTTP Messages" (the request and response structure) and "Content-Length":
-  https://developer.mozilla.org/docs/Web/HTTP/Messages
-- Rust book, Chapter 21.1 — the same read-and-parse pattern for a raw HTTP socket.
+Let the HTTP library handle HTTP message framing. Do not split a socket response
+at a blank line and assume the rest is the complete body; persistent connections
+and chunked transfer have protocol rules.
+[HTTP/1.1 body framing](https://www.rfc-editor.org/rfc/rfc9112.html#section-6.3)
 
-## Rust to WireGuard (Koil)
+## Prepare once, dispatch under the runner's authority
 
-There are two ways to build Koil. Pick one.
+The model request sequence is deliberate:
 
-**Path A — Wrap the system tools (recommended start).** WireGuard has two
-command-line tools: `wg` and `wg-quick`. Koil uses `std::process::Command` to run
-them. Koil makes the keys, writes a config file, and runs `wg-quick up`. This
-path is small Rust code and real, tested WireGuard.
+1. Prepare the endpoint and exact serialized body without I/O. Validate its
+   profile, conversation shape, request-byte bound, and applicable budgets.
+2. Authorize the model effect and its data destination. Wait for model capacity
+   within the shorter model-queue timeout and remaining run deadline.
+3. Send the intent to the journal writer and await its committed acknowledgement.
+   Store the appropriate metadata or opt-in replay delta described in
+   [traces](traces.md), rather than copying the entire request each turn.
+4. Recheck cancellation and the deadline. If dispatch is no longer allowed,
+   resolve the recorded intent with a before-send outcome and release capacity.
+5. Send exactly the already prepared bytes. Read the bounded result, classify
+   it, and settle the outcome through the runner's journal path.
+6. Only then let the core consume the normalized observation. Keep the exchange
+   permit until model-observation settlement; release it before executing any
+   subsequent tools or the task-acceptance checker. An ordinary complete answer
+   is an answer candidate, not an accepted task.
 
-**Path B — A userspace implementation in Rust (advanced).** Koil embeds the
-WireGuard protocol in the Rust process. No system tools and no `wg-quick` are
-needed for the tunnel logic. WireGuard needs cryptography: Curve25519,
-ChaCha20-Poly1305, BLAKE2s, and the Noise handshake. The standard library has no
-cryptography. So this path needs an outside library; it cannot be standard
-library only. There are two ways:
+The adapter does not write database events independently. No database or
+filesystem operation blocks a Tokio worker. A delayed journal acknowledgement
+does not permit dispatch using an expired run budget.
 
-- **B1 — Use a userspace WireGuard crate (recommended for Path B).** Add a Rust
-  library that already implements the protocol, and call it from Koil. Two good
-  options:
-  - **GotaTun** — a userspace WireGuard in Rust from Mullvad, forked from
-    BoringTun and now their standard for desktop. https://github.com/mullvad/gotatun
-    and the crate at https://lib.rs/crates/gotatun . This fits your Rust-first
-    goal, and it means Koil does not hand-write crypto.
-  - **boringtun** — Cloudflare's userspace WireGuard in Rust, the parent of
-    GotaTun. https://github.com/cloudflare/boringtun
-  - Note: the tunnel still needs a TUN network device. That step may need extra
-    privileges on the host.
-- **B2 — Hand-write the protocol.** You write the handshake and the crypto calls
-  yourself. This is a large task and is easy to get wrong. Do not start here; read
-  GotaTun and boringtun as study references instead.
+Classify timeout, transport failure, non-success HTTP status, oversized body,
+malformed JSON, unsupported shape, incomplete stream, and normal completion
+distinctly. Bound error bodies and error strings too. A timeout records an
+abandoned attempt; it does not establish that server inference ended. Automatic
+retry could consume capacity and create a second generation for an uncertain
+first attempt.
 
-**The rule: use WireGuard, do not rewrite it.** The word "custom" in the first
-draft meant a custom *connector*, not a custom *protocol*. Path A and Path B1 both
-give you the private Koil-to-Koil link that the design needs. Path B2 gives you
-nothing more, and it puts security-critical code in your hands. Choose Path A or
-Path B1.
+## Finalize an answer candidate
 
-Suggested order for Koil: Path A first (small and tested), then Path B1 with
-GotaTun if you want the tunnel inside the Rust process and a Koil that needs no
-outside tools.
+After the model observation commits, release model capacity and keep the runner's
+active reservation. For freeform work, acceptance is `unchecked`. For a checked
+task, invoke the frozen `FileFieldsV1` checker from [verification](verification.md)
+inline over the candidate and actual runner-owned file evidence. The checker
+has no HTTP call, file reread, worker queue, or automatic repair loop.
 
-**Reachability.** WireGuard moves with a peer when its address changes. But it
-does not open a path through NAT by itself. The link is simple when one side has
-a fixed, reachable address, and the other side calls out to it. So make the
-bigger machine the reachable side: give it a public address or a forwarded port,
-and let your local Koil start the connection. Two machines that both sit behind
-home routers need a relay, which is work you do not need.
+Its initial bounds are 1–4 criteria, 8 KiB each for serialized specification,
+checked candidate, and receipt, and 64 KiB retained evidence per run, alongside
+the existing tool/history bounds. A model-provided citation or digest cannot
+create evidence. The runner's observed bytes and identities determine what the
+checker may use. Do not issue another model request to judge its own answer.
 
-**Study.**
-- WireGuard Quick Start (keys, config, `wg-quick up`):
-  https://www.wireguard.com/quickstart/
-- WireGuard Conceptual Overview (cryptokey routing, peers, allowed IPs):
-  https://www.wireguard.com/#conceptual-overview
-- The `wg` and `wg-quick` man pages (the exact flags Koil will call):
-  https://man7.org/linux/man-pages/man8/wg.8.html and
-  https://man7.org/linux/man-pages/man8/wg-quick.8.html
-- WireGuard Protocol & Cryptography and the Whitepaper (only for Path B):
-  https://www.wireguard.com/protocol/ and https://www.wireguard.com/papers/wireguard.pdf
+Check cancellation and remaining execution time before and after assessment.
+The settlement grace permits recording existing outcomes, never launching or
+repeating assessment. Before the terminal command enters the storage inbox,
+apply observed cancellation/expiry instead of publishing an accepted task.
+Once that command is accepted by the inbox, settle it without recall or a second
+terminal write; a later cancellation/deadline cannot overwrite committed state.
 
-## Windows to Linux tools (WSL)
+Commit candidate/result, fingerprint, acceptance receipt/projection, and terminal
+event in one transaction. Only that committed result is final. The execution
+phase `completed` alone is insufficient: `task_accepted` requires both
+`completed` and acceptance `passed`. GET, CLI, export, and terminal SSE carry
+both outcomes. An observer closes after catching up with the atomic receipt,
+not when the HTTP model response ends.
 
-`llama.cpp` and the WireGuard tools run more simply on Linux. On Windows, use
-WSL2 (Windows Subsystem for Linux, version 2). WSL2 runs a real Linux kernel next
-to Windows.
+## Initial chat request policy
 
-**The `preflight.ps1` flow:**
+| Field | Policy |
+|-------|--------|
+| `model` | Identifier verified for the configured server profile |
+| `messages` | Installed instructions, freeform user input or the frozen checked-task instruction, and complete retained conversation groups |
+| `stream` | `false` for the first exchange; `true` at the streaming milestone |
+| `n` | `1`; accept only the expected choice at index 0 |
+| `max_tokens` | Map from the project's `max_output_tokens` limit |
+| Sampling/template options | Explicit values from the tested model profile |
+| `tools` | Advertise only capabilities granted to this run |
+| `tool_choice` | `"auto"` when tools are advertised |
+| `parallel_tool_calls` | Explicitly `false`; still validate any returned batch |
+| `grammar`, `json_schema`, `response_format` | Omit for the initial tool loop |
 
-1. Detect the operating system. If it is Windows, continue. If it is Linux, use
-   the package manager directly.
-2. Check for WSL. If it is missing, run `wsl --install`.
-3. Inside WSL, update the package list.
-4. Inside WSL, install the build tools, clone and build `llama.cpp`, and install
-   `wireguard-tools` with `apt`.
+Keep sampling advice with a particular model and template; there is no universal
+temperature or thinking flag. The provisional output budget of 512 tokens may
+be too small for some reasoning models. Evaluate an appropriate supported mode
+or change the explicit budget after measuring; truncation remains an incomplete
+outcome, never execution completion or task acceptance.
 
-**Networking note.** WSL2 uses its own virtual network. A server that listens
-inside WSL2 is often reachable from Windows on `localhost`, but not always. If
-Kineserve runs inside WSL and a Windows-side part connects to it, read the WSL
-networking page first:
-https://learn.microsoft.com/windows/wsl/networking
+Preserve the assistant message containing tool calls and append each `tool`
+result with its original `tool_call_id`. Decode the JSON inside
+`function.arguments`, then validate its type, limits, and capability policy.
+`finish_reason` and reply shape are interpreted together. An unknown or
+incomplete finish state cannot dispatch tools. The canonical examples and
+classification rules live in [loop-and-tools.md](loop-and-tools.md).
 
-**Study.**
-- WSL install: https://learn.microsoft.com/windows/wsl/install
-- WSL basic commands: https://learn.microsoft.com/windows/wsl/basic-commands
-- WSL file system interop (reach Windows files from Linux and the reverse):
-  https://learn.microsoft.com/windows/wsl/filesystems
+A checked task's final content must satisfy its typed output contract. Complete
+chat framing and a recognized `stop` merely produce a candidate for that check;
+well-framed narrative may still fail the output contract. The initial checked
+task supplies the required shape in its frozen instruction and needs no special
+provider grammar or `response_format` option.
 
----
+Custom grammar plus tools has backend-specific restrictions. Keep it out of the
+baseline and test a separate, tools-disabled structured-final-answer operation
+if a later use case needs it. Do not assume that a valid generated JSON object
+is authorized or semantically correct.
+[llama.cpp request parsing](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/server-common.cpp)
 
+## Assemble streaming replies completely
+
+Incrementally process body bytes into SSE frames and provider deltas. A network
+chunk can end in the middle of UTF-8, a line, an event, or an argument string.
+Use a maintained parser where practical and test your integration with fragmented
+fixtures. SSE supports comments, several line endings, and multiple `data`
+lines; an event is dispatched at its framing boundary.
+[SSE framing](https://html.spec.whatwg.org/multipage/server-sent-events.html#parsing-an-event-stream)
+
+Set explicit implementation bounds before appending: at most 64 KiB for an
+unfinished SSE frame, 64 KiB for accumulated tool arguments in one reply, and
+the configured `max_response_bytes` for total decoded response bytes. The
+history and tool-call limits still apply after assembly. Count content,
+reasoning/extension fields, and ignored material toward the response-byte cap.
+Reject an oversized frame even if the total-response allowance is larger.
+Check the decoder's internal buffering as well as its emitted events. A library
+that exposes only completed events needs a bounded input/framing guard or a
+documented internal frame cap; checking size after it emits cannot enforce the
+64 KiB unfinished-frame limit.
+
+Correlate tool deltas by the provider's choice/call index and IDs. Require one
+consistent completed name/ID per call, append argument fragments in order, and
+reject contradictions or excess calls. A valid JSON prefix is insufficient:
+wait for the tested terminal protocol, the complete reply, and batch validation
+before authorizing any tool. Require the pinned provider's terminal marker
+(such as `[DONE]`) as well as a recognized completion state. EOF or a broken
+stream without that completion is incomplete; it may not turn into an answer or
+a tool effect by accident.
+
+Test split UTF-8, split `data:` lines, comments, multi-line data, several events
+in one chunk, interleaved call deltas, missing IDs, duplicate terminal markers,
+truncated arguments, stalls, oversized frames, and early EOF. A byte-arrival
+timeout alone cannot catch an endless drip, so retain the total deadline.
+
+Display text as provisional through bounded observer queues. Persist the
+normalized completed observation once, then authorize the next effect or assess
+an answer candidate. Provisional text remains provisional throughout checking;
+only the atomic terminal result and receipt settle acceptance. Never block
+response consumption indefinitely on a slow terminal or subscriber.
+[Performance](performance.md) defines observer limits and permit lifetimes.
+
+## Verify concurrent inference capacity
+
+The first server baseline has one slot, so the harness uses one in-flight model
+exchange even though its proposed general setting is two. At the concurrency
+milestone, a candidate command is:
+
+```text
+llama-server -m <model.gguf> --host 127.0.0.1 --port 8080 -c 8192 -np 2 --jinja --no-context-shift
+```
+
+Verify the installed build's resulting capacity before enabling two model
+requests. Do not assume each slot now has 4,096 tokens. Upstream context/KV
+allocation options evolve, including unified-cache and per-slot limits. Inspect
+startup logs and protected slot/metadata diagnostics where the selected build
+supports them, then send simultaneous prompts near the intended context limit.
+Never expose those diagnostics to untrusted service callers.
+
+The inference server owns slots and continuous batching. The harness owns
+session admission, model permits, policy, and deadlines. More active agent runs
+do not require the same number of active inference slots: some runners may be
+executing tools or waiting. Benchmark latency and useful throughput together.
+[Server options](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md),
+[batching internals](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README-dev.md)
+
+For context preflight, probe the pinned server's chat input-token counting
+extension. Include the same tools and template options as generation and reserve
+output space against the actual configured slot context. Bare text tokenization
+does not necessarily include chat/template/tool overhead. Bound the counting
+request and include its time in the run deadline; it is another network
+operation, not a free local check. If unsupported, retain a conservative profile
+and explicit context-error handling rather than silently shifting history.
+[Chat token counting](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#post-v1chatcompletionsinput_tokens-token-counting)
+
+## Optional backend acceleration
+
+Speculative decoding is a backend capability, not a second model call added to
+the runner. OoO-Spec needs target candidate verification and cache/tokenizer
+integration; the ordinary chat endpoint supplies no such hook. If an independently
+verified backend supports it, record that mode in its compatibility profile and
+repeat the text/tool/stream, context, cancellation, and concurrent-load checks.
+Do not advertise OoO-Spec support for the current llama.cpp profile merely because
+both systems expose HTTP. [Research boundary](paper-review.md#speculation-belongs-to-inference)
+
+Treat any sidecar receiving dialogue/tool schemas, or historical-call cache, as
+part of the approved data flow. Apply owner isolation, capture/retention policy,
+request/schema size limits, and aggregate compute admission. A small returned
+hint does not mean a small or non-sensitive sidecar request. The harness still
+waits for a complete valid reply and authorizes each effect itself. Backend
+verification of draft tokens also does not replace task-contract checking or
+permit an unchecked answer to acquire a passed receipt.
+
+## Optional Kineserve ownership
+
+Add managed startup after concurrent runs and shutdown work. Attach mode always
+remains available and never terminates the external server. Managed mode owns
+one directly launched child shared by the controller, not one child per run.
+Cancelling one session must not kill inference for every other session.
+
+Use `tokio::process::Command` with separate arguments and retain the child
+handle. Inherit output or drain bounded pipes continuously. Poll readiness under
+a startup deadline while checking early process exit. A healthy unrelated
+server on a conflicting port is not proof that the owned child started.
+
+On controller shutdown or startup failure, stop and wait for the owned child.
+Tokio documents that a dropped child normally keeps running; `kill_on_drop` is
+only a fallback, and explicit cleanup remains necessary. Direct child ownership
+does not supply portable process-tree cleanup. Windows Job Objects, wrappers,
+and WSL bridges require separate ownership tests.
+[Tokio process Child](https://docs.rs/tokio/latest/tokio/process/struct.Child.html),
+[Command options](https://docs.rs/tokio/latest/tokio/process/struct.Command.html)
+
+## Private remote inference and later shared service
+
+An OS-managed WireGuard tunnel can make a model on another host reachable while
+tools continue running beside the harness. Keep that data-flow distinction
+visible to the operator: file results sent to inference leave the tool machine.
+Configure the tunnel outside the Rust program. Bind/firewall the model endpoint
+for the intended private path and verify rejection from unintended networks.
+Keep tunnel keys and API credentials outside prompts and journal payloads.
+[WireGuard quick start](https://www.wireguard.com/quickstart/),
+[Windows tunnel service](https://git.zx2c4.com/wireguard-windows/about/docs/enterprise.md)
+
+The later shared Kinesin API uses one controller behind TLS, authenticated
+owner-scoped run access, and explicit service admission limits. This is a
+different boundary from a private model connection. WireGuard supplies network
+connectivity and encryption; it does not assign application run ownership or
+fairly schedule tenants. Follow [security](security.md) and
+[performance](performance.md) before exposing the service.
+
+If mixing native Windows and WSL, test the actual NAT/mirrored network mode and
+connection direction. Do not broaden listener binding merely to work around an
+unexplained connection failure.
+[Microsoft WSL networking](https://learn.microsoft.com/en-us/windows/wsl/networking)
+
+These instructions describe intended integration work. No server was launched,
+model downloaded, compatibility fixture captured, or throughput measured during
+this documentation review.
