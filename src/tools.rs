@@ -1,4 +1,4 @@
-//! Two bounded read operations behind a private filesystem capability.
+//! Three bounded read operations behind a private filesystem capability.
 
 use std::io::{ErrorKind, Read};
 use std::path::Path;
@@ -12,6 +12,13 @@ use crate::config::{ToolName, validate_id, validate_relative_path};
 pub const MAX_TOOL_BYTES: usize = 8_192;
 pub const MAX_VISITED_ENTRIES: usize = 256;
 pub const MAX_ARGUMENT_BYTES: usize = 65_536;
+/// A literal search term. Not a pattern language: an expression engine would be
+/// a new dependency and an unbounded matching cost on model-selected input.
+pub const MAX_QUERY_BYTES: usize = 128;
+/// Directory levels a search may descend below its requested path.
+pub const MAX_SEARCH_DEPTH: usize = 4;
+/// Bytes read from any single file while searching.
+pub const MAX_SEARCH_FILE_BYTES: usize = 65_536;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -73,6 +80,10 @@ impl ToolResult {
 #[serde(deny_unknown_fields)]
 pub struct TypedToolArgs {
     pub path: String,
+    /// Present only for `search_files`. Absent for the single-path tools, so an
+    /// unexpected term on `read_file` still fails the typed contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
 }
 
 impl TypedToolArgs {
@@ -83,8 +94,26 @@ impl TypedToolArgs {
         let mut args: Self =
             serde_json::from_str(raw).map_err(|_| "invalid tool arguments or fields")?;
         args.path = normalized_path(&args.path)?;
+        if let Some(query) = &args.query {
+            args.query = Some(validated_query(query)?);
+        }
         Ok(args)
     }
+}
+
+/// A search term is literal text. Reject empty terms, oversized terms, and
+/// control characters, which cannot appear in a matched line the caller reads.
+pub fn validated_query(query: &str) -> Result<String, String> {
+    if query.is_empty() {
+        return Err("search term cannot be empty".into());
+    }
+    if query.len() > MAX_QUERY_BYTES {
+        return Err("search term exceeds its byte limit".into());
+    }
+    if query.chars().any(char::is_control) {
+        return Err("search term cannot contain control characters".into());
+    }
+    Ok(query.to_owned())
 }
 
 pub fn normalized_path(path: &str) -> Result<String, String> {
@@ -132,6 +161,19 @@ impl WorkspaceReader {
         max_bytes: usize,
         evidence_id: Option<&str>,
     ) -> ToolResult {
+        self.execute_with_query(name, path, None, max_bytes, evidence_id)
+    }
+
+    /// `query` is required by `search_files` and rejected by the other tools,
+    /// so a term can never be silently ignored on a single-path operation.
+    pub fn execute_with_query(
+        &self,
+        name: ToolName,
+        path: &str,
+        query: Option<&str>,
+        max_bytes: usize,
+        evidence_id: Option<&str>,
+    ) -> ToolResult {
         if max_bytes < 256 {
             return ToolResult::failure(
                 ToolStatus::Error,
@@ -147,9 +189,39 @@ impl WorkspaceReader {
                 "Use a supported relative workspace path.",
             );
         }
+        let query = match (name, query) {
+            (ToolName::SearchFiles, Some(query)) => match validated_query(query) {
+                Ok(query) => Some(query),
+                Err(_) => {
+                    return ToolResult::failure(
+                        ToolStatus::Denied,
+                        "invalid_query",
+                        "Provide a literal search term within its byte limit.",
+                    );
+                }
+            },
+            (ToolName::SearchFiles, None) => {
+                return ToolResult::failure(
+                    ToolStatus::Denied,
+                    "missing_query",
+                    "search_files requires a literal query term.",
+                );
+            }
+            (_, Some(_)) => {
+                return ToolResult::failure(
+                    ToolStatus::Denied,
+                    "unexpected_query",
+                    "Only search_files accepts a query term.",
+                );
+            }
+            (_, None) => None,
+        };
         match name {
             ToolName::ReadFile => self.read_file(path, limit, evidence_id),
             ToolName::ListFiles => self.list_files(path, limit),
+            ToolName::SearchFiles => {
+                self.search_files(path, &query.expect("search query checked above"), limit)
+            }
         }
     }
 
@@ -283,6 +355,161 @@ impl WorkspaceReader {
         debug_assert!(result.encoded().expect("fixed result shape").len() <= limit);
         result
     }
+
+    /// Bounded literal search below `path`. Returns matched lines, never the
+    /// whole file, and never an evidence reference: a partial view cannot
+    /// certify that a field equals a file's value. Read the file to cite it.
+    fn search_files(&self, path: &str, query: &str, limit: usize) -> ToolResult {
+        let mut result = ToolResult::success(None);
+        let overhead = result.encoded().expect("fixed result shape").len();
+        let body_budget = limit - overhead;
+        let mut matches: Vec<SearchMatch> = Vec::new();
+        let mut body_cost = 2; // The array's brackets, before escaping into body.
+        let mut visited = 0usize;
+        let mut incomplete = false;
+        // Explicit stack instead of recursion: the depth bound is then a value
+        // this function owns rather than a property of the call stack.
+        let mut pending = vec![(path.to_owned(), 0usize)];
+        while let Some((current, depth)) = pending.pop() {
+            let dir = match self.root.open_dir(&current) {
+                Ok(dir) => dir,
+                // A directory that disappears mid-search is incompleteness, not
+                // a failure of the whole search.
+                Err(_) if current != path => {
+                    incomplete = true;
+                    continue;
+                }
+                Err(error) => return io_failure(error.kind()),
+            };
+            let entries = match dir.entries() {
+                Ok(entries) => entries,
+                Err(_) if current != path => {
+                    incomplete = true;
+                    continue;
+                }
+                Err(error) => return io_failure(error.kind()),
+            };
+            for item in entries {
+                if visited >= MAX_VISITED_ENTRIES {
+                    incomplete = true;
+                    break;
+                }
+                visited += 1;
+                let Ok(entry) = item else {
+                    incomplete = true;
+                    continue;
+                };
+                let raw_name = entry.file_name();
+                let Some(name) = raw_name.to_str() else {
+                    incomplete = true;
+                    continue;
+                };
+                let joined = if current == "." {
+                    name.to_owned()
+                } else {
+                    format!("{current}/{name}")
+                };
+                if normalized_path(&joined).is_err() {
+                    incomplete = true;
+                    continue;
+                }
+                let Ok(file_type) = entry.file_type() else {
+                    incomplete = true;
+                    continue;
+                };
+                if file_type.is_dir() {
+                    if depth >= MAX_SEARCH_DEPTH {
+                        incomplete = true;
+                    } else {
+                        pending.push((joined, depth + 1));
+                    }
+                    continue;
+                }
+                // Symlinks and devices are never followed or opened here. The
+                // opened-handle check below still decides what was actually read.
+                if !file_type.is_file() {
+                    continue;
+                }
+                match self.scan_file(&joined, query, &mut matches, &mut body_cost, body_budget) {
+                    ScanOutcome::Continued => {}
+                    ScanOutcome::Skipped => incomplete = true,
+                    ScanOutcome::BudgetReached => {
+                        incomplete = true;
+                        pending.clear();
+                        break;
+                    }
+                }
+            }
+        }
+        matches.sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
+        result.truncated = incomplete;
+        result.body = serde_json::to_string(&matches).expect("fixed match shape");
+        debug_assert!(result.encoded().expect("fixed result shape").len() <= limit);
+        result
+    }
+
+    fn scan_file(
+        &self,
+        name: &str,
+        query: &str,
+        matches: &mut Vec<SearchMatch>,
+        body_cost: &mut usize,
+        body_budget: usize,
+    ) -> ScanOutcome {
+        let Ok(file) = self.root.open(name) else {
+            return ScanOutcome::Skipped;
+        };
+        match file.metadata() {
+            Ok(metadata) if metadata.is_file() => {}
+            _ => return ScanOutcome::Skipped,
+        }
+        let mut bytes = Vec::new();
+        if file
+            .take(MAX_SEARCH_FILE_BYTES as u64)
+            .read_to_end(&mut bytes)
+            .is_err()
+        {
+            return ScanOutcome::Skipped;
+        }
+        // Binary or non-UTF-8 content is reported as incompleteness rather than
+        // searched with replacement characters that were never in the file.
+        let Ok(text) = std::str::from_utf8(&bytes) else {
+            return ScanOutcome::Skipped;
+        };
+        for (index, line) in text.lines().enumerate() {
+            if !line.contains(query) {
+                continue;
+            }
+            let candidate = SearchMatch {
+                name: name.to_owned(),
+                line: index + 1,
+                text: escaped_prefix(line, MAX_QUERY_BYTES * 4).to_owned(),
+            };
+            let encoded = serde_json::to_string(&candidate).expect("fixed match shape");
+            let cost = escaped_len(&encoded) + usize::from(!matches.is_empty());
+            if *body_cost + cost > body_budget {
+                return ScanOutcome::BudgetReached;
+            }
+            *body_cost += cost;
+            matches.push(candidate);
+        }
+        ScanOutcome::Continued
+    }
+}
+
+enum ScanOutcome {
+    Continued,
+    Skipped,
+    BudgetReached,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SearchMatch {
+    pub name: String,
+    /// One-based, matching how a person reads a file.
+    pub line: usize,
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -377,6 +604,158 @@ mod tests {
             );
             let _ = std::fs::remove_dir_all(&self.root);
         }
+    }
+
+    fn search(reader: &WorkspaceReader, path: &str, query: &str) -> ToolResult {
+        reader.execute_with_query(
+            ToolName::SearchFiles,
+            path,
+            Some(query),
+            MAX_TOOL_BYTES,
+            None,
+        )
+    }
+
+    fn matches_of(result: &ToolResult) -> Vec<SearchMatch> {
+        serde_json::from_str(&result.body).expect("search body is a match array")
+    }
+
+    #[test]
+    fn search_reports_matching_files_and_one_based_lines() {
+        let fixture = Fixture::new();
+        fixture.write("alpha.txt", "one\nlanguage=Rust\nthree\n");
+        fixture.write("beta.txt", "nothing here\n");
+        fixture.write("nested/gamma.txt", "language=Rust again\n");
+        let reader = fixture.reader();
+
+        let result = search(&reader, ".", "language=");
+        assert_eq!(result.status, ToolStatus::Ok);
+        let found = matches_of(&result);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].name, "alpha.txt");
+        assert_eq!(found[0].line, 2, "line numbers are one-based");
+        assert_eq!(found[0].text, "language=Rust");
+        assert_eq!(found[1].name, "nested/gamma.txt");
+        assert!(!result.truncated);
+
+        // A term that appears nowhere is an empty result, not an error.
+        let empty = search(&reader, ".", "absent-term");
+        assert_eq!(empty.status, ToolStatus::Ok);
+        assert!(matches_of(&empty).is_empty());
+    }
+
+    #[test]
+    fn search_never_mints_evidence_a_candidate_could_cite() {
+        let fixture = Fixture::new();
+        fixture.write("alpha.txt", "language=Rust\n");
+        let reader = fixture.reader();
+
+        // Even when the runner offers an identifier, a partial view must not
+        // carry one: only a complete successful read can certify a value.
+        let result = reader.execute_with_query(
+            ToolName::SearchFiles,
+            ".",
+            Some("language="),
+            MAX_TOOL_BYTES,
+            Some("e0"),
+        );
+        assert_eq!(result.status, ToolStatus::Ok);
+        assert_eq!(result.evidence_id, None);
+        assert!(!ToolName::SearchFiles.mints_evidence());
+        assert!(!ToolName::ListFiles.mints_evidence());
+        assert!(ToolName::ReadFile.mints_evidence());
+
+        let read = reader.execute(ToolName::ReadFile, "alpha.txt", MAX_TOOL_BYTES, Some("e0"));
+        assert_eq!(read.evidence_id.as_deref(), Some("e0"));
+    }
+
+    #[test]
+    fn search_requires_its_own_term_and_refuses_one_on_other_tools() {
+        let fixture = Fixture::new();
+        fixture.write("alpha.txt", "language=Rust\n");
+        let reader = fixture.reader();
+
+        let missing =
+            reader.execute_with_query(ToolName::SearchFiles, ".", None, MAX_TOOL_BYTES, None);
+        assert_eq!(missing.status, ToolStatus::Denied);
+        assert_eq!(missing.error.unwrap().code, "missing_query");
+
+        for name in [ToolName::ReadFile, ToolName::ListFiles] {
+            let unexpected = reader.execute_with_query(
+                name,
+                "alpha.txt",
+                Some("language="),
+                MAX_TOOL_BYTES,
+                None,
+            );
+            assert_eq!(unexpected.status, ToolStatus::Denied);
+            assert_eq!(unexpected.error.unwrap().code, "unexpected_query");
+        }
+
+        for bad in [
+            "",
+            &"q".repeat(MAX_QUERY_BYTES + 1),
+            "line\nbreak",
+            "tab\there",
+        ] {
+            assert!(validated_query(bad).is_err(), "{bad:?}");
+            let denied = search(&reader, ".", bad);
+            assert_eq!(denied.status, ToolStatus::Denied, "{bad:?}");
+        }
+        assert!(TypedToolArgs::parse(r#"{"path":".","query":""}"#).is_err());
+        let parsed = TypedToolArgs::parse(r#"{"path":".","query":"needle"}"#).unwrap();
+        assert_eq!(parsed.query.as_deref(), Some("needle"));
+    }
+
+    #[test]
+    fn search_stays_inside_the_capability_and_skips_unreadable_content() {
+        let fixture = Fixture::new();
+        fixture.write("alpha.txt", "language=Rust\n");
+        // Invalid UTF-8 is skipped and reported, never searched as replacement text.
+        fixture.write("binary.bin", [b'l', b'a', b'n', b'g', 0xff, 0xfe]);
+        std::fs::write(fixture.root.join("outside-secret.txt"), "language=Secret\n").unwrap();
+        let reader = fixture.reader();
+
+        let escaping = search(&reader, "../", "language=");
+        assert_eq!(escaping.status, ToolStatus::Denied);
+        assert_eq!(escaping.error.unwrap().code, "invalid_path");
+
+        let result = search(&reader, ".", "lang");
+        let names: Vec<_> = matches_of(&result).into_iter().map(|m| m.name).collect();
+        assert_eq!(names, vec!["alpha.txt".to_owned()]);
+        assert!(
+            !result.body.contains("Secret"),
+            "a search must not reach outside its root"
+        );
+        assert!(result.truncated, "skipping unreadable content is reported");
+    }
+
+    #[test]
+    fn search_bounds_depth_and_result_bytes_without_failing() {
+        let fixture = Fixture::new();
+        let deep = fixture.root.join("workspace").join("a/b/c/d/e/f");
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(deep.join("deep.txt"), "needle\n").unwrap();
+        fixture.write("shallow.txt", "needle\n");
+        let reader = fixture.reader();
+
+        let bounded = search(&reader, ".", "needle");
+        assert_eq!(bounded.status, ToolStatus::Ok);
+        let names: Vec<_> = matches_of(&bounded).into_iter().map(|m| m.name).collect();
+        assert!(names.contains(&"shallow.txt".to_owned()));
+        assert!(
+            !names.iter().any(|n| n.contains("f/deep.txt")),
+            "the depth bound stops descent"
+        );
+        assert!(bounded.truncated, "an unreached subtree is incompleteness");
+
+        // Many matches must fit the caller's budget rather than overflow it.
+        fixture.write("many.txt", "needle\n".repeat(4_000));
+        let capped =
+            reader.execute_with_query(ToolName::SearchFiles, ".", Some("needle"), 1_024, None);
+        assert_eq!(capped.status, ToolStatus::Ok);
+        assert!(capped.encoded().unwrap().len() <= 1_024);
+        assert!(capped.truncated);
     }
 
     #[test]

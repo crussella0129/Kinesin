@@ -797,6 +797,7 @@ pub async fn run_admitted_with_text(
                     let tool = match call.name.as_str() {
                         "read_file" => Some(ToolName::ReadFile),
                         "list_files" => Some(ToolName::ListFiles),
+                        "search_files" => Some(ToolName::SearchFiles),
                         _ => None,
                     };
                     let args = TypedToolArgs::parse(&call.arguments);
@@ -847,19 +848,23 @@ pub async fn run_admitted_with_text(
                                 resources.workspaces.get(&authority.workspace().id).cloned();
                             if let Some(reader) = reader {
                                 let name = tool.ok_or("validated tool missing")?;
-                                let path = args
-                                    .as_ref()
-                                    .map_err(|_| "validated arguments missing")?
-                                    .path
-                                    .clone();
+                                let validated =
+                                    args.as_ref().map_err(|_| "validated arguments missing")?;
+                                let path = validated.path.clone();
+                                let query = validated.query.clone();
                                 let maximum = authority.limits().max_tool_result_bytes;
-                                let evidence_id =
-                                    (name == ToolName::ReadFile).then(|| evidence.next_id());
+                                let evidence_id = name.mints_evidence().then(|| evidence.next_id());
                                 dispatched = true;
                                 let mut handle = tokio::task::spawn_blocking(move || {
                                     // The actual blocking worker owns capacity until it exits.
                                     let _permit = permit;
-                                    reader.execute(name, &path, maximum, evidence_id.as_deref())
+                                    reader.execute_with_query(
+                                        name,
+                                        &path,
+                                        query.as_deref(),
+                                        maximum,
+                                        evidence_id.as_deref(),
+                                    )
                                 });
                                 let completed = tokio::select! {
                                     biased;

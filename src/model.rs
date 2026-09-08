@@ -107,16 +107,26 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
     });
     if !options.tools.is_empty() {
         let definitions = options.tools.iter().map(|name| {
-            let description = match name.as_str() {
-                "read_file" => "Read bounded UTF-8 file contents inside the workspace. Use a relative path. Output reports truncation and an evidence_id for the actual observation.",
-                "list_files" => "List a bounded nonrecursive subset of entries inside the workspace. Use a relative path, or . for its root. Output reports incomplete results.",
+            let (description, parameters) = match name.as_str() {
+                "read_file" => ("Read bounded UTF-8 file contents inside the workspace. Use a relative path. Output reports truncation and an evidence_id for the actual observation.", json!({
+                    "type":"object","properties":{"path":{"type":"string"}},
+                    "required":["path"],"additionalProperties":false
+                })),
+                "list_files" => ("List a bounded nonrecursive subset of entries inside the workspace. Use a relative path, or . for its root. Output reports incomplete results.", json!({
+                    "type":"object","properties":{"path":{"type":"string"}},
+                    "required":["path"],"additionalProperties":false
+                })),
+                "search_files" => ("Find a literal term in workspace text files below a relative path, or . for its root. Returns matching file names and line numbers, not whole files, and reports incomplete results. It cites no evidence: read a file to observe a value you intend to report.", json!({
+                    "type":"object","properties":{
+                        "path":{"type":"string"},
+                        "query":{"type":"string","description":"Literal text to find. Not a pattern or expression."}
+                    },
+                    "required":["path","query"],"additionalProperties":false
+                })),
                 _ => return Err("unsupported compiled tool".to_owned()),
             };
             Ok(json!({"type":"function","function":{
-                "name":name,"description":description,"parameters":{
-                    "type":"object","properties":{"path":{"type":"string"}},
-                    "required":["path"],"additionalProperties":false
-                }
+                "name":name,"description":description,"parameters":parameters
             }}))
         }).collect::<Result<Vec<_>, String>>()?;
         request["tools"] = Value::Array(definitions);

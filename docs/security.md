@@ -66,6 +66,16 @@ reading alone does not validate an answer: the checker independently compares
 the submitted field with its required source. Failed, denied, truncated, forged,
 or wrong-source evidence cannot establish a complete-file claim.
 
+**Only a complete successful read mints evidence.** `list_files` and
+`search_files` return partial views of the workspace and deliberately carry no
+evidence reference, even when the runner has one available. A search can tell a
+run where a value lives; it can never certify what that value is, because it
+returns matched lines rather than the observed file. Without this boundary a
+candidate could cite a search hit as proof of a field it never observed
+completely. Adding a further read-only tool does not change the rule: a new tool
+mints evidence only if it returns a complete successful observation of the
+resource a criterion names.
+
 The first checker is compiled, pure, and bounded. Give it read-only typed inputs,
 with no filesystem, network, database, model, or code-execution capabilities.
 It neither follows source instructions nor accepts a model's `passed` field.

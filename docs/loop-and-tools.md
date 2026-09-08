@@ -117,9 +117,36 @@ argument shape; the Rust handler still validates authority and semantics.
 ```
 
 The real request includes this in its `tools` array, with the other chat fields.
-Start with only `read_file` and `list_files`. Both take `path: string`.
 Use typed structs with unknown-field rejection and a shared lexical path
-validator. Do not write a general JSON Schema engine for two fixed tools.
+validator. Do not write a general JSON Schema engine for a fixed tool set.
+
+Three read-only tools are offered:
+
+| Tool | Arguments | Returns | Mints evidence |
+|------|-----------|---------|----------------|
+| `read_file` | `path` | A bounded UTF-8 prefix of one file | **Yes** |
+| `list_files` | `path` | A bounded nonrecursive listing | No |
+| `search_files` | `path`, `query` | Matching file names and one-based line numbers below `path` | No |
+
+`search_files` exists because listing and reading alone cannot answer "which
+file mentions this" without walking the tree one directory at a time, spending
+steps and context. Its `query` is **literal text, not a pattern language**: an
+expression engine would add a dependency and an unbounded matching cost on
+model-selected input.
+
+**Only `read_file` mints evidence, and that is a deliberate boundary.** A
+listing and a search both return partial views of the workspace. If a search
+hit could be cited, a candidate could claim a field equals a value it never
+observed completely. The acceptance contract compares a claimed value against a
+complete successful read; a search result can locate a file but can never
+certify its contents. A run that intends to report a value must read it.
+
+Search is bounded on every axis it can grow: directory depth, total entries
+visited, bytes read from any one file, and the caller's result budget. Symlinks
+and non-regular files are skipped rather than followed, and content that is not
+valid UTF-8 is skipped rather than searched as replacement characters. Any bound
+reached or content skipped sets `truncated`, so an empty result never implies
+the workspace was fully examined.
 
 ## Complete tool history
 

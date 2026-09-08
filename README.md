@@ -43,7 +43,7 @@ rather than the fewest dependencies or source files.
 
 It accepts a bounded batch of independent tasks, runs them concurrently, and
 gives each task its own conversation, workspace authority, budgets, cancellation,
-and result. It begins with two read-only file tools and one llama.cpp adapter.
+and result. It begins with three read-only file tools and one llama.cpp adapter.
 Streaming makes useful text visible sooner; partial tool arguments never execute.
 
 Tests use scripted models. Benchmarks distinguish the runtime's overhead from

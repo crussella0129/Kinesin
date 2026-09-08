@@ -524,10 +524,11 @@ outcome. Do not assert that dropping HTTP guarantees model compute stopped.
 and [Tokio timeout](https://docs.rs/tokio/latest/tokio/time/fn.timeout.html).
 Timeouts require cooperative async execution; they do not preempt arbitrary code.
 
-## 15. Define the two tool contracts
+## 15. Define the three tool contracts
 
 **Build:** add typed argument structs and explicit dispatch in `tools.rs`.
-Start with `list_files(path)` and `read_file(path)`. Describe their purpose,
+Start with `list_files(path)`, `read_file(path)`, and `search_files(path,
+query)`. Describe their purpose,
 relative-path requirement, output bounds, and error behavior in the schemas
 sent to the model. Reject unknown argument fields and validate semantics after
 JSON decoding.
@@ -545,8 +546,15 @@ from `RunAuthority` and the tool implementation.
 **Prove:** valid arguments reach the intended handler; rejected arguments reach
 no handler and produce a bounded, correlated observation where possible.
 
+Decide now which tools may mint evidence, because the acceptance contract
+depends on it. Only a complete successful read qualifies. A listing and a search
+return partial views, so they must carry no evidence reference even when the
+runner holds one. Otherwise a candidate could cite a search hit as proof of a
+value it never observed completely.
+
 **Break:** add an apparently helpful extra argument such as a new workspace
-root. It must not broaden the run's authority.
+root. It must not broaden the run's authority. Send a `query` to `read_file`
+and omit it from `search_files`; both must be denied before any handler runs.
 
 **Read:** [Serde container attributes](https://serde.rs/container-attrs.html)
 and [tool contracts](loop-and-tools.md). Keep argument definitions concrete;
@@ -630,6 +638,23 @@ budgets and explicitly reports truncation.
 
 **Break:** create a bounded synthetic fixture with many long names and a
 disappearing entry. The handler must return a defined result without a panic.
+
+Then add `search_files(path, query)`, so a run can find which file mentions a
+term instead of walking the tree one directory at a time. Keep `query` literal
+text. A pattern language would add a dependency and an unbounded matching cost
+on model-selected input. Bound every axis it can grow along: directory depth,
+entries visited, bytes read from any one file, and the caller's result budget.
+Skip symlinks and non-regular files rather than following them, and skip content
+that is not valid UTF-8 rather than searching replacement characters. Report all
+of that as truncation, so an empty result never implies a complete examination.
+
+**Prove (search):** a term in a nested file is found with its one-based line
+number; a term that appears nowhere returns an empty result rather than an error;
+a search never returns an evidence reference.
+
+**Break (search):** point a search at a path outside the workspace root, at a
+tree deeper than the depth bound, and at a file with thousands of matches. Each
+must produce a bounded, defined result that reports its own incompleteness.
 
 **Read:** [cap-std directory iteration](https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html#method.entries)
 and [OS strings](https://doc.rust-lang.org/std/ffi/struct.OsStr.html).

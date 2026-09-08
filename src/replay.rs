@@ -614,6 +614,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                 let tool = match call.name.as_str() {
                     "read_file" => Some(ToolName::ReadFile),
                     "list_files" => Some(ToolName::ListFiles),
+                    "search_files" => Some(ToolName::SearchFiles),
                     _ => None,
                 };
                 let denial = match tool {

@@ -35,7 +35,7 @@ Freeform completion is explicitly unchecked. The demonstration's
 
 ## Checkpoint B: a useful read-only agent
 
-- [x] 15. [Define the two tool contracts](build-guide.md#15-define-the-two-tool-contracts).
+- [x] 15. [Define the three tool contracts](build-guide.md#15-define-the-three-tool-contracts).
 - [x] 16. [Create the workspace capability](build-guide.md#16-create-the-workspace-capability).
 - [x] 17. [Implement a bounded file read](build-guide.md#17-implement-a-bounded-file-read).
 - [x] 18. [Implement a bounded directory listing](build-guide.md#18-implement-a-bounded-directory-listing).

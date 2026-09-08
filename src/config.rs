@@ -88,6 +88,7 @@ pub enum CaptureMode {
 pub enum ToolName {
     ListFiles,
     ReadFile,
+    SearchFiles,
 }
 
 impl ToolName {
@@ -95,7 +96,15 @@ impl ToolName {
         match self {
             Self::ListFiles => "list_files",
             Self::ReadFile => "read_file",
+            Self::SearchFiles => "search_files",
         }
+    }
+
+    /// Only a complete successful read mints evidence. A listing or a search
+    /// returns a partial view of the workspace, so a candidate can never cite
+    /// one as proof that a field equals a file's value.
+    pub fn mints_evidence(self) -> bool {
+        matches!(self, Self::ReadFile)
     }
 }
 

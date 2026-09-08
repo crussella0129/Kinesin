@@ -456,6 +456,35 @@ a newly created Windows DACL denies state file creation before storage startup
 or model dispatch. These simulate capacity exhaustion and permission denial,
 without filling a physical volume or changing an existing directory's ACL.
 
+## Added after the first validation pass: bounded search
+
+A review of the finished harness found one capability gap that the deferred-work
+table had never gated: the tool surface was `read_file` and `list_files` only, so
+answering "which file mentions this" required walking the tree one directory at a
+time. The recorded live evaluation shows the workaround succeeding in a small
+workspace, so this is a scaling limit rather than a cause of those failures.
+
+`search_files(path, query)` is now implemented behind the same capability. Its
+term is literal text, not a pattern language, because an expression engine would
+add a dependency and an unbounded matching cost on model-selected input. Depth,
+entries visited, per-file bytes, and the caller's result budget are each bounded,
+symlinks and non-regular files are skipped rather than followed, and non-UTF-8
+content is skipped rather than searched as replacement characters. Every bound
+reached or item skipped sets `truncated`, so an empty result never implies a
+complete examination.
+
+**Only a complete successful read mints evidence.** The search deliberately
+returns none, so a candidate cannot cite a matched line as proof of a value it
+never observed completely. That rule now lives on `ToolName::mints_evidence`
+rather than at the one call site that previously compared against `ReadFile`.
+
+Five tests cover the tool: one-based line reporting and an empty result for an
+absent term; the absence of an evidence reference even when the runner offers
+one; a missing term, a term supplied to the wrong tool, and empty, oversized or
+control-character terms; an escaping path, an outside sentinel that stays
+unreachable, and skipped non-UTF-8 content; and the depth and byte bounds. The
+suite is 176 offline tests, with formatting and all-target Clippy clean.
+
 ## Original intent and remaining exposure evidence
 
 The implemented product exercises the guide's local and loopback service paths.

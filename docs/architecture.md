@@ -39,7 +39,7 @@ more inference capacity. Reqwest supplies a reusable connection pool.
 | Run runner | Conversation, counters, phase, authority snapshot, cancellation token | One isolated execution |
 | K-Core | Pure state and transition rules | Event in; next state and proposed effect out |
 | Koil | Provider serialization, pooled client, response/stream decoding | Prepare exact request; async send; normalize result |
-| WorkspaceReader | Open directory capability and read/list policy | Two bounded operations |
+| WorkspaceReader | Open directory capability and read/list/search policy | Three bounded operations |
 | Runner / pure checker | Frozen task contract, bounded observed evidence, acceptance receipt | Candidate assessment without I/O or new authority |
 | Storage worker | SQLite connection and transactions | Bounded commands and commit acknowledgements |
 | API | Verified principal and public request/response types | Owner-scoped submission, status, events, cancel, export |
