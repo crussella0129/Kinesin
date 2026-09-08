@@ -161,6 +161,27 @@ repeatedly and did not execute in the failing run because Cargo stopped at the
 library target. They are recorded here as a known remaining assumption rather
 than changed without evidence.
 
+A second hosted run then failed two different tests while the corrected
+scheduler test passed, and its unit suite took 51.7 s against the previous run's
+33.5 s and 2.6 s locally. The operator supervision test allowed one second for
+`supervise` to join the controller, storage and monitor. The CLI batch fixture
+allowed ten seconds per accept, but the gap between exchanges covers journal,
+checker, admission and batch pacing for the next run; when that deadline expired
+the provider thread panicked and dropped its listener, so the next connect was
+refused. The recorded `model_connection_failed` was the consequence of the
+fixture deadline, not its cause. Those positive waits were widened. The thirty
+millisecond negative assertion that a cancelled monitor never probes the second
+listener was left unchanged, because widening a negative window weakens what it
+proves.
+
+Checkpoint `5a77ba6` then passed
+[hosted CI](https://github.com/crussella0129/Kinesin/actions/runs/34241814551):
+formatting, all-target Clippy with warnings denied, and the offline tests. Two
+hosted failures preceded it and remain recorded above. One green run on a
+variable shared runner does not prove this class is eliminated; the underlying
+condition is a hosted Windows runner between thirteen and twenty times slower
+than the development machine, and that variance is unchanged.
+
 Environment finding: an unrelated invalid `%USERPROFILE%\Cargo.toml` caused
 Cargo ancestor-workspace discovery to fail. Adding an explicit `[workspace]`
 boundary to each new package stopped that search without editing the parent.
