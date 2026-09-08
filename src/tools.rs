@@ -105,6 +105,12 @@ pub struct TypedToolArgs {
     /// content on a read still fails the typed contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    /// The two present only for `edit_file`: the exact text to find, and its
+    /// replacement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub find: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replace: Option<String>,
 }
 
 impl TypedToolArgs {
@@ -113,7 +119,20 @@ impl TypedToolArgs {
     pub fn shape_for(&self, name: ToolName) -> Result<(), (&'static str, &'static str)> {
         let query = self.query.is_some() || self.case_sensitive.is_some();
         let content = self.content.is_some();
+        let edit = self.find.is_some() || self.replace.is_some();
         match name {
+            ToolName::EditFile if self.find.is_none() || self.replace.is_none() => Err((
+                "missing_edit",
+                "edit_file requires both find and replace text.",
+            )),
+            ToolName::EditFile if query || content => Err((
+                "unexpected_field",
+                "edit_file takes only path, find and replace.",
+            )),
+            _ if edit && name != ToolName::EditFile => Err((
+                "unexpected_edit",
+                "Only edit_file accepts find and replace.",
+            )),
             ToolName::SearchFiles if self.query.is_none() => Err((
                 "missing_query",
                 "search_files requires a literal query term.",
@@ -150,12 +169,13 @@ impl TypedToolArgs {
         if let Some(query) = &args.query {
             args.query = Some(validated_query(query)?);
         }
-        if args
-            .content
-            .as_ref()
-            .is_some_and(|c| c.len() > MAX_WRITE_BYTES)
-        {
-            return Err("write content exceeds its byte limit".into());
+        for field in [&args.content, &args.find, &args.replace] {
+            if field
+                .as_ref()
+                .is_some_and(|value| value.len() > MAX_WRITE_BYTES)
+            {
+                return Err("write content exceeds its byte limit".into());
+            }
         }
         Ok(args)
     }
@@ -288,7 +308,7 @@ impl WorkspaceReader {
             ),
             // A read capability cannot write. The runner routes a write to the
             // separate WorkspaceWriter; reaching here is a routing fault.
-            ToolName::WriteFile => ToolResult::failure(
+            ToolName::WriteFile | ToolName::EditFile => ToolResult::failure(
                 ToolStatus::Denied,
                 "not_a_write_capability",
                 "This capability only reads.",
@@ -626,9 +646,28 @@ impl WorkspaceWriter {
             .map_err(|_| "cannot open approved workspace directory".into())
     }
 
-    /// Replace or create one regular file inside the capability. The write is
-    /// atomic: content lands in a temporary sibling and is renamed into place,
-    /// so a crash leaves either the old file or the new one, never a partial.
+    /// Run one authorized mutating tool. The runner routes here only for a tool
+    /// whose arguments its shape check already validated for this variant.
+    pub fn execute(&self, name: ToolName, args: &TypedToolArgs) -> ToolResult {
+        match name {
+            ToolName::WriteFile => {
+                self.write_file(&args.path, args.content.as_deref().unwrap_or(""))
+            }
+            ToolName::EditFile => self.edit_file(
+                &args.path,
+                args.find.as_deref().unwrap_or(""),
+                args.replace.as_deref().unwrap_or(""),
+            ),
+            // The reader owns the read tools; a non-mutating name here is a fault.
+            _ => ToolResult::failure(
+                ToolStatus::Denied,
+                "not_a_write_tool",
+                "This capability only writes.",
+            ),
+        }
+    }
+
+    /// Replace or create one regular file inside the capability.
     pub fn write_file(&self, path: &str, content: &str) -> ToolResult {
         if content.len() > MAX_WRITE_BYTES {
             return ToolResult::failure(
@@ -637,50 +676,149 @@ impl WorkspaceWriter {
                 "Write content exceeds its byte limit.",
             );
         }
-        if normalized_path(path).is_err() {
+        match self.target_state(path, false) {
+            Ok(_) => {}
+            Err(denial) => return denial,
+        }
+        self.atomic_replace(path, content, "wrote")
+    }
+
+    /// Replace exactly one occurrence of `find` with `replace` in an existing
+    /// file. The match must be unique: an absent match cannot edit, and an
+    /// ambiguous one is refused rather than guessed, so the change is exact.
+    pub fn edit_file(&self, path: &str, find: &str, replace: &str) -> ToolResult {
+        if find.is_empty() {
             return ToolResult::failure(
+                ToolStatus::Denied,
+                "empty_find",
+                "The text to find cannot be empty.",
+            );
+        }
+        if find.len() > MAX_WRITE_BYTES || replace.len() > MAX_WRITE_BYTES {
+            return ToolResult::failure(
+                ToolStatus::Denied,
+                "content_too_large",
+                "The find or replace text exceeds its byte limit.",
+            );
+        }
+        match self.target_state(path, true) {
+            Ok(true) => {}
+            Ok(false) => return io_failure(ErrorKind::NotFound),
+            Err(denial) => return denial,
+        }
+        // Read a bounded prefix; a file larger than the write bound cannot be
+        // edited into a bounded result, so refuse it rather than truncate.
+        let mut bytes = Vec::new();
+        let file = match self.root.open(path) {
+            Ok(file) => file,
+            Err(error) => return io_failure(error.kind()),
+        };
+        if let Err(error) = file
+            .take(MAX_WRITE_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)
+        {
+            return io_failure(error.kind());
+        }
+        if bytes.len() > MAX_WRITE_BYTES {
+            return ToolResult::failure(
+                ToolStatus::Denied,
+                "file_too_large",
+                "The file is larger than the editable byte limit.",
+            );
+        }
+        let text = match std::str::from_utf8(&bytes) {
+            Ok(text) => text,
+            Err(_) => {
+                return ToolResult::failure(
+                    ToolStatus::Error,
+                    "invalid_utf8",
+                    "The file is not valid UTF-8 text.",
+                );
+            }
+        };
+        let occurrences = text.matches(find).count();
+        if occurrences == 0 {
+            return ToolResult::failure(
+                ToolStatus::Error,
+                "match_not_found",
+                "The text to find does not appear in the file.",
+            );
+        }
+        if occurrences > 1 {
+            return ToolResult::failure(
+                ToolStatus::Denied,
+                "ambiguous_match",
+                "The text to find appears more than once; make it unique.",
+            );
+        }
+        let updated = text.replacen(find, replace, 1);
+        if updated.len() > MAX_WRITE_BYTES {
+            return ToolResult::failure(
+                ToolStatus::Denied,
+                "content_too_large",
+                "The edited file would exceed its byte limit.",
+            );
+        }
+        self.atomic_replace(path, &updated, "edited")
+    }
+
+    /// Refuse to write through a symlink or over a directory. Returns whether
+    /// the target already exists as a regular file. When `must_exist`, a missing
+    /// target is the caller's error; otherwise it is a create, and the parent
+    /// must already be a directory.
+    fn target_state(&self, path: &str, must_exist: bool) -> Result<bool, ToolResult> {
+        if normalized_path(path).is_err() {
+            return Err(ToolResult::failure(
                 ToolStatus::Denied,
                 "invalid_path",
                 "Use a supported relative workspace path.",
-            );
+            ));
         }
-        // Never write through an existing symlink or over a directory. A curated
-        // tree's structure is the operator's, not the model's, to change.
         match self.root.symlink_metadata(path) {
-            Ok(metadata) if metadata.is_file() => {}
+            Ok(metadata) if metadata.is_file() => return Ok(true),
             Ok(metadata) if metadata.is_symlink() => {
-                return ToolResult::failure(
+                return Err(ToolResult::failure(
                     ToolStatus::Denied,
                     "symlink_target",
                     "Refusing to write through a symbolic link.",
-                );
+                ));
             }
             Ok(_) => {
-                return ToolResult::failure(
+                return Err(ToolResult::failure(
                     ToolStatus::Denied,
                     "not_a_file",
                     "The path is not a regular file.",
-                );
+                ));
             }
-            Err(error) if error.kind() == ErrorKind::NotFound => {}
-            Err(error) => return io_failure(error.kind()),
+            Err(error) if error.kind() == ErrorKind::NotFound => {
+                if must_exist {
+                    return Ok(false);
+                }
+            }
+            Err(error) => return Err(io_failure(error.kind())),
         }
-        // The parent must already exist. Creating directories is a separate
-        // effect a later tool can own explicitly.
+        // Creating: the parent must already exist. Making directories is a
+        // separate effect a later tool can own explicitly.
         let (parent, _) = path.rsplit_once('/').unwrap_or((".", path));
         if parent != "." {
             match self.root.metadata(parent) {
                 Ok(metadata) if metadata.is_dir() => {}
                 Ok(_) => {
-                    return ToolResult::failure(
+                    return Err(ToolResult::failure(
                         ToolStatus::Denied,
                         "parent_not_a_directory",
                         "The parent path is not a directory.",
-                    );
+                    ));
                 }
-                Err(error) => return io_failure(error.kind()),
+                Err(error) => return Err(io_failure(error.kind())),
             }
         }
+        Ok(false)
+    }
+
+    /// Atomic: content lands in a temporary sibling and is renamed into place,
+    /// so a crash leaves either the old file or the new one, never a partial.
+    fn atomic_replace(&self, path: &str, content: &str, verb: &str) -> ToolResult {
         let temporary = format!("{path}.kinesin-{}.tmp", uuid::Uuid::new_v4());
         if let Err(error) = self.root.write(&temporary, content.as_bytes()) {
             let _ = self.root.remove_file(&temporary);
@@ -691,11 +829,8 @@ impl WorkspaceWriter {
             return io_failure(error.kind());
         }
         let mut result = ToolResult::success(None);
-        result.body = serde_json::to_string(&json!({
-            "wrote": path,
-            "bytes": content.len(),
-        }))
-        .expect("fixed write result shape");
+        result.body = serde_json::to_string(&json!({ verb: path, "bytes": content.len() }))
+            .expect("fixed write result shape");
         result
     }
 }
@@ -1113,6 +1248,88 @@ mod tests {
     }
 
     #[test]
+    fn edit_replaces_a_unique_passage_and_refuses_an_ambiguous_one() {
+        let fixture = Fixture::new();
+        fixture.write(
+            "src.txt",
+            "language=Rust
+edition=2024
+language=note
+",
+        );
+        let writer = fixture.writer();
+
+        // A unique match is replaced exactly.
+        let edited = writer.edit_file("src.txt", "edition=2024", "edition=2025");
+        assert_eq!(edited.status, ToolStatus::Ok);
+        let body: serde_json::Value = serde_json::from_str(&edited.body).unwrap();
+        assert_eq!(body["edited"], "src.txt");
+        assert_eq!(
+            fixture.read_back("src.txt"),
+            "language=Rust
+edition=2025
+language=note
+"
+        );
+        assert!(fixture.tmp_files().is_empty());
+
+        // "language=" appears twice: refuse rather than guess which.
+        let ambiguous = writer.edit_file("src.txt", "language=", "lang=");
+        assert_eq!(ambiguous.status, ToolStatus::Denied);
+        assert_eq!(ambiguous.error.unwrap().code, "ambiguous_match");
+        // An absent passage cannot edit, and the file is unchanged.
+        let missing = writer.edit_file("src.txt", "absent text", "x");
+        assert_eq!(missing.status, ToolStatus::Error);
+        assert_eq!(missing.error.unwrap().code, "match_not_found");
+        assert_eq!(
+            fixture.read_back("src.txt"),
+            "language=Rust
+edition=2025
+language=note
+",
+            "a refused edit changes nothing"
+        );
+    }
+
+    #[test]
+    fn edit_needs_an_existing_file_and_stays_bounded() {
+        let fixture = Fixture::new();
+        let writer = fixture.writer();
+
+        // Editing a file that does not exist is a not-found, not a create.
+        let absent = writer.edit_file("missing.txt", "a", "b");
+        assert_eq!(absent.status, ToolStatus::Error);
+        assert_eq!(absent.error.unwrap().code, "not_found");
+
+        // Empty find is refused.
+        fixture.write("f.txt", "body");
+        assert_eq!(
+            writer.edit_file("f.txt", "", "x").error.unwrap().code,
+            "empty_find"
+        );
+
+        // A file larger than the editable bound is refused rather than truncated.
+        fixture.write("big.txt", "x".repeat(MAX_WRITE_BYTES + 1));
+        let denied = writer.edit_file("big.txt", "x", "y");
+        assert_eq!(denied.status, ToolStatus::Denied);
+        assert_eq!(denied.error.unwrap().code, "file_too_large");
+
+        // A replacement that would push the file past the bound is refused.
+        let headroom = MAX_WRITE_BYTES - 4;
+        fixture.write("grow.txt", format!("{}MARK", "a".repeat(headroom)));
+        let grown = writer.edit_file("grow.txt", "MARK", &"z".repeat(64));
+        assert_eq!(grown.status, ToolStatus::Denied);
+        assert_eq!(grown.error.unwrap().code, "content_too_large");
+
+        // An escaping path is rejected at parse, before any dispatch. Called
+        // directly, the same guard denies it inside the write capability.
+        assert!(TypedToolArgs::parse(r#"{"path":"../x","find":"a","replace":"b"}"#).is_err());
+        let escaping = writer.edit_file("../x", "a", "b");
+        assert_eq!(escaping.status, ToolStatus::Denied);
+        assert_eq!(escaping.error.unwrap().code, "invalid_path");
+    }
+
+    #[test]
     fn write_bounds_content_and_a_reader_cannot_write() {
         let fixture = Fixture::new();
         let writer = fixture.writer();
@@ -1129,6 +1346,22 @@ mod tests {
                 .execute(ToolName::WriteFile, "note.txt", MAX_TOOL_BYTES, None);
         assert_eq!(denied.status, ToolStatus::Denied);
         assert_eq!(denied.error.unwrap().code, "not_a_write_capability");
+    }
+
+    #[test]
+    fn edit_argument_shape_requires_both_find_and_replace() {
+        let full = TypedToolArgs::parse(r#"{"path":"a","find":"x","replace":"y"}"#).unwrap();
+        assert!(full.shape_for(ToolName::EditFile).is_ok());
+        // find/replace on a non-edit tool, or a half edit, is refused.
+        assert!(full.shape_for(ToolName::WriteFile).is_err());
+        let half = TypedToolArgs::parse(r#"{"path":"a","find":"x"}"#).unwrap();
+        assert!(half.shape_for(ToolName::EditFile).is_err());
+        // Oversized find is refused at parse.
+        let huge = format!(
+            r#"{{"path":"a","find":"{}","replace":"y"}}"#,
+            "x".repeat(MAX_WRITE_BYTES + 1)
+        );
+        assert!(TypedToolArgs::parse(&huge).is_err());
     }
 
     #[test]

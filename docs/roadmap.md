@@ -118,8 +118,8 @@ Consider new features only against a demonstrated task or bottleneck:
 | Backend speculation | Tool-generation latency dominates and a compatible backend exists | Target verification, complete-call gate, sidecar/cache privacy, aggregate capacity and cost |
 | Model-spawned subagents | Independent sessions cannot express the task | Bounded fan-out, inherited authority, shared budgets, information-sharing rules |
 | MCP tools | A needed external tool server | Protocol/lifecycle, server trust, schemas, authorization, cancellation |
-| Write file (built) | Read-only tools cannot change a workspace the task must edit | Separate writer capability, operator-grant consent, atomic replace, barred from checked runs |
-| Edit/delete/move and shell tools | A demonstrated task needs them | Effect-specific authority, sandboxing as needed, reconciliation and approval policy; shell is a distinct process-spawning trust class |
+| Write and edit files (built) | Read-only tools cannot change a workspace the task must edit | Separate writer capability, operator-grant consent, atomic replace, unique-match edits, barred from checked runs |
+| Delete/move and shell tools | A demonstrated task needs them | Effect-specific authority, sandboxing as needed, reconciliation and approval policy; shell is a distinct process-spawning trust class |
 | Context compaction | Useful tasks repeatedly exhaust context | Evidence preservation, complete tool groups, quality evaluations |
 | Resume | Repeating an interrupted task is too costly | Unknown-effect reconciliation, version/policy changes, new execution identity |
 | More controllers | A measured single-controller limit or availability requirement | Shared transactional store, leases/fencing, distributed admission and recovery |

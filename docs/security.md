@@ -119,8 +119,15 @@ or the new one. Content is bounded and mints no evidence.
 not author. A run that could edit a source and then read it back would certify its
 own change, so authorization refuses a write tool in a checked task's workspace.
 
-**Still deferred, and gated the same way.** Editing in place, deletion, move, and
-shell or command execution are larger surfaces. Shell execution especially is a
+**`edit_file` is the second mutating tool, and the same capability.** It replaces
+one exact passage in an existing file and requires the passage to be **unique**:
+an absent match cannot edit and an ambiguous one is refused, so the change never
+lands in the wrong place. It runs through the same `WorkspaceWriter`, the same
+symlink and directory guards, the same atomic replace, and the same bar on write
+tools in checked runs.
+
+**Still deferred, and gated the same way.** Deletion, move, and shell or command
+execution are larger surfaces. Shell execution especially is a
 different trust class: arbitrary process spawning, argument-vector construction,
 output bounding, and its own timeout and reconciliation. Each earns its place
 against a demonstrated task, with its own effect-specific authority and confirm

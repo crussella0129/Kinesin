@@ -105,8 +105,10 @@ write; a writer built only for a workspace the operator granted, so an ungranted
 run has none; an atomic temp-then-rename that never leaves a partial file; refusal
 to leave the root, follow a symlink, or overwrite a directory; and a bar on write
 tools in checked runs, since a run that could plant the value it later reads would
-certify its own change. Editing in place, deletion, and move are the next
-increments and are not built yet. See [security](security.md).
+certify its own change. `edit_file` follows: it replaces one
+unique passage through the same capability and guards, refusing an absent or
+ambiguous match rather than editing the wrong place. Deletion and move are the
+next increments and are not built yet. See [security](security.md).
 
 **Custom VPN/gateway.** An existing OS route reaches private inference already.
 A gateway must earn its place through authentication, policy, queueing, or

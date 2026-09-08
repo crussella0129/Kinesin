@@ -582,9 +582,15 @@ refusal to escape the root, write through a symlink, or clobber a directory; the
 content bound and a reader's inability to write; the per-tool argument shape;
 the authorization bar in a checked workspace; a freeform run that writes end to
 end and journals the effect; and a denied write where the workspace grants none.
-Editing in place, deletion, move, and shell execution remain deferred, gated the
-same way, with shell called out as a distinct process-spawning trust class. The
-suite is 188 offline tests.
+`edit_file` followed as the second mutating tool, on the same capability and
+guards. It replaces one exact passage and requires it to be unique: an absent
+match cannot edit and an ambiguous one is refused rather than guessed, so an edit
+never lands in the wrong place. It requires the file to exist, refuses a file
+larger than the editable bound rather than truncating, and is atomic. Four more
+tests cover the unique-match contract, the existence and byte bounds, the
+argument shape, and a freeform edit end to end. Deletion, move, and shell
+execution remain deferred, gated the same way, with shell called out as a
+distinct process-spawning trust class. The suite is 192 offline tests.
 
 ## Original intent and remaining exposure evidence
 

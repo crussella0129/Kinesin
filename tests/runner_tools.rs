@@ -769,3 +769,73 @@ async fn a_write_is_denied_where_the_workspace_grants_none() {
         .expect("the denied call is still journalled");
     assert_eq!(denied.data["dispatch"], "denied");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_freeform_run_edits_a_unique_passage_end_to_end() {
+    let write_config = CONFIG.replace(
+        "tools = [\"read_file\"]",
+        "tools = [\"read_file\", \"edit_file\"]",
+    );
+    let fixture = Fixture::new(&[(
+        "cfg.txt",
+        "mode=slow
+retries=1
+",
+    )]);
+    let config = fixture.config(&write_config);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Set the mode to fast.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    let client = ModelClient::scripted(
+        [
+            batch(vec![call(
+                "e1",
+                "edit_file",
+                &json!({"path": "cfg.txt", "find": "mode=slow", "replace": "mode=fast"})
+                    .to_string(),
+            )]),
+            ModelReply::Answer("Updated the mode.".into()),
+        ]
+        .into_iter()
+        .map(Into::into),
+    );
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_write_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    let record = run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("edit run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(fixture.root.join("workspace/cfg.txt")).unwrap(),
+        "mode=fast
+retries=1
+"
+    );
+    let edit = events
+        .iter()
+        .find(|event| event.kind == "tool_finished" && event.data["tool"] == "edit_file")
+        .expect("the edit is journalled");
+    assert_eq!(edit.data["dispatch"], "executed");
+    assert_eq!(record.phase, "completed");
+    assert_eq!(record.acceptance_status, "unchecked");
+}

@@ -142,6 +142,14 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
                     },
                     "required":["path","content"],"additionalProperties":false
                 })),
+                "edit_file" => ("Replace one exact passage in an existing workspace text file. Provide find, the exact current text, and replace, its new text. The find text must appear exactly once; if it is absent or appears more than once the edit is refused rather than guessed. Make find long enough to be unique. It cites no evidence and cannot leave the workspace or write through a symbolic link.", json!({
+                    "type":"object","properties":{
+                        "path":{"type":"string"},
+                        "find":{"type":"string","description":"The exact current text to replace. Must occur exactly once."},
+                        "replace":{"type":"string","description":"The new text."}
+                    },
+                    "required":["path","find","replace"],"additionalProperties":false
+                })),
                 _ => return Err("unsupported compiled tool".to_owned()),
             };
             Ok(json!({"type":"function","function":{

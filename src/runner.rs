@@ -847,6 +847,7 @@ pub async fn run_admitted_with_text(
                         "list_files" => Some(ToolName::ListFiles),
                         "search_files" => Some(ToolName::SearchFiles),
                         "write_file" => Some(ToolName::WriteFile),
+                        "edit_file" => Some(ToolName::EditFile),
                         _ => None,
                     };
                     let args = TypedToolArgs::parse(&call.arguments);
@@ -901,9 +902,9 @@ pub async fn run_admitted_with_text(
                                 let validated =
                                     args.as_ref().map_err(|_| "validated arguments missing")?;
                                 let shape = validated.shape_for(name);
+                                let write_args = validated.clone();
                                 let path = validated.path.clone();
                                 let query = validated.query.clone();
-                                let content = validated.content.clone();
                                 let case_sensitive = validated.case_sensitive.unwrap_or(false);
                                 let maximum = authority.limits().max_tool_result_bytes;
                                 let evidence_id = name.mints_evidence().then(|| evidence.next_id());
@@ -922,10 +923,7 @@ pub async fn run_admitted_with_text(
                                         // A write reaches only the separate writer, which exists
                                         // solely for a workspace the operator granted writes.
                                         return match writer {
-                                            Some(writer) => writer.write_file(
-                                                &path,
-                                                content.as_deref().unwrap_or(""),
-                                            ),
+                                            Some(writer) => writer.execute(name, &write_args),
                                             None => ToolResult::failure(
                                                 ToolStatus::Denied,
                                                 "write_not_authorized",

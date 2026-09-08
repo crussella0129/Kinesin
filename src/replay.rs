@@ -629,6 +629,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     "list_files" => Some(ToolName::ListFiles),
                     "search_files" => Some(ToolName::SearchFiles),
                     "write_file" => Some(ToolName::WriteFile),
+                    "edit_file" => Some(ToolName::EditFile),
                     _ => None,
                 };
                 let denial = match tool {
