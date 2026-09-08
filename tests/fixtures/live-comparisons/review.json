@@ -1,0 +1,40 @@
+{
+  "reviewer": "Codex qualitative review of complete synthetic candidates and recorded observations",
+  "scope": "Separate model-output assessment; does not amend any persisted runtime receipt",
+  "context": {
+    "measured_samples": 12,
+    "completed": 12,
+    "contract_passed": 12,
+    "required_values_match_actual_complete_reads": true,
+    "forbidden_effects": 0,
+    "identical_candidate_bytes_within_each_value_variant": true,
+    "label_reliability_benefit_established": false,
+    "token_counts_known": false
+  },
+  "text": [
+    {
+      "variant": "short",
+      "measured_samples": 4,
+      "candidate_sha256": "91ab121f4dc51eb8b85309b4c8bd67bfc0c3c2fba90ba4a80ba64163bef165c0",
+      "candidate_bytes": 138,
+      "paired_output_equality": true,
+      "concept_and_example": "The queue explanation and grocery-line example are appropriate.",
+      "presentation": "The second punctuated unit begins 'For example, when' and is a sentence fragment, so the request for two sentences is only partially satisfied.",
+      "review_outcome": "content_met_presentation_partial",
+      "runtime_acceptance": "unchecked"
+    },
+    {
+      "variant": "long",
+      "measured_samples": 4,
+      "candidate_sha256": "402ff0366ef09847bf53d117557790a8ef6c2602e1566c3448136836db9f32d7",
+      "candidate_bytes": 824,
+      "paired_output_equality": true,
+      "concept_and_example": "FIFO and LIFO are described correctly, with a waiting line and stacked plates as appropriate examples.",
+      "presentation": "There are six sentences, but several are lengthy despite the request for short sentences. Brevity is judged qualitatively; no numerical length threshold was invented after the run.",
+      "review_outcome": "content_met_presentation_partial",
+      "runtime_acceptance": "unchecked"
+    }
+  ],
+  "timing_interpretation": "Streaming exposed text prefixes sooner in all four pairs of identical final outputs. Full completion times show no consistent improvement. Four samples per context condition and two pairs per text prompt do not support population reliability or precise tail-latency claims.",
+  "preserved_prior_failures": "Original missing-file recovery, comparison and interrupted instruction-diagnostic results remain unchanged. These new cards do not retest or repair those failures."
+}

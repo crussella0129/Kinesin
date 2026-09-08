@@ -1,0 +1,352 @@
+[
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "discovery",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 2045,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 386,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\".\"}",
+                "id": "NtWLH6JW5PWaeNx3iIaNFUiwzeUeYjP9",
+                "name": "list_files"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 410,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 1338,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"release-zebra.txt\"}",
+                "id": "xAGEqoeUxEj1vaxuex18gcn6ppeep3NS",
+                "name": "read_file"
+              }
+            ],
+            "content": "Based on the output from `list_files`, there are two files in the workspace: `notes.txt` and `release-zebra.txt`. Given that the question asks for the release note and its title, and assuming `release-zebra.txt` is the release note, we will proceed to read its contents.\n\nNext, we will call the `read_file` function to read the contents of `release-zebra.txt`.\n\n",
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 1767,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 224,
+          "effect_id": "model-2",
+          "replay": {
+            "kind": "answer",
+            "text": "The title of the release note is \"Lantern Release\"."
+          }
+        },
+        "elapsed_ms": 2029,
+        "seq": 11
+      }
+    ],
+    "model_turns": 3,
+    "phase": "completed",
+    "prompt": "Find the release note in this workspace and read its title. Use list_files first; do not guess its filename.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "5cd8576a81a23763e90d04f295dedc3c94b5f3a61f7e94748f6c0b66566bd7e0",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "bbcb02bc-8620-42b6-a904-3469bec26ff1",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "The title of the release note is \"Lantern Release\"."
+    },
+    "rubric": "An actual listing discovers release-zebra.txt; a later read supports title Lantern Release.",
+    "run_id": "bbcb02bc-8620-42b6-a904-3469bec26ff1",
+    "sources": [
+      {
+        "body": "title=Lantern Release\n",
+        "path": "release-zebra.txt",
+        "sha256": "d211fe8569849f173610289093bc0b66313977df2dc2c4b13003e22ca5974310"
+      },
+      {
+        "body": "unrelated=notes\n",
+        "path": "notes.txt",
+        "sha256": "bec783c3c778465d17798f10595ee8408eee8f07f9050024df179272e0537a15"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 2,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "NtWLH6JW5PWaeNx3iIaNFUiwzeUeYjP9",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": null,
+          "replay": {
+            "observation": {
+              "body": "[{\"name\":\"notes.txt\",\"kind\":\"file\"},{\"name\":\"release-zebra.txt\",\"kind\":\"file\"}]",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": ".",
+          "result_bytes": 138,
+          "sha256": "0805caf725c690d57166ade3e966961988b5a9da6cb2b525a3426387c6c7a10c",
+          "tool": "list_files"
+        },
+        "elapsed_ms": 417,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "xAGEqoeUxEj1vaxuex18gcn6ppeep3NS",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "title=Lantern Release\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "release-zebra.txt",
+          "result_bytes": 85,
+          "sha256": "d211fe8569849f173610289093bc0b66313977df2dc2c4b13003e22ca5974310",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 1780,
+        "seq": 9
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1098,
+        "request_sha256": "c6021e256416f734206b9ae6dbafa691422eafad364e3711923b9dfba8dfd7e4"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1532,
+        "request_sha256": "fc2cb1dac0a844e545c24d2576616e40ddb0bc4d184759eb6deceb42bd8e4df3"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 2265,
+        "request_sha256": "ae6ab7bcbd292f1016474a9eaaccb6058fa7fe9b764265526530675d46efba2b"
+      }
+    ],
+    "batch": "fixed-baseline"
+  },
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "discovery",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 1910,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 301,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\".\"}",
+                "id": "KxKCoDK5IaRxUZz21xanbi99dibIGK7s",
+                "name": "list_files"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 330,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 1250,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"release-zebra.txt\"}",
+                "id": "dE34eXXZUmkTVYu1WRuFRysY4qgLBLoM",
+                "name": "read_file"
+              }
+            ],
+            "content": "Based on the output from `list_files`, there are two files in the workspace: `notes.txt` and `release-zebra.txt`. Given that the question asks for the release note and its title, and assuming `release-zebra.txt` is the release note, we will proceed to read its contents.\n\nNext, we will call the `read_file` function to read the contents of `release-zebra.txt`.\n\n",
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 1632,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 209,
+          "effect_id": "model-2",
+          "replay": {
+            "kind": "answer",
+            "text": "The title of the release note is \"Lantern Release\"."
+          }
+        },
+        "elapsed_ms": 1872,
+        "seq": 11
+      }
+    ],
+    "model_turns": 3,
+    "phase": "completed",
+    "prompt": "Find the release note in this workspace and read its title. Use list_files first; do not guess its filename.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "5cd8576a81a23763e90d04f295dedc3c94b5f3a61f7e94748f6c0b66566bd7e0",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "9e4e3794-5324-4c1a-8407-ef3465671a54",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "The title of the release note is \"Lantern Release\"."
+    },
+    "rubric": "An actual listing discovers release-zebra.txt; a later read supports title Lantern Release.",
+    "run_id": "9e4e3794-5324-4c1a-8407-ef3465671a54",
+    "sources": [
+      {
+        "body": "title=Lantern Release\n",
+        "path": "release-zebra.txt",
+        "sha256": "d211fe8569849f173610289093bc0b66313977df2dc2c4b13003e22ca5974310"
+      },
+      {
+        "body": "unrelated=notes\n",
+        "path": "notes.txt",
+        "sha256": "bec783c3c778465d17798f10595ee8408eee8f07f9050024df179272e0537a15"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 2,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "KxKCoDK5IaRxUZz21xanbi99dibIGK7s",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": null,
+          "replay": {
+            "observation": {
+              "body": "[{\"name\":\"notes.txt\",\"kind\":\"file\"},{\"name\":\"release-zebra.txt\",\"kind\":\"file\"}]",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": ".",
+          "result_bytes": 138,
+          "sha256": "0805caf725c690d57166ade3e966961988b5a9da6cb2b525a3426387c6c7a10c",
+          "tool": "list_files"
+        },
+        "elapsed_ms": 359,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "dE34eXXZUmkTVYu1WRuFRysY4qgLBLoM",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "title=Lantern Release\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "release-zebra.txt",
+          "result_bytes": 85,
+          "sha256": "d211fe8569849f173610289093bc0b66313977df2dc2c4b13003e22ca5974310",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 1639,
+        "seq": 9
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1098,
+        "request_sha256": "c6021e256416f734206b9ae6dbafa691422eafad364e3711923b9dfba8dfd7e4"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1532,
+        "request_sha256": "c9874f17c66abee04d724bb3bc014fc37e277067477b2a2875cd42b00b430e71"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 2265,
+        "request_sha256": "c422443b48c7ff821ad03e46eaa19ba24e70af022d37daeaec5af2bb911625f0"
+      }
+    ],
+    "batch": "fixed-baseline"
+  }
+]

@@ -1,0 +1,103 @@
+{
+  "metadata": {
+    "cancel_trials": 0,
+    "cargo_lock_sha256": "083e08b1e04da561966e1c8b16e3f55290ecf63896211ad6ba129623bf59d782",
+    "config_sha256": "93dc6f48389b6d387dfc36169e6d586f6c2c1160b4c4fbf734eafe0582689099",
+    "executable_sha256": "acef5c0d5372cedfab73340b3689f527a4c2a12daecb91cd810b781d848c0031",
+    "retention_policy": {
+      "max_bytes": 4294967296,
+      "max_runs": 100000,
+      "minimum_hours": 24
+    },
+    "scope": "synthetic freeform unchecked, metadata capture; real admission and SQLite journal; excludes configuration/authority construction",
+    "soak_seconds": 0,
+    "sqlite_version": "3.53.2",
+    "warm_only": true,
+    "warm_trials": 1000,
+    "warmups": 20,
+    "writer_startup_checks": "WAL, synchronous FULL, foreign_keys ON"
+  },
+  "process": {
+    "exit_code": 0,
+    "pid": 54604,
+    "elapsed_ms": 17305,
+    "executable_sha256": "acef5c0d5372cedfab73340b3689f527a4c2a12daecb91cd810b781d848c0031",
+    "mode": "warm",
+    "started_utc": "2026-09-08T06:56:51.0838497Z"
+  },
+  "percentile": "nearest rank, ceil(p * n), no interpolation",
+  "warm_total_ms": {
+    "count": 1000,
+    "minimum": 9.902,
+    "p50": 15.479,
+    "p95": 20.226,
+    "p99": 32.058,
+    "maximum": 63.09
+  },
+  "admission_ms": {
+    "count": 1000,
+    "minimum": 2.02,
+    "p50": 2.288,
+    "p95": 2.498,
+    "p99": 3.987,
+    "maximum": 9.758
+  },
+  "journal_before_terminal_ms": {
+    "count": 1000,
+    "minimum": 3.0,
+    "p50": 6.0,
+    "p95": 6.0,
+    "p99": 11.0,
+    "maximum": 42.0
+  },
+  "terminal_tail_upper_ms": {
+    "count": 1000,
+    "minimum": 2.043,
+    "p50": 2.867,
+    "p95": 3.264,
+    "p99": 6.282,
+    "maximum": 34.488
+  },
+  "model_duration_ms": {
+    "count": 1000,
+    "minimum": 0.0,
+    "p50": 4.0,
+    "p95": 5.0,
+    "p99": 14.0,
+    "maximum": 15.0
+  },
+  "warm_outcomes": [
+    {
+      "outcome": "completed, unchecked",
+      "count": 1000
+    }
+  ],
+  "memory": {
+    "samples": 17,
+    "working_set_mib": {
+      "count": 17,
+      "minimum": 7.37890625,
+      "p50": 18.79296875,
+      "p95": 20.06640625,
+      "p99": 20.06640625,
+      "maximum": 20.06640625
+    },
+    "private_mib": {
+      "count": 17,
+      "minimum": 2.16015625,
+      "p50": 6.2578125,
+      "p95": 7.2578125,
+      "p99": 7.2578125,
+      "maximum": 7.2578125
+    },
+    "final_working_set_mib": 20.06640625,
+    "final_private_mib": 7.2578125,
+    "cpu_seconds": 1.984375
+  },
+  "storage": {
+    "database_bytes": 3461120,
+    "reserved_bytes": 0,
+    "runs": 1020,
+    "wal_bytes": 4144752
+  }
+}

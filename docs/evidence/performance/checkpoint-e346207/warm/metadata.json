@@ -1,0 +1,18 @@
+{
+  "cancel_trials": 0,
+  "cargo_lock_sha256": "083e08b1e04da561966e1c8b16e3f55290ecf63896211ad6ba129623bf59d782",
+  "config_sha256": "93dc6f48389b6d387dfc36169e6d586f6c2c1160b4c4fbf734eafe0582689099",
+  "executable_sha256": "acef5c0d5372cedfab73340b3689f527a4c2a12daecb91cd810b781d848c0031",
+  "retention_policy": {
+    "max_bytes": 4294967296,
+    "max_runs": 100000,
+    "minimum_hours": 24
+  },
+  "scope": "synthetic freeform unchecked, metadata capture; real admission and SQLite journal; excludes configuration/authority construction",
+  "soak_seconds": 0,
+  "sqlite_version": "3.53.2",
+  "warm_only": true,
+  "warm_trials": 1000,
+  "warmups": 20,
+  "writer_startup_checks": "WAL, synchronous FULL, foreign_keys ON"
+}

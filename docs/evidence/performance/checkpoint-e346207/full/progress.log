@@ -1,0 +1,69 @@
+warm 250
+warm 500
+warm 750
+warm 1000
+cancellations 25
+cancellations 50
+cancellations 75
+cancellations 100
+soak 10s, 168 completed, 7 cycles
+soak 21s, 360 completed, 15 cycles
+soak 31s, 528 completed, 22 cycles
+soak 40s, 672 completed, 28 cycles
+soak 51s, 864 completed, 36 cycles
+soak 60s, 1032 completed, 43 cycles
+soak 70s, 1200 completed, 50 cycles
+soak 80s, 1368 completed, 57 cycles
+soak 90s, 1536 completed, 64 cycles
+soak 100s, 1704 completed, 71 cycles
+soak 111s, 1896 completed, 79 cycles
+soak 120s, 2064 completed, 86 cycles
+soak 130s, 2232 completed, 93 cycles
+soak 140s, 2400 completed, 100 cycles
+soak 150s, 2568 completed, 107 cycles
+soak 160s, 2736 completed, 114 cycles
+soak 170s, 2904 completed, 121 cycles
+soak 180s, 3072 completed, 128 cycles
+soak 190s, 3240 completed, 135 cycles
+soak 200s, 3408 completed, 142 cycles
+soak 210s, 3576 completed, 149 cycles
+soak 220s, 3744 completed, 156 cycles
+soak 230s, 3912 completed, 163 cycles
+soak 240s, 4080 completed, 170 cycles
+soak 250s, 4248 completed, 177 cycles
+soak 260s, 4416 completed, 184 cycles
+soak 271s, 4608 completed, 192 cycles
+soak 281s, 4776 completed, 199 cycles
+soak 290s, 4920 completed, 205 cycles
+soak 300s, 5088 completed, 212 cycles
+soak 311s, 5280 completed, 220 cycles
+soak 321s, 5448 completed, 227 cycles
+soak 331s, 5616 completed, 234 cycles
+soak 341s, 5784 completed, 241 cycles
+soak 351s, 5952 completed, 248 cycles
+soak 360s, 6120 completed, 255 cycles
+soak 370s, 6288 completed, 262 cycles
+soak 380s, 6456 completed, 269 cycles
+soak 390s, 6624 completed, 276 cycles
+soak 400s, 6792 completed, 283 cycles
+soak 410s, 6960 completed, 290 cycles
+soak 421s, 7128 completed, 297 cycles
+soak 430s, 7296 completed, 304 cycles
+soak 440s, 7464 completed, 311 cycles
+soak 450s, 7632 completed, 318 cycles
+soak 460s, 7800 completed, 325 cycles
+soak 470s, 7968 completed, 332 cycles
+soak 480s, 8136 completed, 339 cycles
+soak 490s, 8304 completed, 346 cycles
+soak 500s, 8472 completed, 353 cycles
+soak 510s, 8640 completed, 360 cycles
+soak 520s, 8808 completed, 367 cycles
+soak 530s, 8976 completed, 374 cycles
+soak 540s, 9144 completed, 381 cycles
+soak 551s, 9312 completed, 388 cycles
+soak 561s, 9480 completed, 395 cycles
+soak 570s, 9648 completed, 402 cycles
+soak 580s, 9816 completed, 409 cycles
+soak 590s, 9984 completed, 416 cycles
+soak 600s, 10152 completed, 423 cycles
+measurements and all owned workers settled

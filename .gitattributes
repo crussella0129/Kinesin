@@ -1,0 +1,2 @@
+# Provider wire fixtures retain their original bytes, including SSE separators.
+tests/fixtures/live/** -text whitespace=-blank-at-eof,cr-at-eol

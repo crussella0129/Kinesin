@@ -1,83 +1,119 @@
-# What is missing: decisions to make first
+# Decisions and tradeoffs
 
-These are the open points. Decide each one before you write the matching code.
-Each item says the problem, the choices, and a suggested start.
+Reviewed 2026-09-08 UTC. These are design choices for the implementation you will
+write, not claims of measured performance or a deployed security boundary.
 
-1. **Workspace or one binary.** The first draft mixed a root `src/main.rs` with
-   three sub-crates. That is unclear. Choose a Cargo workspace with three member
-   crates (the project layout in the [README](../README.md)), **or** one binary crate with three modules. Suggested
-   start: the workspace, because the three parts have different jobs and may run
-   as separate processes. Confirm this choice, then build the root `Cargo.toml`
-   as a workspace manifest.
+The priority change is explicit: **minimality, security, low latency, and
+scalability all matter**. The first complete release includes concurrent agents
+for one owner; a shared service follows. “Maybe add async later” no longer
+describes that destination.
 
-2. **JSON.** The standard library has no JSON parser. Both `llama-server` and the
-   traces use JSON. Choose:
-   - **Hand-write a small encoder and decoder** for the few shapes you use. This
-     is more work but more learning, and it keeps the "standard library only"
-     rule. The JSON grammar is small; read https://www.json.org/ .
-   - **Add `serde` and `serde_json`.** This is the common, safe choice. It breaks
-     the "standard library only" rule for one clear reason.
-   - Suggested start: hand-write a small encoder for requests and a small decoder
-     that reads only the few response fields you need. Move to `serde_json` later
-     if the hand-written code becomes a burden.
+## Chosen mechanisms
 
-3. **TOML.** The standard library has no TOML parser. `kinesin.toml` needs one.
-   Choose:
-   - **Hand-write a reader** for the small subset you use (key, value, and
-     section headers). The config is small and under your control.
-   - **Add the `toml` crate.**
-   - Suggested start: hand-write the subset reader, because you control the file.
+| Choice | Why it fits | Cost/limit | Revisit when |
+|--------|-------------|------------|--------------|
+| One package, small modules | Keeps learning/build boundaries understandable | In-process modules are not hostile-code isolation | Reuse or deployment needs a real boundary |
+| Pure synchronous core | Deterministic transitions and simple Rust learning | Effects still need a carefully owned shell | The state contract changes, not just because async exists |
+| Tokio + reqwest from first HTTP | Supports independent concurrent waits and streaming | Async ownership/cancellation must be learned | A workload requires different runtime constraints |
+| Concrete Scripted/Http client enum | Fake and real boundary without async trait-object machinery | Adding adapters changes an enum | Independent plugin/library consumers need an open interface |
+| Separate execution and acceptance outcomes | A complete answer cannot masquerade as a verified solution | Freeform work remains unchecked; strict CLI returns nonzero by default | Another well-specified task class needs a checker |
+| Frozen FileFieldsV1 contract and pure checker | Independently compares structured claims with actual scoped observations | Proves only configured fields as observed; bounded evidence/receipt overhead | A task needs different evidence, semantics, or expensive checking |
+| Capability-backed WorkspaceReader | Narrows file authority without hand-writing path-race logic | Trusted code can bypass it; exposed files can contain secrets | Hostile executables or filesystem objects become supported |
+| Bounded central scheduler | Makes overload, cancellation, and ownership explicit | Queues/permits need independent byte and waiter accounting | One controller's measured capacity is insufficient |
+| SQLite WAL + FULL | Transactions, indexed ownership queries, durable acknowledged status | One writer; local filesystem; disk latency/checkpointing remain real | Measured storage bottleneck or multi-controller requirement |
+| One storage owner thread | Keeps blocking DB work off runtime threads; clear ownership | Commands and acknowledgements need bounds/error policy | Bounded read workers demonstrably improve query latency |
+| Metadata capture plus retained final results | Limits unnecessary intermediate-content retention | Exact replay unavailable; final results can still be sensitive | Explicit private replay/debug task |
+| Normalized replay deltas | Avoids storing growing full prompts repeatedly | Requires compatible versions and every state-affecting input | A forensic raw-wire capture is explicitly needed |
+| Serial tools within each run | Straightforward call/result ordering and authority | Independent tool reads could overlap later | Measurements show a useful gain and dependencies are known |
+| Explicit no generation/tool retry | Avoids inventing safe replay of ambiguous effects | Transient failures can end a run | Effect-specific retry/reconciliation is designed |
+| Single-controller authenticated service | Useful shared deployment without distributed ownership protocol | One controller is a trust/availability boundary | Load/availability evidence justifies another architecture |
 
-4. **Randomness for trace IDs.** The trace ID is random, not sequential. The
-   standard library has no random number generator. Choose the entropy source:
-   - **Read the operating system randomness.** On Linux, read bytes from
-     `/dev/urandom` with `std::fs`. This is standard library only, but Linux only.
-   - **Add the `getrandom` crate** for a cross-platform source.
-   - **Derive an ID** from a hash of the timestamp plus a counter. This is
-     standard library only and cross-platform, but it is weaker and can collide.
-   - Suggested start: read `/dev/urandom` inside WSL/Linux for the first version.
+See [research](research.md) for the primary evidence and
+[architecture](architecture.md) for the resulting contracts.
 
-5. **Hashing for the lookup table.** The standard library has `DefaultHasher` in
-   `std::collections::hash_map`. You can use it for a non-cryptographic ID or a
-   bucket key. Note one limit: its output is not stable across Rust versions, so
-   do not store it as a long-term stable key. Decide whether the trace ID is a
-   random value (item 4) or a hash, and write the rule down.
+## Why this is still minimal
 
-6. **WireGuard scope (settled).** The tunnel stays. The reason is in [components.md](components.md), Koil:
-   Kineserve is to run on a bigger remote machine, and the Koil-to-Koil link keeps
-   that private. The local setup is the same design with one endpoint. Two points
-   remain: write the tunnel with a library or the system tools, never by hand
-   ([integration.md](integration.md), WireGuard); and build the transport seam in Phase 1, so Phase 5 adds the
-   tunnel without a change to K-Core.
+Minimal code length, minimum dependency count, and minimum maintenance burden are
+different goals. A library can increase compiled code while reducing the number
+of tricky mechanisms you must implement and prove.
 
-7. **Trace schema (drafted).** [traces.md](traces.md) now gives a first schema and examples.
-   The open choices that remain: confirm the field names; decide whether to keep
-   the full `llama-server` payload or only selected fields; and decide the ID
-   scheme with items 4 and 5.
+Tokio adds runtime machinery but avoids a bespoke worker/concurrency framework.
+SQLite adds SQL and a native library but avoids a private crash-recovery format
+and mutable event index. `cap-std` adds a dependency but avoids treating a string
+prefix/canonicalization recipe as secure path resolution.
 
-8. **The ReAct loop rules (drafted).** [loop-and-tools.md](loop-and-tools.md) now gives the step cycle, the
-   states, the action format, and the stop conditions. The open choices that
-   remain: set the maximum step count in `kinesin.toml`; pick the action format
-   (the `/completion` JSON object or the `/v1/chat/completions` tool calls); and
-   set the rule for a stuck loop.
+You still hand-write the interesting runtime: the core, policy, request mapping,
+resource accounting, tools, event schema, cancellation, service authorization,
+and tests. Parser/socket experiments remain worthwhile in a scratch project;
+they are not prerequisites for building the harness.
 
-9. **The config and instruction split (drafted).** [configuration.md](configuration.md) now gives the
-   skeleton, the divider rule (`+++ instructions +++`), and the "immutable source
-   of truth" hash check. The open choices that remain: pick the split style (the
-   divider, or a TOML multi-line string) and confirm the setting names.
+## Deliberate alternatives not selected
 
-10. **Cross-platform start.** `preflight.ps1` and `run-harness.ps1` are Windows
-    and PowerShell. Decide the Linux and macOS path: a shell script, or checks
-    inside the Rust binary. Suggested start: keep the PowerShell scripts for
-    Windows, and add a short shell script for Linux later.
+**One thread per run with blocking HTTP.** Viable for a small fixed workload.
+It is a useful systems exercise, but would make streaming, cancellation,
+subscriber handling, and a shared async API a second integration path here.
 
-11. **Error strategy.** Decide how each crate reports errors. A common pattern is
-    a custom `enum` per crate plus `Result`. Read Rust book, Chapter 9. Decide how
-    the top level prints an error and what exit code it returns.
+**A large agent framework.** It may accelerate application development, but this
+project's purpose includes learning and owning the harness itself. Study its
+interfaces when useful; do not adopt its entire execution model just to obtain
+two tools and a loop.
 
-12. **Tests.** There is no test plan yet. Decide the unit tests per module and
-    put integration tests in a `tests/` directory in each crate. Read Rust book,
-    Chapter 11.
+**JSONL or one JSON file per event.** Fine for an export or a small local recorder.
+The required shared-service queries, idempotent admission, projection updates,
+and crash behavior would force extra persistence code. SQLite has a clearer
+contract for this destination.
 
----
+**PostgreSQL and a distributed queue immediately.** Reasonable once controllers
+or durable workers span hosts. Initially they add deployment/lifecycle work
+without removing a measured bottleneck. Do not claim SQLite on a shared mount
+is an equivalent shortcut.
 
+**MCP immediately.** Add it when existing tool servers solve a real task.
+Discovery and schemas do not establish authority. It must adapt into the same
+policy and execution limits.
+
+**Arbitrary shell/code tools immediately.** They would change the trust model
+before the first project has a tested process/worker boundary. Trusted compiled
+read-only tools are the initial service offering.
+
+**Custom VPN/gateway.** An existing OS route reaches private inference already.
+A gateway must earn its place through authentication, policy, queueing, or
+operational needs. Do not mix VPN maintenance into model-message code.
+
+## Paper-informed refinement
+
+The [paper improvement pass](paper-review.md) preserves the selected runtime.
+It adds explicit input provenance, feedback-dependent tasks, and independent
+goal evaluation. ReAct informs the feedback loop; ICM informs context authoring;
+PDDL-INSTRUCT informs validation exercises; OoO-Spec belongs to optional backend
+research. None establishes that a folder layout, model-generated plan, or draft
+token can replace enforced authority.
+
+Keep structured tool calls and serial tools within a run initially. A future
+parallel scheduler or speculative backend must earn its complexity through the
+named experiments. The guide's step count is a consequence of its teaching
+sequence, not a project requirement.
+
+## Revision history
+
+| Version of the plan | Main direction | Reason for the next change |
+|---------------------|----------------|----------------------------|
+| Original checked-in draft | Several named processes/crates, handwritten formats, per-event file/index, private remote link | Too much protocol/infrastructure work before a useful learning milestone |
+| First refinement | One synchronous local program, ureq, per-run event files, concurrency deferred | Easier first Rust project, but underweighted the clarified concurrent/shared-service goal |
+| This redesign | Pure core then async I/O, capability tools, transactional store, bounded concurrency, explicit shared-service gate | Treats the four goals as actual requirements and provides a complete build path |
+| Paper pass | Context provenance, feedback tests, independent offline goal checks | Completion versus correctness still lacked a per-run contract |
+| Adversarial pass | Frozen task profiles, bounded pure acceptance checks, atomic receipts, separate outcomes | Supports narrow checked tasks and explicitly leaves unrestricted work unchecked |
+
+The preceding working draft was uncommitted. A separate local copy was made before
+this redesign; the original checked-in plan also remains in Git history.
+
+## What measurements can change
+
+Do not defend a setting because this document picked it. Measure model slots and
+latency, storage commit delay, memory under overload, and actual task success.
+Change one relevant variable at a time. Record the policy/durability mode alongside
+performance results.
+
+A genuine tradeoff may require choosing a different target or dependency. Never
+hide it by dropping validation, reducing durability without disclosure, allowing
+unbounded queues, or treating incomplete output as success.

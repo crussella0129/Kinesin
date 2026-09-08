@@ -1,0 +1,350 @@
+{
+  "metadata": {
+    "cancel_trials": 0,
+    "cargo_lock_sha256": "083e08b1e04da561966e1c8b16e3f55290ecf63896211ad6ba129623bf59d782",
+    "config_sha256": "93dc6f48389b6d387dfc36169e6d586f6c2c1160b4c4fbf734eafe0582689099",
+    "curves_only": true,
+    "executable_sha256": "dcb52f14666dcaead6e5cf2b74894c0b694460431c82eac1d957d7144448a0ac",
+    "retention_policy": {
+      "max_bytes": 4294967296,
+      "max_runs": 100000,
+      "minimum_hours": 24
+    },
+    "scope": "synthetic freeform unchecked, metadata capture; real admission and SQLite journal; excludes configuration/authority construction",
+    "soak_seconds": 0,
+    "sqlite_version": "3.53.2",
+    "warm_only": false,
+    "warm_trials": 0,
+    "warmups": 0,
+    "writer_startup_checks": "WAL, synchronous FULL, foreign_keys ON"
+  },
+  "process": {
+    "exit_code": 0,
+    "elapsed_ms": 34539,
+    "executable_sha256": "dcb52f14666dcaead6e5cf2b74894c0b694460431c82eac1d957d7144448a0ac",
+    "mode": "curves"
+  },
+  "scope": "Closed-loop synthetic batches. Latency includes positive injected delay. Small sample percentiles are descriptive, nearest-rank, without interpolation.",
+  "scenarios": [
+    {
+      "name": "concurrency-1",
+      "active_cap": 1,
+      "backend_slots": 2,
+      "queue_cap": 0,
+      "phases": [
+        {
+          "phase": "steady",
+          "raw_summary": {
+            "admitted": 20,
+            "batches": 20,
+            "completed_unchecked": 20,
+            "elapsed_ms": 2494,
+            "failed_outcomes": 0,
+            "final_active": 0,
+            "final_queued": 0,
+            "final_queued_bytes": 0,
+            "measurement_error": null,
+            "offered": 20,
+            "peak_active": 1,
+            "phase": "steady",
+            "rejected": 0,
+            "script_delay_ms": 100
+          },
+          "completed_latency_ms": {
+            "count": 20,
+            "p50": 124.545,
+            "p95": 125.984,
+            "p99": 126.638,
+            "maximum": 126.638
+          },
+          "outcomes": [
+            {
+              "outcome": "completed, unchecked",
+              "count": 20
+            }
+          ],
+          "completed_per_second": 8.019246190858059
+        }
+      ],
+      "final_stats": {
+        "active": 0,
+        "completed_runners": 20,
+        "queued": 0,
+        "queued_bytes": 0,
+        "runner_errors": 0
+      },
+      "measurement_error": null
+    },
+    {
+      "name": "concurrency-2",
+      "active_cap": 2,
+      "backend_slots": 2,
+      "queue_cap": 0,
+      "phases": [
+        {
+          "phase": "steady",
+          "raw_summary": {
+            "admitted": 40,
+            "batches": 20,
+            "completed_unchecked": 40,
+            "elapsed_ms": 2763,
+            "failed_outcomes": 0,
+            "final_active": 0,
+            "final_queued": 0,
+            "final_queued_bytes": 0,
+            "measurement_error": null,
+            "offered": 40,
+            "peak_active": 2,
+            "phase": "steady",
+            "rejected": 0,
+            "script_delay_ms": 100
+          },
+          "completed_latency_ms": {
+            "count": 40,
+            "p50": 136.226,
+            "p95": 159.038,
+            "p99": 159.794,
+            "maximum": 159.794
+          },
+          "outcomes": [
+            {
+              "outcome": "completed, unchecked",
+              "count": 40
+            }
+          ],
+          "completed_per_second": 14.477017734346724
+        }
+      ],
+      "final_stats": {
+        "active": 0,
+        "completed_runners": 40,
+        "queued": 0,
+        "queued_bytes": 0,
+        "runner_errors": 0
+      },
+      "measurement_error": null
+    },
+    {
+      "name": "concurrency-4",
+      "active_cap": 4,
+      "backend_slots": 2,
+      "queue_cap": 0,
+      "phases": [
+        {
+          "phase": "steady",
+          "raw_summary": {
+            "admitted": 80,
+            "batches": 20,
+            "completed_unchecked": 80,
+            "elapsed_ms": 5308,
+            "failed_outcomes": 0,
+            "final_active": 0,
+            "final_queued": 0,
+            "final_queued_bytes": 0,
+            "measurement_error": null,
+            "offered": 80,
+            "peak_active": 4,
+            "phase": "steady",
+            "rejected": 0,
+            "script_delay_ms": 100
+          },
+          "completed_latency_ms": {
+            "count": 80,
+            "p50": 209.979,
+            "p95": 269.393,
+            "p99": 327.197,
+            "maximum": 327.197
+          },
+          "outcomes": [
+            {
+              "outcome": "completed, unchecked",
+              "count": 80
+            }
+          ],
+          "completed_per_second": 15.071590052750565
+        }
+      ],
+      "final_stats": {
+        "active": 0,
+        "completed_runners": 80,
+        "queued": 0,
+        "queued_bytes": 0,
+        "runner_errors": 0
+      },
+      "measurement_error": null
+    },
+    {
+      "name": "concurrency-8",
+      "active_cap": 8,
+      "backend_slots": 2,
+      "queue_cap": 0,
+      "phases": [
+        {
+          "phase": "steady",
+          "raw_summary": {
+            "admitted": 160,
+            "batches": 20,
+            "completed_unchecked": 160,
+            "elapsed_ms": 9907,
+            "failed_outcomes": 0,
+            "final_active": 0,
+            "final_queued": 0,
+            "final_queued_bytes": 0,
+            "measurement_error": null,
+            "offered": 160,
+            "peak_active": 8,
+            "phase": "steady",
+            "rejected": 0,
+            "script_delay_ms": 100
+          },
+          "completed_latency_ms": {
+            "count": 160,
+            "p50": 270.536,
+            "p95": 510.544,
+            "p99": 512.547,
+            "maximum": 512.591
+          },
+          "outcomes": [
+            {
+              "outcome": "completed, unchecked",
+              "count": 160
+            }
+          ],
+          "completed_per_second": 16.15019683052387
+        }
+      ],
+      "final_stats": {
+        "active": 0,
+        "completed_runners": 160,
+        "queued": 0,
+        "queued_bytes": 0,
+        "runner_errors": 0
+      },
+      "measurement_error": null
+    },
+    {
+      "name": "slowdown",
+      "active_cap": 4,
+      "backend_slots": 2,
+      "queue_cap": 0,
+      "phases": [
+        {
+          "phase": "initial",
+          "raw_summary": {
+            "admitted": 40,
+            "batches": 10,
+            "completed_unchecked": 40,
+            "elapsed_ms": 2527,
+            "failed_outcomes": 0,
+            "final_active": 0,
+            "final_queued": 0,
+            "final_queued_bytes": 0,
+            "measurement_error": null,
+            "offered": 40,
+            "peak_active": 4,
+            "phase": "initial",
+            "rejected": 0,
+            "script_delay_ms": 100
+          },
+          "completed_latency_ms": {
+            "count": 40,
+            "p50": 144.301,
+            "p95": 262.526,
+            "p99": 263.208,
+            "maximum": 263.208
+          },
+          "outcomes": [
+            {
+              "outcome": "completed, unchecked",
+              "count": 40
+            }
+          ],
+          "completed_per_second": 15.829046299960428
+        },
+        {
+          "phase": "slow",
+          "raw_summary": {
+            "admitted": 40,
+            "batches": 10,
+            "completed_unchecked": 40,
+            "elapsed_ms": 8672,
+            "failed_outcomes": 0,
+            "final_active": 0,
+            "final_queued": 0,
+            "final_queued_bytes": 0,
+            "measurement_error": null,
+            "offered": 40,
+            "peak_active": 4,
+            "phase": "slow",
+            "rejected": 0,
+            "script_delay_ms": 400
+          },
+          "completed_latency_ms": {
+            "count": 40,
+            "p50": 457.439,
+            "p95": 875.347,
+            "p99": 885.628,
+            "maximum": 885.628
+          },
+          "outcomes": [
+            {
+              "outcome": "completed, unchecked",
+              "count": 40
+            }
+          ],
+          "completed_per_second": 4.612546125461255
+        },
+        {
+          "phase": "recovered",
+          "raw_summary": {
+            "admitted": 40,
+            "batches": 10,
+            "completed_unchecked": 40,
+            "elapsed_ms": 2541,
+            "failed_outcomes": 0,
+            "final_active": 0,
+            "final_queued": 0,
+            "final_queued_bytes": 0,
+            "measurement_error": null,
+            "offered": 40,
+            "peak_active": 4,
+            "phase": "recovered",
+            "rejected": 0,
+            "script_delay_ms": 100
+          },
+          "completed_latency_ms": {
+            "count": 40,
+            "p50": 144.102,
+            "p95": 263.544,
+            "p99": 276.457,
+            "maximum": 276.457
+          },
+          "outcomes": [
+            {
+              "outcome": "completed, unchecked",
+              "count": 40
+            }
+          ],
+          "completed_per_second": 15.741833923652106
+        }
+      ],
+      "final_stats": {
+        "active": 0,
+        "completed_runners": 120,
+        "queued": 0,
+        "queued_bytes": 0,
+        "runner_errors": 0
+      },
+      "measurement_error": null
+    }
+  ],
+  "memory_samples": 34,
+  "peak_working_set_mib": 11.99609375,
+  "peak_private_mib": 5.03515625,
+  "storage": {
+    "database_bytes": 1433600,
+    "reserved_bytes": 0,
+    "runs": 420,
+    "wal_bytes": 4136512
+  }
+}

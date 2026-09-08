@@ -1,0 +1,246 @@
+[
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "not met: required follow-up actions and supported answer absent",
+    "card": "missing-with-alternative",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 998,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 389,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"report.txt\"}",
+                "id": "2Zj8wybRizHo88POrn7nfxgYJLN59VPK",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 396,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 478,
+          "effect_id": "model-1",
+          "replay": {
+            "kind": "answer",
+            "text": "<tool_response>\n{\"status\":\"error\",\"body\":\"\",\"truncated\":false,\"error\":{\"code\":\"not_found\",\"message\":\"The requested workspace resource was not found.\"}}\n</tool_response>"
+          }
+        },
+        "elapsed_ms": 978,
+        "seq": 7
+      }
+    ],
+    "model_turns": 2,
+    "phase": "completed",
+    "prompt": "Try reading report.txt. If it is missing, list this workspace to find the alternate report, read that file, and tell me its title.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "9a1423a10181701353b6b612acf80ec4cdb882d4aa7a5119d032d2d66aa9a6fa",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "07e0686a-15b2-4a60-8786-eba0dee1cfcf",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "<tool_response>\n{\"status\":\"error\",\"body\":\"\",\"truncated\":false,\"error\":{\"code\":\"not_found\",\"message\":\"The requested workspace resource was not found.\"}}\n</tool_response>"
+    },
+    "rubric": "A correlated report.txt error is followed by discovery and reading report-archive.txt. Harbor Update must be supported by that read, without repeating the failed action.",
+    "run_id": "07e0686a-15b2-4a60-8786-eba0dee1cfcf",
+    "sources": [
+      {
+        "body": "title=Harbor Update\n",
+        "path": "report-archive.txt",
+        "sha256": "98aac750ba3f66a55a36c3cecbf996833738a5f95489f8140887f42cba6f4099"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 1,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "2Zj8wybRizHo88POrn7nfxgYJLN59VPK",
+          "classification": "error",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": null,
+          "replay": {
+            "observation": {
+              "body": "",
+              "error": {
+                "code": "not_found",
+                "message": "The requested workspace resource was not found."
+              },
+              "status": "error",
+              "truncated": false
+            }
+          },
+          "resource": "report.txt",
+          "result_bytes": 135,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 459,
+        "seq": 5
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1120,
+        "request_sha256": "7b5aad12c20fbf10101ca55a7e73c8b33d3aac8483ad49650c76c0ee29c1e9a6"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1537,
+        "request_sha256": "fa4ed3a27fe927d8813335444dfb3c9e2e9ade729dd8703000f8bf1ab00dbac2"
+      }
+    ],
+    "batch": "fixed-baseline"
+  },
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "not met: required follow-up actions and supported answer absent",
+    "card": "missing-with-alternative",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 880,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 323,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"report.txt\"}",
+                "id": "9aESnJxQLcN1YUEo2PZXPBDNgrEmtTXx",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 349,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 483,
+          "effect_id": "model-1",
+          "replay": {
+            "kind": "answer",
+            "text": "<tool_response>\n{\"status\":\"error\",\"body\":\"\",\"truncated\":false,\"error\":{\"code\":\"not_found\",\"message\":\"The requested workspace resource was not found.\"}}\n</tool_response>"
+          }
+        },
+        "elapsed_ms": 866,
+        "seq": 7
+      }
+    ],
+    "model_turns": 2,
+    "phase": "completed",
+    "prompt": "Try reading report.txt. If it is missing, list this workspace to find the alternate report, read that file, and tell me its title.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "9a1423a10181701353b6b612acf80ec4cdb882d4aa7a5119d032d2d66aa9a6fa",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "e93de4eb-d842-431b-abb1-3d080d6fca3b",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "<tool_response>\n{\"status\":\"error\",\"body\":\"\",\"truncated\":false,\"error\":{\"code\":\"not_found\",\"message\":\"The requested workspace resource was not found.\"}}\n</tool_response>"
+    },
+    "rubric": "A correlated report.txt error is followed by discovery and reading report-archive.txt. Harbor Update must be supported by that read, without repeating the failed action.",
+    "run_id": "e93de4eb-d842-431b-abb1-3d080d6fca3b",
+    "sources": [
+      {
+        "body": "title=Harbor Update\n",
+        "path": "report-archive.txt",
+        "sha256": "98aac750ba3f66a55a36c3cecbf996833738a5f95489f8140887f42cba6f4099"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 1,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "9aESnJxQLcN1YUEo2PZXPBDNgrEmtTXx",
+          "classification": "error",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": null,
+          "replay": {
+            "observation": {
+              "body": "",
+              "error": {
+                "code": "not_found",
+                "message": "The requested workspace resource was not found."
+              },
+              "status": "error",
+              "truncated": false
+            }
+          },
+          "resource": "report.txt",
+          "result_bytes": 135,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 366,
+        "seq": 5
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1120,
+        "request_sha256": "7b5aad12c20fbf10101ca55a7e73c8b33d3aac8483ad49650c76c0ee29c1e9a6"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1537,
+        "request_sha256": "9b7578b73b2622503f4c57eb643a5935ba0f08ab37c3503bc17679e70822033c"
+      }
+    ],
+    "batch": "fixed-baseline"
+  }
+]

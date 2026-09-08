@@ -1,0 +1,14 @@
+{
+  "completed": 10152,
+  "cycles": 423,
+  "elapsed_ms": 600463,
+  "final_active": 0,
+  "final_queued": 0,
+  "final_queued_bytes": 0,
+  "peak_active": 8,
+  "peak_queued": 16,
+  "peak_queued_bytes": 26480,
+  "rejections": 423,
+  "runner_errors": 0,
+  "workload": "closed-loop bursts; 25 offered, bounded 8 active + 16 queued, two backend slots held for 100ms"
+}

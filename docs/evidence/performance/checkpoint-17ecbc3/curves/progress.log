@@ -1,0 +1,8 @@
+concurrency-1/steady: 20 completed, 0 rejected, peak 1
+concurrency-2/steady: 40 completed, 0 rejected, peak 2
+concurrency-4/steady: 80 completed, 0 rejected, peak 4
+concurrency-8/steady: 160 completed, 0 rejected, peak 8
+slowdown/initial: 40 completed, 0 rejected, peak 4
+slowdown/slow: 40 completed, 0 rejected, peak 4
+slowdown/recovered: 40 completed, 0 rejected, peak 4
+measurements and all owned workers settled

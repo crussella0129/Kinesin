@@ -1,0 +1,19 @@
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"role":"assistant","content":null}}],"created":1788841267,"id":"chatcmpl-XeThOdOSjTsvBZZxaubjye98m9IcYHgQ","model":"kinesin-qwen25-coder-7b","system_fingerprint":"b6500-a7a98e0f","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"Hello"}}],"created":1788841267,"id":"chatcmpl-XeThOdOSjTsvBZZxaubjye98m9IcYHgQ","model":"kinesin-qwen25-coder-7b","system_fingerprint":"b6500-a7a98e0f","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":" K"}}],"created":1788841267,"id":"chatcmpl-XeThOdOSjTsvBZZxaubjye98m9IcYHgQ","model":"kinesin-qwen25-coder-7b","system_fingerprint":"b6500-a7a98e0f","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"ines"}}],"created":1788841267,"id":"chatcmpl-XeThOdOSjTsvBZZxaubjye98m9IcYHgQ","model":"kinesin-qwen25-coder-7b","system_fingerprint":"b6500-a7a98e0f","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"in"}}],"created":1788841267,"id":"chatcmpl-XeThOdOSjTsvBZZxaubjye98m9IcYHgQ","model":"kinesin-qwen25-coder-7b","system_fingerprint":"b6500-a7a98e0f","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":null,"index":0,"delta":{"content":"."}}],"created":1788841267,"id":"chatcmpl-XeThOdOSjTsvBZZxaubjye98m9IcYHgQ","model":"kinesin-qwen25-coder-7b","system_fingerprint":"b6500-a7a98e0f","object":"chat.completion.chunk"}
+
+data: {"choices":[{"finish_reason":"stop","index":0,"delta":{}}],"created":1788841267,"id":"chatcmpl-XeThOdOSjTsvBZZxaubjye98m9IcYHgQ","model":"kinesin-qwen25-coder-7b","system_fingerprint":"b6500-a7a98e0f","object":"chat.completion.chunk"}
+
+data: {"choices":[],"created":1788841267,"id":"chatcmpl-XeThOdOSjTsvBZZxaubjye98m9IcYHgQ","model":"kinesin-qwen25-coder-7b","system_fingerprint":"b6500-a7a98e0f","object":"chat.completion.chunk","usage":{"completion_tokens":6,"prompt_tokens":37,"total_tokens":43},"timings":{"cache_n":3,"prompt_n":34,"prompt_ms":93.951,"prompt_per_token_ms":2.763264705882353,"prompt_per_second":361.890772849677,"predicted_n":6,"predicted_ms":93.536,"predicted_per_token_ms":15.589333333333334,"predicted_per_second":64.14642490591856}}
+
+data: [DONE]
+
+

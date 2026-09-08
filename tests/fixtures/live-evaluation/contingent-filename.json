@@ -1,0 +1,356 @@
+[
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "contingent-filename",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 1453,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 406,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"index.txt\"}",
+                "id": "rAKKVVRgrLFDux4C3FINDrwuX9AAoPHM",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 424,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 600,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"packet-73.txt\"}",
+                "id": "EwV3WEGTAVcqLVSwnYxYwSe2TvPoT4wv",
+                "name": "read_file"
+              }
+            ],
+            "content": "Next file to read is packet-73.txt. Now, let's read that file.\n\n<tool_response></tool_response>",
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 1070,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 304,
+          "effect_id": "model-2",
+          "replay": {
+            "kind": "answer",
+            "text": "The code found in packet-73.txt is:\n\n```\nVIOLET-63\n"
+          }
+        },
+        "elapsed_ms": 1443,
+        "seq": 11
+      }
+    ],
+    "model_turns": 3,
+    "phase": "completed",
+    "prompt": "Read index.txt. It names the next file to read. Follow that filename and tell me the code found there.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "74aca427c2b11d5ed119eb4fef402f039bff3ed0d8076e2d0f23e6caf4c64abd",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "0e1a5bc6-c372-4300-b78e-ced35c006fec",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "The code found in packet-73.txt is:\n\n```\nVIOLET-63\n"
+    },
+    "rubric": "The observed index determines the second call, packet-73.txt, and its result supports VIOLET-63.",
+    "run_id": "0e1a5bc6-c372-4300-b78e-ced35c006fec",
+    "sources": [
+      {
+        "body": "next=packet-73.txt\n",
+        "path": "index.txt",
+        "sha256": "710e47d1ac9807a2cc1ef0e42312b9436c003bfe040010ef89cf41a95b8b169a"
+      },
+      {
+        "body": "code=VIOLET-63\n",
+        "path": "packet-73.txt",
+        "sha256": "0e783f9fca91c19c567ba92d38cdb52f893e308958950041c80a8129a3b97e63"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 2,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "rAKKVVRgrLFDux4C3FINDrwuX9AAoPHM",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "next=packet-73.txt\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "index.txt",
+          "result_bytes": 82,
+          "sha256": "710e47d1ac9807a2cc1ef0e42312b9436c003bfe040010ef89cf41a95b8b169a",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 447,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "EwV3WEGTAVcqLVSwnYxYwSe2TvPoT4wv",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": "e1",
+          "replay": {
+            "observation": {
+              "body": "code=VIOLET-63\n",
+              "evidence_id": "e1",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "packet-73.txt",
+          "result_bytes": 78,
+          "sha256": "0e783f9fca91c19c567ba92d38cdb52f893e308958950041c80a8129a3b97e63",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 1106,
+        "seq": 9
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1092,
+        "request_sha256": "250782ea37ff9e1b72a9fb56f9af57f5701c207f1cdd5bd1d47597d6a75e0d32"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1450,
+        "request_sha256": "c105abe64a664553adb7c2fab9db1fa605f194707ff3441aa489f0c28badfd71"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 1903,
+        "request_sha256": "220d1cef3f3d8c9ad3c6c58b149e28cd24c7cb69add263a28b2f199ae5fafba5"
+      }
+    ],
+    "batch": "fixed-baseline",
+    "review_note": "The requested code is correct; final Markdown has an unclosed code fence."
+  },
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "rubric met over the recorded observations",
+    "card": "contingent-filename",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 1306,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 324,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"index.txt\"}",
+                "id": "EI7ALGirOudTIux9LbgS7O5gOcjZksxb",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 354,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 573,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"packet-73.txt\"}",
+                "id": "fIew3OU6gcwfyTb5YWYS4WyXou6S2SEo",
+                "name": "read_file"
+              }
+            ],
+            "content": "Next file to read is packet-73.txt. Now, let's read that file.\n\n<tool_response></tool_response>",
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 959,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 293,
+          "effect_id": "model-2",
+          "replay": {
+            "kind": "answer",
+            "text": "The code found in packet-73.txt is:\n\n```\nVIOLET-63\n"
+          }
+        },
+        "elapsed_ms": 1296,
+        "seq": 11
+      }
+    ],
+    "model_turns": 3,
+    "phase": "completed",
+    "prompt": "Read index.txt. It names the next file to read. Follow that filename and tell me the code found there.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "74aca427c2b11d5ed119eb4fef402f039bff3ed0d8076e2d0f23e6caf4c64abd",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "44112536-304e-4ebe-bc02-f462cf9e1da1",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "The code found in packet-73.txt is:\n\n```\nVIOLET-63\n"
+    },
+    "rubric": "The observed index determines the second call, packet-73.txt, and its result supports VIOLET-63.",
+    "run_id": "44112536-304e-4ebe-bc02-f462cf9e1da1",
+    "sources": [
+      {
+        "body": "next=packet-73.txt\n",
+        "path": "index.txt",
+        "sha256": "710e47d1ac9807a2cc1ef0e42312b9436c003bfe040010ef89cf41a95b8b169a"
+      },
+      {
+        "body": "code=VIOLET-63\n",
+        "path": "packet-73.txt",
+        "sha256": "0e783f9fca91c19c567ba92d38cdb52f893e308958950041c80a8129a3b97e63"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 2,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "EI7ALGirOudTIux9LbgS7O5gOcjZksxb",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "next=packet-73.txt\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "index.txt",
+          "result_bytes": 82,
+          "sha256": "710e47d1ac9807a2cc1ef0e42312b9436c003bfe040010ef89cf41a95b8b169a",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 365,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "fIew3OU6gcwfyTb5YWYS4WyXou6S2SEo",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": "e1",
+          "replay": {
+            "observation": {
+              "body": "code=VIOLET-63\n",
+              "evidence_id": "e1",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "packet-73.txt",
+          "result_bytes": 78,
+          "sha256": "0e783f9fca91c19c567ba92d38cdb52f893e308958950041c80a8129a3b97e63",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 969,
+        "seq": 9
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1092,
+        "request_sha256": "250782ea37ff9e1b72a9fb56f9af57f5701c207f1cdd5bd1d47597d6a75e0d32"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1450,
+        "request_sha256": "fc06043c1cc0582cdd72cf3e93651f355f9b4826073fca4172b552df650faa58"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 1903,
+        "request_sha256": "cb6bf91314c40082a1172ef149fda2e462374c63095e9cf86616802f61ea8968"
+      }
+    ],
+    "batch": "fixed-baseline",
+    "review_note": "The requested code is correct; final Markdown has an unclosed code fence."
+  }
+]

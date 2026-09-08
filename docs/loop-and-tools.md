@@ -1,210 +1,313 @@
-# The ReAct loop and the tool layer
+# Runtime and tool contracts
 
-K-Core runs the ReAct loop. "ReAct" means reason, then act. The model reasons in
-text. Then it asks for an action. K-Core runs the action, observes the result, and
-gives the result back to the model. The loop repeats until a stop condition is
-true.
+This document specifies behavior. The [build guide](build-guide.md) supplies the
+implementation order; [security](security.md), [performance](performance.md), and
+[traces](traces.md) own authority, shared limits, and persistence details.
 
-## The step cycle
+## Core data
 
-One step of the loop does these things in order:
+Use owned domain types. The exact Rust spelling is your work, but distinguish:
 
-1. Build the prompt. Join the instructions from `kinesin.toml`, the conversation
-   so far, and the last observation.
-2. Send the prompt to the model through Koil ([integration.md](integration.md), llama-server). Record a `to_model`
-   trace.
-3. Read the answer. Record a `from_model` trace.
-4. Look for an action in the answer.
-5. If there is no action, treat the answer as the final answer. Stop the loop.
-6. If there is an action, find the function for that action name in the function
-   table.
-7. If the name is not in the table, make an error observation. Go to step 10.
-8. Check the arguments against what the function needs. If the arguments are
-   wrong, make an error observation. Go to step 10.
-9. Call the function. Capture its result or its error as the observation.
-10. Add the action and the observation to the conversation.
-11. Add 1 to the step count. Go to step 1.
+| Value | Required meaning |
+|-------|------------------|
+| `RunId` | Harness-generated opaque identity |
+| `RunAuthority` | Trusted immutable principal, capability, allowed tools/model profile, budgets, capture |
+| `Conversation` | Ordered system/user/assistant/tool messages |
+| `ToolCall` | Provider call ID, function name, raw JSON argument string |
+| `ModelReply` | Complete final message, complete tool batch, incomplete output, or protocol failure |
+| `ToolResult` | Status, bounded body, truncation, optional error code/message |
+| `TaskContract` | Frozen Freeform or FileFieldsV1 specification; no model-editable criteria |
+| `EvidenceRecord` | Runner-owned observation bound to owner, run, effect, resource, bytes and completeness |
+| `AcceptanceReceipt` | Separate status, contract/checker versions, candidate digest and required check outcomes |
+| `RunState` | History, counters, pending effect/batch, repetition state, phase |
+| `Effect` | Proposed model call, tool invocation, or terminal decision |
+| `Observation` | Actual normalized reply/result/error or recorded external event |
 
-## The loop states
+A pure transition takes state and an observation and returns state plus the next
+proposed effect. It never treats a model proposal as an authorization decision.
+The runner enforces policy and resources before effects execute.
 
-Model the loop with a small set of states. An `enum` fits well (Rust book,
-Chapter 6):
+Do not parse hidden reasoning or `Action:` text. The supported adapter uses
+structured chat/tool messages. Preserve any tested provider continuation fields
+needed for subsequent requests without interpreting them as permission.
 
-- `Think` — build and send the prompt; wait for the answer.
-- `Act` — a valid action is present; call the function.
-- `Observe` — record the result and add it to the conversation.
-- `Done` — a stop condition is true; return the final answer.
-- `Failed` — an error stops the loop; return the error.
+## Lifecycle and terminal outcomes
 
-## How the model asks for an action
+The externally visible phases are `queued`, `running`, `cancelling`,
+`completed`, `stopped`, `failed`, `cancelled`, and `interrupted`.
 
-This is the most important decision in the whole harness. There are three ways to
-do it. They differ a great deal in how often they work.
+- `completed`: a complete nonempty answer candidate and acceptance receipt were recorded.
+- `stopped`: an explicit limit, repeated batch, context/output exhaustion, or
+  other planned stop prevented completion.
+- `failed`: invalid configuration/protocol, transport, or persistence prevented
+  normal execution.
+- `cancelled`: cancellation was handled and owned work settled.
+- `interrupted`: restart recovery found unfinished work.
 
-**Approach A — Native tool calls (recommended).** Start `llama-server` with
-`--jinja`. Send your tools in the `tools` array on `/v1/chat/completions`. The
-server formats the tools with the model's own chat template and parses the reply
-for you. You receive `tool_calls` in the response, and `finish_reason` is
-`"tool"`. **You write no parser for tool calls.**
+Execution phase is separate from acceptance status: `unchecked`, `pending`,
+`passed`, `failed`, or `inconclusive`. Terminal runs cannot remain pending.
+Only `completed + passed` yields the derived `task_accepted=true`. A wrong
+answer can be `completed + failed`; a freeform answer is `completed + unchecked`.
+The [acceptance contract](verification.md) defines independent checks, evidence,
+verdict persistence, and strict CLI exit codes. A model claim is not evidence.
 
-Why this is the default choice: model makers train the model on their own tool
-format. When you inject a different format into the prompt instead, the format
-does not match the training, and measured hallucination rates for that mismatch
-are very high. The original ReAct method used free text action lines and a regular
-expression to read them, and parse failures were one of the main causes of agent
-breakage. Native formats also use fewer tokens.
+`cancelling` is useful: a running filesystem closure cannot always be stopped
+immediately. Do not say work is finished while its resource permit was merely
+dropped by an impatient waiter. The shutdown policy may report unresolved work;
+a process exit still does not prove a remote effect stopped.
 
-**Approach B — Constrained decoding (use together with A).** Send a `json_schema`
-(or `grammar`) field with the request. llama.cpp turns it into a GBNF grammar and
-permits only tokens that fit the shape. Malformed output becomes impossible, so a
-whole class of failure disappears. Three cautions:
+After any terminal decision, no new model/tool effect starts. A failed run is
+not represented as an empty successful answer.
 
-- The schema does not reach the model. Describe the shape in the prompt as well.
-- Only a subset of JSON Schema works. Do not mix `properties` with `anyOf` or
-  `oneOf`; avoid `prefixItems`, nested `$ref`, and `patternProperties`.
-- `additionalProperties` defaults to false, which is what you want.
+Reserve terminal storage-inbox capacity, then check cancellation/deadline before
+synchronously submitting the command. Observed cancellation at that boundary
+takes precedence over a candidate and makes checked acceptance inconclusive.
+Once the command enters the inbox, settle it; later cancellation cannot recall
+or overwrite it. The single runner serializes this decision; the HTTP handler
+only signals cancellation. Already completed effects remain observations.
 
-**Approach C — Hand-parsed JSON on `/completion` (fallback only).** The model
-returns one JSON object in `content`, and you parse it:
+## Provider request and reply
+
+Koil prepares `POST /v1/chat/completions` with the approved model identity,
+structured messages, and explicit `n: 1`. Tools are omitted until enabled.
+When tools are present, use `tool_choice: "auto"` and
+`parallel_tool_calls: false`; still handle a returned batch safely.
+Keep top-level `grammar`, `json_schema`, and `response_format` absent in the
+initial tool loop.
+
+Require exactly one choice at index zero and an assistant message. For calls,
+require `type: "function"`, nonempty bounded IDs/names, and a string-valued
+`function.arguments`. Arguments contain JSON and need a second parse into
+the particular tool's typed struct.
+
+| Provider reply | Runtime action |
+|----------------|----------------|
+| `stop`, no calls, nonempty text | Answer candidate; assess before terminal commit |
+| `tool_calls`, valid nonempty identified batch | Validate and process batch |
+| `length` | Incomplete output; run stops; no tool executes |
+| Empty content with no calls | Empty-response failure |
+| Missing/duplicate IDs in one batch, wrong role/type, contradictory reason/calls, unknown finish reason | Protocol failure; no tool executes |
+
+Assistant content may be null or empty when calls are present. A complete
+response is required even with streaming. Current llama.cpp uses
+`tool_calls` as the finish reason and can report `length` for either output
+or context limits. Extra grammar combinations are template-dependent.
+[llama.cpp response serialization](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/server-task.cpp),
+[request parsing](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/server-common.cpp)
+
+## Initial tool definition
+
+One preflight tool can be advertised as follows. Its schema constrains the
+argument shape; the Rust handler still validates authority and semantics.
 
 ```json
 {
-  "action": "list_files",
-  "args": { "path": "." }
+  "type": "function",
+  "function": {
+    "name": "read_file",
+    "description": "Read a bounded prefix of a UTF-8 text file inside the selected workspace. Use a relative path. Output reports truncation; it does not contain unseen file contents.",
+    "parameters": {
+      "type": "object",
+      "properties": {"path": {"type": "string"}},
+      "required": ["path"],
+      "additionalProperties": false
+    }
+  }
 }
 ```
 
-This is the simplest request and it works with any model, with no template
-support needed. It is also the approach with the worst measured reliability, and
-you own the parser forever. Use it only if your model has no tool template. If you
-do use it, always add Approach B so that the JSON is at least well formed.
+The real request includes this in its `tools` array, with the other chat fields.
+Start with only `read_file` and `list_files`. Both take `path: string`.
+Use typed structs with unknown-field rejection and a shared lexical path
+validator. Do not write a general JSON Schema engine for two fixed tools.
 
-**The recommendation: A + B.** Use native tool calls, and constrain the output.
-Keep C written down as the fallback.
+## Complete tool history
 
-> **This does not cost you the learning.** Approach A removes the fragile
-> tool-call *extraction* work. It does not remove the JSON work. You still
-> hand-write the encoder that builds the request and the decoder that reads the
-> response, exactly as [decisions.md](decisions.md), item 2 describes. You give up a parser that
-> tends to break, not the part that teaches you the most.
+Keep the assistant call message and append one corresponding result for each
+call. Earlier system/user history remains in place.
 
-**Check this before you build anything.** Start the server with your model and one
-test tool, and read the server log. It states whether it used a native format or
-the generic fallback. If it says generic, change the model now rather than after
-you write the loop. Phase 0 in [roadmap.md](roadmap.md) makes this a step.
+```json
+[
+  {"role":"user","content":"What title is in note.txt?"},
+  {
+    "role":"assistant",
+    "content":null,
+    "tool_calls":[{
+      "id":"call_1",
+      "type":"function",
+      "function":{"name":"read_file","arguments":"{\"path\":\"note.txt\"}"}
+    }]
+  },
+  {
+    "role":"tool",
+    "tool_call_id":"call_1",
+    "content":"{\"status\":\"ok\",\"body\":\"Title: Kinesin notes\",\"truncated\":false}"
+  }
+]
+```
 
-## Stop conditions
+A tool-call message and all its results form one conversation unit. Do not send
+the next model request with unmatched results or half of an accepted batch.
+Do not duplicate observations in a separate prompt field. No `finish` tool is
+needed when ordinary final text already supplies an answer candidate.
 
-The loop must not run forever. Stop when any of these is true:
+## Batch execution
 
-- The answer has no action. This is the normal, successful end.
-- The step count reaches the maximum. Set the maximum in `kinesin.toml`, for
-  example 12 steps.
-- The same action and the same arguments repeat too many times. This shows a
-  stuck loop.
-- A function returns a stop result on purpose (for example a `finish` function).
-- An error happens that you cannot recover from (for example Kineserve is not
-  reachable).
+The loop must let new observations change the next proposed action. A scripted
+prewritten action list is insufficient for tasks whose next input is discovered
+by a tool. Return bounded actionable errors and preserve their correlation, so
+the model can choose a different permitted action within the same budgets.
+That next decision is not an automatic retry of an ambiguous transport/effect.
+There is no requirement to emit or parse a free-form `Thought:` trace, add a
+`think` tool, or reproduce the textual ReAct protocol.
 
-## What to record
+Backend speculative decoding verifies candidate output tokens. Kinesin separately
+validates and authorizes effects. A sidecar prediction, valid JSON prefix, or
+decoder-accepted draft is never permission to execute a tool; the full reply and
+batch must still pass the existing gate. See the [paper review](paper-review.md).
 
-Record a trace for every message to and from the model ([traces.md](traces.md)). Also decide
-whether to record the function results. A good first rule: put the observation
-text inside the next `to_model` trace, because the observation becomes part of the
-next prompt. This keeps the full history in the traces.
+1. Validate the full reply structure, all IDs, and the entire batch's remaining
+   tool budget before any handler executes. Reject a structurally invalid or
+   over-budget batch as a whole.
+2. Compare ordered names and normalized arguments against the previous batch.
+   Stop before the third consecutive identical batch when `repeat_limit=3`.
+   Ignore new provider IDs and JSON whitespace for this comparison.
+3. Append the assistant message once. Process calls serially in returned order.
+   Invalid/unknown/denied calls consume the tool-call budget too.
+4. Decode arguments, check the trusted tool allow-list, and validate the path.
+   With a usable ID, ordinary argument/tool errors become bounded observations.
+   Bad correlation is a protocol failure, not an observation to guess around.
+5. Record `tool_planned` with the decision. A denial records `tool_finished`
+   without a handler. An allowed call acquires bounded blocking capacity and
+   rechecks deadline/cancellation before actual dispatch.
+6. Record each result before feeding it to the core. If cancellation happens
+   mid-batch, settle already started work, terminate, and send no incomplete
+   history to the model.
 
-## Errors in the loop
+Normalize recognized arguments through their typed representation. For an
+unknown tool with valid JSON, compare parsed values. For malformed JSON, exact
+string comparison is adequate because the overall budgets still bound variants.
 
-Return a `Result` from each function (Rust book, Chapter 9). Turn a function error
-into an observation, not a crash, so the model can react to it. Stop the loop only
-for an error that you cannot recover from. For that case, write a `Failed` trace
-with the reason.
+## File-tool semantics
 
-Rust study for this section: Chapter 5 (structs for the message and the action),
-Chapter 6 (enums and `match` for the states), Chapter 9 (`Result` and `?`), and
-Chapter 13 (iterators to walk the conversation). Read the Brown fork, Chapter 4.3
-"Fixing Ownership Errors", before you pass the conversation between functions.
+The private `WorkspaceReader` owns an open `cap_std::fs::Dir`. Trusted startup
+opens the configured root; model input never opens a new ambient root.
+Lexical validation rejects NUL, parent components, rooted paths, Windows
+prefixes, `:`, and paths beyond a small declared limit (initially 4096 UTF-8
+bytes). `.` is valid for directory listing.
 
----
+`read_file` opens through that capability, checks the opened handle is a
+regular file, and reads a bounded prefix. Reject unsupported text encodings.
+At a size boundary, distinguish a clipped trailing UTF-8 character from invalid
+interior data. The final serialized result—including escapes and error fields—
+must fit `max_tool_result_bytes`; reserve envelope space and mark truncation.
 
-## How to define a tool
+`list_files` is nonrecursive. Bound visited entries (initially 256) and collected
+name bytes as well as serialized output. Sort the collected names; if scanning
+stops early, say the result is incomplete. Do not claim a stable subset of a huge
+directory merely because you sorted the subset the OS happened to enumerate.
+Handle unrepresentable names explicitly; never feed a lossy display name back as
+a valid access path.
 
-A tool has four parts. Keep the shape below, because it maps straight into the
-`tools` array that `llama-server` expects, and it also matches the shape that the
-Model Context Protocol uses. That keeps a later move to MCP a mapping job instead
-of a rewrite.
+The initial workspace contract is an operator-provisioned ordinary file tree.
+No special files, devices, credential trees, or cross-owner hard links/mounts are
+part of that input surface. A post-open metadata check cannot prevent a FIFO open
+from blocking. Capability resolution addresses path authority, not arbitrary
+kernel I/O latency; bounded workers preserve capacity accounting.
+[cap-std security model](https://github.com/bytecodealliance/cap-std),
+[Dir API](https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html)
 
-| Part | What it is |
-|------|-----------|
-| `name` | A short, action-based name, for example `read_file`. |
-| `description` | Plain words that say what the tool does and when to use it. |
-| `parameters` | A JSON Schema for the arguments. |
-| handler | The Rust function that runs the tool. |
+## Result envelope
 
-Rules that come from measured practice:
+```json
+{
+  "status": "error",
+  "body": "",
+  "truncated": false,
+  "error": {"code": "not_found", "message": "The requested file was not found."}
+}
+```
 
-- **The description carries as much weight as the schema.** The model chooses the
-  tool from the description. Write it for a reader who cannot see your code. Say
-  when *not* to use the tool as well.
-- **Set `additionalProperties` to false.** List `required` fields explicitly. Use
-  an enum where the value set is fixed. A tight schema removes guesswork.
-- **Give a tool one clear purpose.** Too broad, and the model picks it for the
-  wrong job. Too narrow, and you need many tools, which also confuses the model.
-- **Keep the tool count small.** Every extra tool makes the choice harder. Start
-  with three.
-- **Give every tool result the same envelope.** For example a status, a body, and
-  a flag that says whether the body was cut. One shape makes the loop simple and
-  makes the traces easy to read.
+Statuses are `ok`, `error`, or `denied`. Use stable error codes and bounded
+helpful text. Do not expose service filesystem paths or credentials in errors.
+Truncation must describe what the model actually received; never imply the
+entire file was read if only a prefix was available.
+For actual successful observations, the runner can add `evidence_id`, a unique
+reference inside this run. Its envelope bytes count toward the same result cap.
+Only runner-owned records can resolve that reference. The checker also verifies
+resource identity, status, completeness, and the claimed value; a citation alone
+does not pass. See [task acceptance](verification.md#runner-owned-evidence).
 
-## What goes wrong, and what to do about it
+## Budgets and context
 
-Local models fail at tool calls in four repeatable ways. Plan for each one.
+Per-run limits are defined in [configuration](configuration.md); shared capacities
+are in [performance](performance.md). A run's absolute deadline includes queueing,
+journal acknowledgements, model waits, HTTP body reads, and tool work. Each wait
+uses the smaller of its local timeout and the remaining run time.
+After a stop decision, the separate settlement grace permits only bookkeeping;
+it never extends execution authority. Pending blocking work/commits can outlive
+both waits and stay controller-owned. See [performance](performance.md).
 
-| Failure | What it looks like | What to do |
-|---------|-------------------|-----------|
-| Eager invocation | The model calls a tool when it does not need one. It answers "Hello" with a tool call. | Say in the instructions that a plain answer is allowed. Give an explicit `finish` tool. |
-| Wrong tool | It picks a tool that does not fit the task. | Improve the descriptions. Reduce the tool count. |
-| Invalid arguments | A field is missing, or has the wrong type. | Use constrained decoding (8.3, Approach B). Check the arguments before you call the handler, and return the error as an observation. |
-| Ignored result | The model does not use the tool output and repeats the call. | Put the result in the conversation in a clear form. Use the `repeat_limit` from "Stop conditions" above. |
+Limit conversation bytes separately from outgoing serialized request bytes.
+Tool definitions, templates, and encoding add overhead. Before admitting a new
+observation, check whether the next state would exceed its history budget; stop
+clearly rather than silently dropping evidence.
 
-Two more points that decide success before you write any code: use a model of at
-least 8B parameters, and keep the KV cache unquantized. [components.md](components.md), models/ gives the
-detail on both.
+Byte limits are not token accounting. Verify the server's actual per-slot context
+and explicitly disable context shifting. When the pinned backend supports chat
+input-token counting, count the same template/tools/options and reserve generation
+space plus a stated margin. Otherwise rely on bounded inputs and explicit
+context/length failure; do not claim exact preflight.
 
-## Safety: bound what the model can do
+Streaming does not relax any bound. Frame accumulation, argument strings,
+aggregate text, event queues, and subscribers need limits. Visible text is
+provisional until the final reply is classified. [Integration](integration.md)
+specifies stream assembly.
 
-The model chooses the actions, so the harness must set the limits. This is a
-requirement, not a feature.
+## Shared-service API contract
 
-- **Read-only by default.** A tool that changes data goes on an explicit
-  allow-list, and asks for a confirmation first.
-- **Validate arguments before you run the handler.** Never pass model output
-  straight into a path, a command, or a query.
-- **Treat every tool result as untrusted text.** A file, a web page, or another
-  agent can carry instructions aimed at your model. Do not let a tool result act
-  as an instruction. Keep it clearly marked as data when you put it back in the
-  prompt.
-- **Cap the size of a result** before it enters the conversation.
+Implement this only after the concurrent runtime gate. Authentication/authorization
+and deployment requirements are in [security](security.md).
 
-## Two approaches considered and not chosen
+| Endpoint | Contract |
+|----------|----------|
+| `POST /v1/runs` | Authenticate/validate; look up authorized retry; for absent key reserve admission and atomically recheck/create; controller owns acceptance and dispatch; return 202 and owner-scoped run ID |
+| `GET /v1/runs` | Owner-filtered, cursor-paginated metadata; bounded page |
+| `GET /v1/runs/{id}` | Owner-scoped phase, acceptance status/receipt, derived task_accepted, and bounded terminal candidate/result |
+| `GET /v1/runs/{id}/events` | Authorized bounded public status projection and optional transient display text; never raw replay events; slow client disconnects without stopping the run |
+| `POST /v1/runs/{id}/cancel` | Authorize and signal owning scheduler/runner; acknowledge request, not instantaneous effect termination |
+| `GET /v1/runs/{id}/export` | Owner-authorized bounded export; replay payload requires capture permission |
 
-Design rule 6 says to write down the reason. These two are worth knowing about.
+A tagged submission is either `freeform` with `workspace`, `model`, and `prompt`,
+or `checked` with `task` and `model`. Both may request smaller limits and an
+allowed capture choice. The checked profile generates its fixed task instruction:
+reject extra prompts, workspace overrides, supplied criteria or expected answers.
+No submission supplies an authoritative owner, path, URL, credential, or arbitrary
+tool definition. Reject unknown fields. Task permission intersects resource permissions.
+Require a bounded principal-scoped `Idempotency-Key`; same key plus a different
+normalized submission returns 409.
+The fingerprint includes mode and task selection; effective contract contents
+are frozen separately. An identical retry returns its original verdict even if
+operator configuration changed. Recheck access to the retained run's resources.
+HTTP 202 means admitted and 200 means retrieved, never accepted as correct.
+Every status/list/terminal SSE/export projection includes both outcome axes and
+the identified contract scope. Publish terminal state only after the combined
+candidate/receipt transaction commits; do not run a checker after SSE closes.
 
-**Code as action (CodeAct).** Instead of a JSON action, the model writes a short
-program, and the harness runs it. Measurements show it beats JSON actions: about a
-20% better success rate and roughly 30% fewer steps, because code carries loops
-and conditions, and models see a lot of code in training. The gain is real and it
-is largest for open models. **Not chosen** because it needs a sandboxed
-interpreter. That is a large dependency and a large security surface, and both
-work against the minimal, standard-library goal. Revisit only if Kinesin ever
-needs to compose many tools in one step.
+Use 400 for invalid input, 401 for failed authentication, 404 for absent or
+inaccessible run IDs, 413 for oversized bodies, 429 for caller quota exhaustion,
+and 503 for global admission/storage unavailability. Do not leak another owner's
+resource existence in an error. Completed cancellation requests are idempotent;
+return the already terminal phase without repeating any effect.
 
-**Model Context Protocol (MCP).** MCP is now the common standard for tool
-interfaces, with wide industry support. **Not chosen for now** because Kinesin
-needs a working local loop first, and MCP adds a protocol and a transport that the
-harness does not yet need. The cheap step is the one in "How to define a tool" above: shape the
-tool definition like an MCP tool. Then adopting MCP later is a mapping, not a
-redesign.
+Before acceptance can commit, a controller-owned submission operation takes
+responsibility for settling persistence and scheduling, independent of the HTTP
+receiver. Disconnect between commit and dispatch/202 cannot strand the run.
+Client disconnect or an SSE observer leaving does not cancel accepted work;
+cancellation requires the explicit endpoint
+or its deadline. List/status remain available after a controller restart for
+recorded runs. Unfinished runs become interrupted, not transparently resumed.
 
----
-
+Bound ingress before expensive parsing/task creation; middleware order matters.
+There is no browser UI or permissive cross-origin access in the initial service.
+No client deletion endpoint is required; retention is an operator workflow.

@@ -1,0 +1,180 @@
+{
+  "metadata": {
+    "cancel_trials": 100,
+    "cargo_lock_sha256": "083e08b1e04da561966e1c8b16e3f55290ecf63896211ad6ba129623bf59d782",
+    "config_sha256": "93dc6f48389b6d387dfc36169e6d586f6c2c1160b4c4fbf734eafe0582689099",
+    "executable_sha256": "acef5c0d5372cedfab73340b3689f527a4c2a12daecb91cd810b781d848c0031",
+    "retention_policy": {
+      "max_bytes": 4294967296,
+      "max_runs": 100000,
+      "minimum_hours": 24
+    },
+    "scope": "synthetic freeform unchecked, metadata capture; real admission and SQLite journal; excludes configuration/authority construction",
+    "soak_seconds": 600,
+    "sqlite_version": "3.53.2",
+    "warm_only": false,
+    "warm_trials": 1000,
+    "warmups": 20,
+    "writer_startup_checks": "WAL, synchronous FULL, foreign_keys ON"
+  },
+  "process": {
+    "exit_code": 0,
+    "pid": 20516,
+    "elapsed_ms": 643438,
+    "executable_sha256": "acef5c0d5372cedfab73340b3689f527a4c2a12daecb91cd810b781d848c0031",
+    "mode": "full",
+    "started_utc": "2026-09-08T06:57:20.8277156Z"
+  },
+  "percentile": "nearest rank, ceil(p * n), no interpolation",
+  "warm_total_ms": {
+    "count": 1000,
+    "minimum": 13.123,
+    "p50": 29.911,
+    "p95": 60.365,
+    "p99": 79.233,
+    "maximum": 124.457
+  },
+  "admission_ms": {
+    "count": 1000,
+    "minimum": 2.091,
+    "p50": 2.502,
+    "p95": 12.605,
+    "p99": 33.893,
+    "maximum": 45.03
+  },
+  "journal_before_terminal_ms": {
+    "count": 1000,
+    "minimum": 4.0,
+    "p50": 11.0,
+    "p95": 37.0,
+    "p99": 37.0,
+    "maximum": 72.0
+  },
+  "terminal_tail_upper_ms": {
+    "count": 1000,
+    "minimum": 2.133,
+    "p50": 3.027,
+    "p95": 8.837,
+    "p99": 34.115,
+    "maximum": 34.707
+  },
+  "model_duration_ms": {
+    "count": 1000,
+    "minimum": 0.0,
+    "p50": 7.0,
+    "p95": 15.0,
+    "p99": 15.0,
+    "maximum": 17.0
+  },
+  "warm_outcomes": [
+    {
+      "outcome": "completed, unchecked",
+      "count": 1000
+    }
+  ],
+  "memory": {
+    "samples": 635,
+    "working_set_mib": {
+      "count": 635,
+      "minimum": 3.796875,
+      "p50": 14.8203125,
+      "p95": 14.87109375,
+      "p99": 14.89453125,
+      "maximum": 14.94921875
+    },
+    "private_mib": {
+      "count": 635,
+      "minimum": 0.51953125,
+      "p50": 6.69921875,
+      "p95": 6.79296875,
+      "p99": 6.953125,
+      "maximum": 7.0625
+    },
+    "final_working_set_mib": 14.76953125,
+    "final_private_mib": 6.3359375,
+    "cpu_seconds": 23.203125
+  },
+  "storage": {
+    "database_bytes": 38023168,
+    "reserved_bytes": 0,
+    "runs": 11412,
+    "wal_bytes": 4165352
+  },
+  "cancellation": {
+    "count": 100,
+    "call_ms": {
+      "count": 100,
+      "minimum": 0.0,
+      "p50": 0.001,
+      "p95": 0.004,
+      "p99": 0.008,
+      "maximum": 0.01
+    },
+    "peer_close_ms": {
+      "count": 100,
+      "minimum": 0.045,
+      "p50": 0.064,
+      "p95": 0.094,
+      "p99": 0.13,
+      "maximum": 0.144
+    },
+    "peer_close_unobserved": 0,
+    "terminal_ms": {
+      "count": 100,
+      "minimum": 4.293,
+      "p50": 8.732,
+      "p95": 36.081,
+      "p99": 36.699,
+      "maximum": 37.479
+    },
+    "outcomes": [
+      {
+        "outcome": "cancelled, unchecked",
+        "count": 100
+      }
+    ]
+  },
+  "fairness": {
+    "cycles": 20,
+    "owner_rejection_ms": {
+      "count": 20,
+      "minimum": 0.002,
+      "p50": 0.002,
+      "p95": 0.003,
+      "p99": 0.007,
+      "maximum": 0.007
+    },
+    "bob_finished_ms": {
+      "count": 20,
+      "minimum": 154.507,
+      "p50": 173.334,
+      "p95": 189.248,
+      "p99": 197.921,
+      "maximum": 197.921
+    },
+    "alice_accepted": 120.0,
+    "bob_accepted": 20.0
+  },
+  "overload_ms": {
+    "count": 423,
+    "minimum": 0.001,
+    "p50": 0.002,
+    "p95": 0.003,
+    "p99": 0.004,
+    "maximum": 0.046
+  },
+  "soak": {
+    "completed": 10152,
+    "cycles": 423,
+    "elapsed_ms": 600463,
+    "final_active": 0,
+    "final_queued": 0,
+    "final_queued_bytes": 0,
+    "peak_active": 8,
+    "peak_queued": 16,
+    "peak_queued_bytes": 26480,
+    "rejections": 423,
+    "runner_errors": 0,
+    "workload": "closed-loop bursts; 25 offered, bounded 8 active + 16 queued, two backend slots held for 100ms"
+  }
+}

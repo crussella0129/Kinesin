@@ -1,199 +1,128 @@
-# Roadmap
+# Implementation roadmap
 
-This section tells you where to start and how to build Kinesin out.
+Implementation is being validated against this guide. Observed proofs and
+remaining gaps are recorded in [build validation](build-validation.md); a passing
+test or one completed model run does not establish every release requirement.
+The preceding documentation review is tracked in [research](research.md).
 
-**Phase 1 is the work to do now.** Phases 2 to 6 are later work. They are in this
-document for one reason: they tell you which seams Phase 1 must have. Read them
-once before you start, then build Phase 1.
+Use the [build guide](build-guide.md) for the actual instructions,
+references, and proofs. These numbers match that guide exactly. Check a box
+only after its proof and failure exercise pass.
 
-Finish a phase before you start the next one. Each phase gives a goal, the steps,
-and the reason it comes at this point.
+## Checkpoint A: a recorded live turn
 
-Two documents run beside this one. [testing.md](testing.md) says how to test what
-each phase adds. [process.md](process.md) says when a phase is ready to start and
-when it is done, and it holds the table of what proves each phase.
+- [x] 1. [Write the two operating profiles](build-guide.md#1-write-the-two-operating-profiles).
+- [x] 2. [Set up Rust and an ownership scratch project](build-guide.md#2-set-up-rust-and-an-ownership-scratch-project).
+- [x] 3. [Create one package and a repeatable checkpoint](build-guide.md#3-create-one-package-and-a-repeatable-checkpoint).
+- [x] 4. [Prove the model contract independently](build-guide.md#4-prove-the-model-contract-independently).
+- [x] 5. [Define owned domain types](build-guide.md#5-define-owned-domain-types).
+- [x] 6. [Make state transitions without I/O](build-guide.md#6-make-state-transitions-without-io).
+- [x] 7. [Learn enough async to run the shell](build-guide.md#7-learn-enough-async-to-run-the-shell).
+- [x] 8. [Run a scripted model through one runner](build-guide.md#8-run-a-scripted-model-through-one-runner).
+- [x] 9. [Validate configuration and construct run authority](build-guide.md#9-validate-configuration-and-construct-run-authority).
+- [x] 10. [Persist a run through one SQLite owner](build-guide.md#10-persist-a-run-through-one-sqlite-owner).
+- [x] 11. [Map the wire format with saved fixtures](build-guide.md#11-map-the-wire-format-with-saved-fixtures).
+- [x] 12. [Add the bounded HTTP adapter](build-guide.md#12-add-the-bounded-http-adapter).
+- [x] 13. [Complete the first live command](build-guide.md#13-complete-the-first-live-command).
+- [x] 14. [Enforce stopping and cancellation around effects](build-guide.md#14-enforce-stopping-and-cancellation-around-effects).
 
-| Phase | Goal | State |
-|-------|------|-------|
-| 0 | Prove the environment works | Do this first |
-| 1 | One prompt in, one answer out, one trace on disk | Build now |
-| 2 | The loop and the tools make it an agent | Later |
-| 3 | Long runs do not break | Later |
-| 4 | The trace log becomes useful | Later |
-| 5 | Kineserve moves to a bigger machine | Later |
-| 6 | Change the harness without fear | Later |
+**Gate:** the scripted path and one live text exchange work. Invalid config,
+transport failure, oversized input/output, truncated generation, journal
+failure, and cancellation produce the defined outcomes. The journal intent
+commits before a model request is sent.
+Freeform completion is explicitly unchecked. The demonstration's
+`--allow-unchecked` affects only its exit policy; no task is labelled passed.
 
----
+## Checkpoint B: a useful read-only agent
 
-## Phase 0 — Pre-flight (before you write any Rust)
+- [x] 15. [Define the two tool contracts](build-guide.md#15-define-the-two-tool-contracts).
+- [x] 16. [Create the workspace capability](build-guide.md#16-create-the-workspace-capability).
+- [x] 17. [Implement a bounded file read](build-guide.md#17-implement-a-bounded-file-read).
+- [x] 18. [Implement a bounded directory listing](build-guide.md#18-implement-a-bounded-directory-listing).
+- [x] 19. [Complete one model/tool/model round trip](build-guide.md#19-complete-one-modeltoolmodel-round-trip).
+- [x] 20. [Prove policy, protocol, and loop failure paths](build-guide.md#20-prove-policy-protocol-and-loop-failure-paths).
+- [x] 21. [Check file fields before accepting a task](build-guide.md#21-check-file-fields-before-accepting-a-task).
+- [x] 22. [Evaluate the useful read-only agent](build-guide.md#22-evaluate-the-useful-read-only-agent). The [baseline](live-evaluation.md) preserves model failures; separate [controlled context comparisons](live-comparisons.md) record equal-byte and selected-source conditions.
 
-**Goal.** Prove that the model and the server do what you need, before you build a
-harness on top of them. Every step here is done by hand. Each one removes a way
-for Phase 1 to fail for a reason that is not your code.
+**Gate:** an authorized run lists a directory, reads relevant text, and answers.
+A greeting can finish without tools. Malformed batches, unapproved tools,
+traversal, missing files, repeat loops, and context exhaustion are exercised.
+Capability access and byte limits hold; no writes or shell execution are enabled.
+The pure `FileFieldsV1` checker rejects wrong values and forged evidence, and
+the runner commits its bounded receipt with the result. Freeform stays unchecked;
+strict exit zero requires completed execution and passed contract checks.
 
-1. **Install Rust.** Confirm that `cargo --version` answers.
-2. **Build or install `llama-server`.** Confirm it starts.
-3. **Choose a model and put it in `models/`.** Use 8B parameters or more. A Qwen 3
-   8B instruct GGUF is the safe first choice. ([components.md](components.md), models/.)
-4. **Start the server by hand with `--jinja`.** Keep the KV cache at the default.
-   Write down the exact command line that works.
-5. **Check `/health`.** Confirm that it returns "ok" after the model loads. Note
-   how long the load takes; this sets `startup_timeout_s`.
-6. **Send one chat request by hand.** Confirm you receive an answer.
-7. **Send one request with a `tools` array.** Confirm that you receive
-   `tool_calls` back, and that `finish_reason` is `"tool"`.
-8. **Read the server log for the format.** It says whether it used a **native**
-   tool format or the **generic** fallback. If it says generic, change the model
-   now. This one check can save you a rewrite. ([loop-and-tools.md](loop-and-tools.md), how the model asks for an action.)
-9. **Send one request with a `json_schema`.** Confirm the output matches the shape.
-10. **Save the working request bodies.** They are the targets that your Phase 1
-    code must reproduce.
+## Checkpoint C: concurrent personal use
 
-**Why this phase exists.** Steps 7 and 8 decide the design of your whole tool
-layer. If you find out after Phase 2 that your model has no tool template, you
-rewrite the loop. If you find out now, you change one file name.
+- [x] 23. [Make each concurrent run own its state](build-guide.md#23-make-each-concurrent-run-own-its-state).
+- [x] 24. [Bound admission, queues, bytes, and waiters](build-guide.md#24-bound-admission-queues-bytes-and-waiters).
+- [x] 25. [Separate active runs from model capacity](build-guide.md#25-separate-active-runs-from-model-capacity).
+- [x] 26. [Bound blocking tool work by its real lifetime](build-guide.md#26-bound-blocking-tool-work-by-its-real-lifetime).
+- [x] 27. [Shut down and cancel without losing ownership](build-guide.md#27-shut-down-and-cancel-without-losing-ownership).
+- [x] 28. [Add a batch command for independent agents](build-guide.md#28-add-a-batch-command-for-independent-agents).
+- [ ] 29. [Measure saturation before tuning concurrency](build-guide.md#29-measure-saturation-before-tuning-concurrency). Synthetic warm/curve/slowdown/soak and fixed-arrival HTTP probes pass; live capacity/cold-warm and worst-case payload/checker performance remain open.
+- [x] 30. [Inspect stored runs and replay decisions](build-guide.md#30-inspect-stored-runs-and-replay-decisions).
+- [x] 31. [Stream output with bounded assembly](build-guide.md#31-stream-output-with-bounded-assembly). Functional proofs and the paired [live first-visible-text comparison](live-comparisons.md) pass within their recorded scope.
 
----
+**Gate:** independent runs share bounded admission, model, tool, journal, and
+observer capacity without mixing state or releasing permits early. Saturation,
+slow consumers, cancellation, shutdown, and replay are tested. A pinned live
+workload supplies latency and accepted-task-throughput baselines. Evidence and
+checking remain bounded. Streaming never dispatches partial tools or publishes
+a pass before terminal commit. This is the first target release for your clarified
+goal; concurrency is part of it.
 
-## Phase 1 — Foundations (start here)
+## Deployment options
 
-**Goal.** Send one prompt to a local model. Receive one answer. Write one trace.
+- [ ] 32. [Reach a private remote model](build-guide.md#32-reach-a-private-remote-model).
+- [ ] 33. [Optionally supervise an owned model process](build-guide.md#33-optionally-supervise-an-owned-model-process).
 
-1. **Set up the workspace.** Make the root `Cargo.toml` and one "hello" binary in
-   `k-core`. Confirm the build runs. (Cargo Book, "Workspaces"; Rust book Ch 1, 7.)
-2. **Add a shared library crate** for the common types: the message, the trace,
-   and the config. Every binary depends on this one crate. This stops the same
-   struct from appearing in two places. (Rust book Ch 7.)
-3. **Write Kineserve.** Start `llama-server` as a child process. Poll `/health`
-   until it returns "ok". (std::process, std::net; Rust book Ch 21; [integration.md](integration.md), llama-server.)
-4. **Write the small HTTP client in K-Core.** Send one `/completion` request over
-   a `TcpStream`. Print the raw answer. (Rust book Ch 21.1; MDN HTTP.)
-5. **Add the small JSON encode and decode.** Encode the request. Decode the
-   `content` field of the answer. ([decisions.md](decisions.md), item 2.)
-6. **Define the transport seam in Koil.** Give it one implementation, `direct`,
-   which passes messages across `127.0.0.1`. Read the seam note in [components.md](components.md), Koil
-   before you write this.
-7. **Write traces.** Use the schema in [traces.md](traces.md). Write each trace to
-   `traces/logs/`. Build the `trace_hash.json` lookup table. (Rust book Ch 8, 12.)
-8. **Read `kinesin.toml`.** Read the settings and the instructions. Split the two
-   parts at the divider. ([configuration.md](configuration.md).)
-9. **Add the first tests.** Write the JSON codec tests first, from the JSON rules,
-   before the codec exists. Then test the config reader and the HTTP request
-   builder. Keep every one of them pure, so no test needs a server.
-   ([testing.md](testing.md); Rust book Ch 11 and 12.4.)
+Step 32 is conditional on an actual remote model host. Step 33 is optional:
+attach mode remains sufficient. Record a justified “not applicable” with evidence
+for an optional step rather than implementing a feature solely to tick a box.
+Both are **not applicable to this validation profile**: inference is local and
+Kinesin attaches to the manually managed loopback server.
 
-**Keep the pure core separate from the start.** [testing.md](testing.md) lists the
-units in Kinesin and explains why the loop must be a pure function. If you build
-Phase 1 that way, then unit tests, replay, and rewind all come from the same
-structure. If you mix the logic into the input and output code, you pay for it in
-every later phase.
+**Gate when used:** the same bounded adapter works over the approved private
+route. Managed mode proves process ownership and cleanup without killing an
+attached server or other runs when one session is cancelled.
 
-**The one thing to get right.** The transport seam in step 6. Everything else in
-Phase 1 you can rewrite cheaply. A wrong seam costs you the whole of Phase 5.
+## Checkpoint D: a shared service
 
----
+- [x] 34. [Define and implement private API ingress](build-guide.md#34-define-and-implement-private-api-ingress).
+- [x] 35. [Authenticate owners with provisioned credentials](build-guide.md#35-authenticate-owners-with-provisioned-credentials).
+- [x] 36. [Persist owner-scoped results and idempotent creation](build-guide.md#36-persist-owner-scoped-results-and-idempotent-creation).
+- [x] 37. [Give each owner bounded and fair capacity](build-guide.md#37-give-each-owner-bounded-and-fair-capacity).
+- [ ] 38. [Harden the shared filesystem and service process](build-guide.md#38-harden-the-shared-filesystem-and-service-process).
+- [x] 39. [Recover interruption without inventing execution history](build-guide.md#39-recover-interruption-without-inventing-execution-history).
+- [x] 40. [Operate retention, backups, readiness, and overload](build-guide.md#40-operate-retention-backups-readiness-and-overload).
+- [ ] 41. [Pass the shared-service exposure gate](build-guide.md#41-pass-the-shared-service-exposure-gate).
 
-## Phase 2 — The loop and the tools
+**Gate:** authentication and owner-filtered access cover every operation;
+idempotent retries, concurrent first submissions, slow/disconnected clients,
+fair admission, overload, storage failure, restart, retention, and backup/restore
+have defined and tested behavior. Rehearse a two-owner isolation scenario before
+exposure. Results and receipts survive together; retries preserve the original
+contract verdict, and restart never invents a pass. See [verification](verification.md),
+[security](security.md), and [testing](testing.md).
 
-**Goal.** Make it an agent. The model chooses an action, and K-Core runs it.
+## After these checkpoints
 
-1. **Move to the chat endpoint and native tool calls.** Send the `tools` array on
-   `/v1/chat/completions`, and read `tool_calls` from the reply. Add the
-   `json_schema` constraint. ([loop-and-tools.md](loop-and-tools.md), how the model asks for an action, Approach A plus B.)
-2. **Build the tool definition.** Use the four parts and the rules in [loop-and-tools.md](loop-and-tools.md), how to define a tool.
-   Shape it like an MCP tool so a later move is a mapping, not a rewrite.
-3. **Build the ReAct loop.** Use the step cycle and the states in [loop-and-tools.md](loop-and-tools.md).
-4. **Add the capability model.** An allow-list of tool names, read-only by
-   default, and a confirm step for any tool that changes data. Validate the
-   arguments before you call the handler. Treat every tool result as untrusted
-   text. ([loop-and-tools.md](loop-and-tools.md), safety.)
-5. **Add three real tools.** For example read a file, list a directory, and
-   finish. Keep the count small; more tools make the choice harder.
-6. **Record the tool events.** Add the `tool_call` and `tool_result` directions to
-   the trace chain. ([traces.md](traces.md), tool events.)
-7. **Add the stop conditions and the step limit.** ([loop-and-tools.md](loop-and-tools.md), stop conditions.)
-8. **Write the minimal trace reader.** Sort the lookup table by `session` and
-   `step`, and print the chain in order. This is about twenty lines, and this is
-   the phase where multi-step runs start to go wrong, so it earns its place now.
-   Full replay stays in Phase 4. ([traces.md](traces.md), manual reading.)
+Consider new features only against a demonstrated task or bottleneck:
 
-**Why here.** The tools make the harness general purpose. Design the tool
-interface once and early, because every tool you add later takes its shape. Expect
-the four failure modes in [loop-and-tools.md](loop-and-tools.md), what goes wrong, and treat them as normal rather than as
-bugs in your code.
+| Candidate | Entry evidence | New contract required |
+|-----------|----------------|-----------------------|
+| More model backends | A second useful backend | Compatibility profile, data destination, separate/shared capacity identity |
+| File-backed task recipes | Explicit-context evaluations improve useful tasks | Bounded selected inputs, frozen revisions, trust/capture policy, new runs for edits |
+| Parallel tools in one run | Serial tool time is a measured bottleneck | Verified independence, complete-batch validation, bounded fan-out, journal/cancellation ordering |
+| Backend speculation | Tool-generation latency dominates and a compatible backend exists | Target verification, complete-call gate, sidecar/cache privacy, aggregate capacity and cost |
+| Model-spawned subagents | Independent sessions cannot express the task | Bounded fan-out, inherited authority, shared budgets, information-sharing rules |
+| MCP tools | A needed external tool server | Protocol/lifecycle, server trust, schemas, authorization, cancellation |
+| Write or command tools | Read-only tools cannot solve the selected task | Effect-specific authority, sandboxing as needed, reconciliation and approval policy |
+| Context compaction | Useful tasks repeatedly exhaust context | Evidence preservation, complete tool groups, quality evaluations |
+| Resume | Repeating an interrupted task is too costly | Unknown-effect reconciliation, version/policy changes, new execution identity |
+| More controllers | A measured single-controller limit or availability requirement | Shared transactional store, leases/fencing, distributed admission and recovery |
 
----
-
-## Phase 3 — Survive a real session
-
-**Goal.** A long run does not break.
-
-1. **Add context management.** The conversation grows at every step, and the model
-   has a fixed `context_size`. Decide what happens at the limit: remove the oldest
-   messages, replace them with a summary, or stop with a clear error. A small
-   local model reaches this limit fast, so do not leave this out.
-2. **Cap the size of a tool result** before it goes into the prompt. One large
-   file can fill the context in a single step.
-3. **Add timeouts and retries** around the model call. ([configuration.md](configuration.md), future settings.)
-4. **Finish the error path.** A tool error becomes an observation. Only an error
-   that you cannot recover from stops the loop. ([loop-and-tools.md](loop-and-tools.md), errors in the loop.)
-
-**Why here.** Phases 1 and 2 give you short runs that work. This phase is what
-makes a run of twelve steps as safe as a run of two.
-
----
-
-## Phase 4 — Inspect and replay
-
-**Goal.** Make the trace log useful. Until now you only write traces. Nothing
-reads them.
-
-1. **Write a trace reader.** Rebuild one session from `trace_hash.json` and the
-   `prev` chain. Print the steps in order.
-2. **Add a run record.** A run has a start time, an end time, the config hash, the
-   model name, the step count, and the result. A person needs one summary, not
-   many files.
-3. **Add replay.** Feed the recorded answers back into the loop in place of a live
-   model. The loop must behave the same way.
-
-**Why this pays.** You already record everything that replay needs. This phase
-adds no new data. It turns the audit log into a test tool, which Phase 6 then
-uses.
-
----
-
-## Phase 5 — Distributed: the Koil-to-Koil link
-
-**Goal.** Run Kineserve on a bigger machine. Serve more sessions. Keep the link
-private.
-
-1. **Add the second transport implementation**, `wireguard`, behind the seam from
-   Phase 1. K-Core does not change.
-2. **Use a WireGuard library or the system tools.** Do not write the protocol
-   yourself. ([integration.md](integration.md), WireGuard, Path A or Path B1.)
-3. **Make the bigger machine the reachable side.** Your local Koil calls out to
-   it. ([integration.md](integration.md), WireGuard, "Reachability".)
-4. **Put the concurrency work in K-Core and Kineserve.** Kineserve passes `-np` to
-   `llama-server`. K-Core gives each session an ID and matches each answer to its
-   request. Koil stays a private pipe. (Rust book Ch 16.)
-
----
-
-## Phase 6 — Trust it
-
-**Goal.** Change the harness without fear.
-
-1. **Keep a set of recorded sessions as golden traces.** Replay them after each
-   change and compare the result. This is your regression test, and it comes free
-   from Phase 4.
-2. **Add session resume.** The trace chain is close to an event log already.
-   Decide whether a run can restart from its last trace after a crash. This
-   matters more after Phase 5, because a remote machine can drop.
-3. **Add the config hash check.** Compare the current `kinesin.toml` against the
-   hash stored with the run. ([configuration.md](configuration.md), the split rule.)
-4. **Pin a sampling `seed`** so that a run repeats. ([configuration.md](configuration.md), future settings.)
-5. **Finish the scripts and CI.** `preflight.ps1`, `run-harness.ps1`, and the
-   workflow that runs `cargo fmt --check`, `cargo clippy`, and `cargo test`.
-
----
-
+Adding controllers is a consistency redesign. Do not put SQLite WAL on a
+network share and call that horizontal scaling. More features do not by
+themselves make the harness more general.

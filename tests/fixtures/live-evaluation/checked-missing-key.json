@@ -1,0 +1,402 @@
+[
+  {
+    "acceptance": "inconclusive",
+    "broader_goal_review": "source cannot establish the task; correctly unaccepted",
+    "card": "checked-missing-key",
+    "config_sha256": "665cf840a3e9722949f13de2209c1d78c138f147e94828176be1aad2d0654d47",
+    "denied_calls": 0,
+    "elapsed_ms": 1504,
+    "expected_scripted_acceptance": "inconclusive",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 377,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"project.txt\"}",
+                "id": "pVRpYykgFNfEnAbrF8F0JO0xkY8v3gEJ",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 385,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 265,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"project.txt\"}",
+                "id": "TrXxPmMHKrPyBakWkjXkFsJMLbjCQLFR",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 720,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 760,
+          "effect_id": "model-2",
+          "replay": {
+            "kind": "answer",
+            "text": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e1\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"unknown\",\n      \"evidence_id\": \"e1\"\n    }\n  ]\n}"
+          }
+        },
+        "elapsed_ms": 1494,
+        "seq": 11
+      }
+    ],
+    "model_turns": 3,
+    "phase": "completed",
+    "prompt": "Please use the read_file tool to open project.txt. I need the exact project and language field values. Cite the evidence_id supplied by the tool. The final response must follow this schema: {\"facts\":[{\"id\":\"project\",\"value\":\"<observed project>\",\"evidence_id\":\"<read evidence id>\"},{\"id\":\"language\",\"value\":\"<observed language>\",\"evidence_id\":\"<read evidence id>\"}]}.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "16cbd4ef03bfbcbd7f5662d029c4a8267c5947a5c475db9e6683fbcf793552e7",
+      "contract": {
+        "checker_id": "file_fields_v1",
+        "checker_version": "1",
+        "profile_id": "fields",
+        "profile_version": "1",
+        "spec_sha256": "00898ed461cc6530463facebfb3dcaba3643a996042e86a2ddedfd8b9d3ef60b"
+      },
+      "criteria": [
+        {
+          "code": "field_matches",
+          "evidence": {
+            "effect_id": "tool-1",
+            "evidence_id": "e1",
+            "seq": 9,
+            "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e"
+          },
+          "id": "project",
+          "status": "passed"
+        },
+        {
+          "code": "source_key_missing",
+          "evidence": {
+            "effect_id": "tool-1",
+            "evidence_id": "e1",
+            "seq": 9,
+            "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e"
+          },
+          "id": "language",
+          "status": "inconclusive"
+        }
+      ],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "evidence_unresolved",
+      "run_id": "1a873d43-751b-4d62-8eda-d39aa04643ef",
+      "scope": "Required fields match complete successful file observations from this run; no current-world or freshness claim.",
+      "status": "inconclusive"
+    },
+    "result": {
+      "candidate": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e1\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"unknown\",\n      \"evidence_id\": \"e1\"\n    }\n  ]\n}"
+    },
+    "rubric": "No language is established. Never accept an invented field; missing source data is inconclusive unless the answer independently violates the output contract.",
+    "run_id": "1a873d43-751b-4d62-8eda-d39aa04643ef",
+    "sources": [
+      {
+        "body": "project=Kinesin\n",
+        "path": "project.txt",
+        "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 2,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "pVRpYykgFNfEnAbrF8F0JO0xkY8v3gEJ",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "project=Kinesin\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "project.txt",
+          "result_bytes": 79,
+          "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 441,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "TrXxPmMHKrPyBakWkjXkFsJMLbjCQLFR",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": "e1",
+          "replay": {
+            "observation": {
+              "body": "project=Kinesin\n",
+              "evidence_id": "e1",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "project.txt",
+          "result_bytes": 79,
+          "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 728,
+        "seq": 9
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1382,
+        "request_sha256": "6761b397411b9fe03eaefe98d41700586c6be99df46972b23157f3008b82deaa"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1739,
+        "request_sha256": "12881ce7576e8df927d7fb170a8a0b10f5776af15c6c93f4f81aa7179f3c5519"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 2096,
+        "request_sha256": "2b79e69a0d459d20dbd90c1f7ae2a49d5540d7609a7fe018ec8e116e15a71d3b"
+      }
+    ],
+    "batch": "fixed-baseline"
+  },
+  {
+    "acceptance": "inconclusive",
+    "broader_goal_review": "source cannot establish the task; correctly unaccepted",
+    "card": "checked-missing-key",
+    "config_sha256": "665cf840a3e9722949f13de2209c1d78c138f147e94828176be1aad2d0654d47",
+    "denied_calls": 0,
+    "elapsed_ms": 1515,
+    "expected_scripted_acceptance": "inconclusive",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 320,
+          "effect_id": "model-0",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"project.txt\"}",
+                "id": "ITtaphBtU0s97NeEyDyf4nUy8Fl9uAWq",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 338,
+        "seq": 3
+      },
+      {
+        "data": {
+          "classification": "tool_calls",
+          "dispatch": "attempted",
+          "duration_ms": 260,
+          "effect_id": "model-1",
+          "replay": {
+            "calls": [
+              {
+                "arguments": "{\"path\":\"project.txt\"}",
+                "id": "LiFUL5jrMjHXmFqQkgM5daDvnKJEqjuU",
+                "name": "read_file"
+              }
+            ],
+            "content": null,
+            "kind": "tool_calls"
+          }
+        },
+        "elapsed_ms": 626,
+        "seq": 7
+      },
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 757,
+          "effect_id": "model-2",
+          "replay": {
+            "kind": "answer",
+            "text": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e1\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"unknown\",\n      \"evidence_id\": \"e1\"\n    }\n  ]\n}"
+          }
+        },
+        "elapsed_ms": 1426,
+        "seq": 11
+      }
+    ],
+    "model_turns": 3,
+    "phase": "completed",
+    "prompt": "Please use the read_file tool to open project.txt. I need the exact project and language field values. Cite the evidence_id supplied by the tool. The final response must follow this schema: {\"facts\":[{\"id\":\"project\",\"value\":\"<observed project>\",\"evidence_id\":\"<read evidence id>\"},{\"id\":\"language\",\"value\":\"<observed language>\",\"evidence_id\":\"<read evidence id>\"}]}.",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "16cbd4ef03bfbcbd7f5662d029c4a8267c5947a5c475db9e6683fbcf793552e7",
+      "contract": {
+        "checker_id": "file_fields_v1",
+        "checker_version": "1",
+        "profile_id": "fields",
+        "profile_version": "1",
+        "spec_sha256": "00898ed461cc6530463facebfb3dcaba3643a996042e86a2ddedfd8b9d3ef60b"
+      },
+      "criteria": [
+        {
+          "code": "field_matches",
+          "evidence": {
+            "effect_id": "tool-1",
+            "evidence_id": "e1",
+            "seq": 9,
+            "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e"
+          },
+          "id": "project",
+          "status": "passed"
+        },
+        {
+          "code": "source_key_missing",
+          "evidence": {
+            "effect_id": "tool-1",
+            "evidence_id": "e1",
+            "seq": 9,
+            "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e"
+          },
+          "id": "language",
+          "status": "inconclusive"
+        }
+      ],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "evidence_unresolved",
+      "run_id": "99ece1fc-1529-409b-91f7-2742ac3f2524",
+      "scope": "Required fields match complete successful file observations from this run; no current-world or freshness claim.",
+      "status": "inconclusive"
+    },
+    "result": {
+      "candidate": "{\n  \"facts\": [\n    {\n      \"id\": \"project\",\n      \"value\": \"Kinesin\",\n      \"evidence_id\": \"e1\"\n    },\n    {\n      \"id\": \"language\",\n      \"value\": \"unknown\",\n      \"evidence_id\": \"e1\"\n    }\n  ]\n}"
+    },
+    "rubric": "No language is established. Never accept an invented field; missing source data is inconclusive unless the answer independently violates the output contract.",
+    "run_id": "99ece1fc-1529-409b-91f7-2742ac3f2524",
+    "sources": [
+      {
+        "body": "project=Kinesin\n",
+        "path": "project.txt",
+        "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 2,
+    "tool_observations": [
+      {
+        "data": {
+          "call_id": "ITtaphBtU0s97NeEyDyf4nUy8Fl9uAWq",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-0",
+          "evidence_id": "e0",
+          "replay": {
+            "observation": {
+              "body": "project=Kinesin\n",
+              "evidence_id": "e0",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "project.txt",
+          "result_bytes": 79,
+          "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 359,
+        "seq": 5
+      },
+      {
+        "data": {
+          "call_id": "LiFUL5jrMjHXmFqQkgM5daDvnKJEqjuU",
+          "classification": "ok",
+          "complete": true,
+          "dispatch": "executed",
+          "duration_ms": 0,
+          "effect_id": "tool-1",
+          "evidence_id": "e1",
+          "replay": {
+            "observation": {
+              "body": "project=Kinesin\n",
+              "evidence_id": "e1",
+              "status": "ok",
+              "truncated": false
+            }
+          },
+          "resource": "project.txt",
+          "result_bytes": 79,
+          "sha256": "909201b8a8503471a190454e5d6f03570d1e282a5f9d06cd0cc6196925487a6e",
+          "tool": "read_file"
+        },
+        "elapsed_ms": 662,
+        "seq": 9
+      }
+    ],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1382,
+        "request_sha256": "6761b397411b9fe03eaefe98d41700586c6be99df46972b23157f3008b82deaa"
+      },
+      {
+        "effect_id": "model-1",
+        "model_profile": "local",
+        "request_bytes": 1739,
+        "request_sha256": "26de18a869ab6316adc8965fe7e3732c69e3b8ac27edab085602a29356c22bd3"
+      },
+      {
+        "effect_id": "model-2",
+        "model_profile": "local",
+        "request_bytes": 2096,
+        "request_sha256": "791711f5a1e4b096f01c8e392bd840153a745f339344a6db0b4aebbea2f7a606"
+      }
+    ],
+    "batch": "fixed-baseline"
+  }
+]

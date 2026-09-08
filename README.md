@@ -1,132 +1,128 @@
 # Kinesin
 
-The *even tinier* General Purpose Harness (but a very hard worker for its size!)
+A small Rust runtime for agents with explicit authority and bounded resources.
 
-Kinesin is a small agent harness. It runs a local language model, it routes the
-model's requests to tools, and it keeps a full record of every message. It is
-written with the Rust standard library first. Outside libraries are added only
-where the standard library cannot do the job, and each one is written down with
-its reason.
+Kinesin gives a model context, interprets its proposed tool calls, decides which
+may run, records outcomes, and controls how a run ends. It also controls how many
+runs may compete for model, filesystem, memory, and storage resources.
 
-**Status: nothing is built yet.** This repository holds the design and the plan.
+**This branch is the guide.** It holds the design contracts and a numbered build
+sequence, and no implementation. You write the Rust yourself, in a separate empty
+directory. Nothing here is written out as Rust source for you to copy.
 
-- If this is your first Rust project, start at
-  [docs/first-steps.md](docs/first-steps.md).
-- Otherwise start at [docs/roadmap.md](docs/roadmap.md), Phase 0.
+**Start at [the build guide](docs/build-guide.md#before-you-start).** It takes you
+from an empty directory to a working runtime in 41 steps. Every step states what
+to build, how to prove it, which failure to exercise, and what to read.
 
----
+## The two branches
 
-## The three parts
+| Branch | What it holds |
+|--------|---------------|
+| `main` | The guide and the contracts. No source. Build against this. |
+| [`answer-key`](https://github.com/crussella0129/Kinesin/tree/answer-key) | A complete working implementation with green CI, and the evidence from validating this guide against it. |
 
-- **Kineserve** starts a local model server and points it at your model file. It
-  uses `llama-server` from the llama.cpp project.
-- **Koil** carries messages between the harness and the model server, and records
-  every message that crosses it.
-- **K-Core** is the brain. It runs the ReAct loop (reason, then act), it routes
-  tool calls, and it reads your configuration and instructions.
+Use `answer-key` when you are stuck, or to compare an approach after you have
+attempted a step. Reading it before you attempt a step removes the reason to
+build this yourself.
 
-```
-K-Core  <->  Koil  <->  Kineserve  <->  llama-server  <->  model.gguf
-(ReAct       (channel   (supervisor    (HTTP server      (your GGUF
- loop +       + trace     for the        from             text model)
- routing)     record)     model server)  llama.cpp)
-```
+## What you will build
 
-Kineserve does not have to run on your machine. A second Koil can run beside a
-remote Kineserve, with a private link between the two Koils. The local setup above
-is the same design with one endpoint. See
-[docs/architecture.md](docs/architecture.md).
+An execution runtime around a local model. Its first complete release accepts a
+bounded batch of independent tasks, runs them concurrently, and gives each task
+its own conversation, workspace authority, budgets, cancellation, and result. It
+begins with two read-only file tools and one llama.cpp adapter.
 
----
-
-## Intended layout
-
-```
-Kinesin/
-├── .github/
-│   └── workflows/                 # CI: format, lint, build, test
-├── crates/                        # Workspace member crates
-│   ├── kineserve/                 # Starts and supervises llama-server
-│   │   ├── src/
-│   │   │   ├── main.rs            # Entry point: start the server, wait for /health
-│   │   │   └── input.rs           # Reads input with std only (io, fs)
-│   │   ├── tests/                 # Integration tests (public API only)
-│   │   └── Cargo.toml
-│   ├── koil/                      # The transport seam; records traces
-│   │   ├── src/
-│   │   │   └── main.rs            # Direct or tunnel transport; writes traces
-│   │   ├── tests/
-│   │   └── Cargo.toml
-│   ├── k-core/                    # The ReAct loop and tool routing
-│   │   ├── src/
-│   │   │   ├── main.rs            # Entry point: run the loop
-│   │   │   └── input.rs           # Reads input with std only
-│   │   ├── tests/
-│   │   └── Cargo.toml
-│   └── common/                    # Shared types: message, trace, config
-│       ├── src/
-│       └── Cargo.toml
-├── docs/                          # The design and the plan (see below)
-├── models/
-│   └── your-gguf-here.gguf        # Your GGUF model; 8B parameters or more
-├── traces/
-│   ├── trace_hash.json            # Lookup table: ID -> trace file
-│   └── logs/
-│       └── <trace-id>.json        # One immutable trace per event; random ID
-├── scripts/
-│   ├── preflight.ps1              # Windows/WSL environment check and install
-│   └── run-harness.ps1            # Start order for the three parts
-├── kinesin.toml                   # TOML settings + Markdown instructions
-├── Cargo.toml                     # Workspace manifest (lists the members)
-├── LICENSE
-└── README.md
+```text
+CLI / later authenticated API
+             |
+      admission + scheduler
+             |
+      one runner per run ----------> approved model endpoint
+        |          |                   via pooled async HTTP
+        |          +-> capability-scoped file tools
+        +-> bounded storage inbox -> SQLite owner thread
 ```
 
----
+Execution completion and task acceptance are separate outcomes. A final answer is
+a candidate: scoped tasks pass only after an independent checker verifies their
+frozen contract. Freeform answers stay explicitly unchecked. That distinction is
+the point of [task acceptance](docs/verification.md), and the
+[adversarial review](docs/adversarial-review.md) explains the false passes it
+prevents.
 
-## Design rules
+The original names survive as roles rather than as separate daemons: **K-Core**
+is the pure decision logic, **Koil** is the model adapter, and **Kineserve** is
+optional model-process supervision.
 
-1. **Standard library first.** Use `std` for input, output, files, sockets,
-   threads, and collections. Add an outside library only when `std` has no
-   answer, and write down why.
-2. **Small surface.** Keep each crate small. Prefer clear code over clever code.
-3. **One meaning per term.** A "trace" is always the JSON record of one event.
-   "Record" is the verb for the act of saving a trace.
-4. **Everything is observable.** Every message and every tool call is recorded. A
-   trace is immutable after it is written.
-5. **Configuration is the source of truth.** `kinesin.toml` holds the settings and
-   the agent instructions. The program reads it; the program does not change it.
-6. **Write down why.** For each design choice, record the reason next to the
-   choice. A structure without a reason looks like a mistake to the next reader,
-   and you are the next reader.
+## Main choices
 
-Three tasks break the "standard library only" rule: the standard library has no
-JSON parser, no TOML parser, and no cryptography.
-[docs/decisions.md](docs/decisions.md) gives the decision for each.
+- One Cargo package with a thin binary and library modules.
+- Synchronous owned types and a pure core first; Tokio and async reqwest when
+  networking begins.
+- Trusted compiled tool handlers receive a narrow `WorkspaceReader` backed by
+  `cap-std`, not permission to open arbitrary operating-system paths.
+- Explicit admission, model-call, blocking-tool, queue-byte, and per-run limits.
+- A single SQLite owner thread; acknowledged transactions couple event records
+  with the run's current status.
+- No automatic external-effect retry or crash resume. Those need semantics beyond
+  an event log.
 
----
+Minimality here means a small number of necessary mechanisms you can explain,
+not the fewest dependencies. [Decisions](docs/decisions.md) records what was
+chosen instead, and why, including the choices this project reversed.
+
+## Checkpoints
+
+| Steps | Checkpoint |
+|-------|------------|
+| 1–6 | Understandable types and a pure conversation core |
+| 7–14 | One bounded, durable, async model turn |
+| 15–22 | Two read-only tools, an acceptance check, and live evaluation |
+| 23–29 | Bounded concurrent runs for one owner |
+| 30–31 | Inspection, replay, and streaming: the first local release |
+| 32–33 | Remote inference and optional server supervision |
+| 34–41 | An authenticated shared service with an explicit exposure gate |
+
+Track them in [the roadmap](docs/roadmap.md). No milestone is complete because
+its design is documented, and shared use has a separate exposure gate that
+passing a local demo does not satisfy.
 
 ## Documentation
 
-| Document | What it covers |
+| Document | Responsibility |
 |----------|----------------|
-| [first-steps.md](docs/first-steps.md) | **New to Rust projects? Start here.** Ten small steps before the real work |
-| [roadmap.md](docs/roadmap.md) | **Then here.** Phases 0 to 6, with what to build in what order |
-| [architecture.md](docs/architecture.md) | The parts, the data flow, and both deployment shapes |
-| [components.md](docs/components.md) | Each crate and folder: purpose, `std` tools, and study material |
-| [configuration.md](docs/configuration.md) | `kinesin.toml`: the skeleton, the split rule, and future settings |
-| [integration.md](docs/integration.md) | The non-Rust parts: llama-server, WireGuard, and WSL |
-| [traces.md](docs/traces.md) | The trace schema, tool events, and how to read the log |
-| [loop-and-tools.md](docs/loop-and-tools.md) | The ReAct loop, and how tool calling works |
-| [testing.md](docs/testing.md) | Units, unit tests, integration tests, and test doubles |
-| [process.md](docs/process.md) | The development cycle, branches, commits, and CI |
-| [decisions.md](docs/decisions.md) | Open decisions, and settled ones with their reasons |
-| [resources.md](docs/resources.md) | Every study link, in one place |
+| [build guide](docs/build-guide.md) | **Start here.** Orientation and 41 numbered build/prove/break/read steps |
+| [roadmap](docs/roadmap.md) | Checkpoints and release gates |
+| [architecture](docs/architecture.md) | Ownership, interfaces, deployment, scale boundary |
+| [understanding](docs/understanding.md) | Feedback on the original plan, and self-check questions |
+| [loop and tools](docs/loop-and-tools.md) | Domain/protocol and tool execution contracts |
+| [configuration](docs/configuration.md) | Configuration examples and per-run limits |
+| [security](docs/security.md) | Authority, data disclosure, authentication, isolation |
+| [performance](docs/performance.md) | Shared limits, scheduling, latency targets, experiments |
+| [traces](docs/traces.md) | SQLite journal, capture modes, replay, crash semantics |
+| [task acceptance](docs/verification.md) | Execution versus acceptance, evidence and verdicts |
+| [testing](docs/testing.md) | Invariant and adversarial verification |
+| [process](docs/process.md) | Daily workflow, dependencies, CI |
+| [integration](docs/integration.md) | Model API, streaming, process, remote inference |
+| [components](docs/components.md) | Module ownership and Rust learning map |
+| [cli](docs/cli.md) | The commands the finished runtime exposes |
+| [decisions](docs/decisions.md) | Chosen tradeoffs and superseded choices |
+| [adversarial review](docs/adversarial-review.md) | Attacks, findings, fixes, and remaining limits |
+| [research](docs/research.md) | Primary evidence and review results |
+| [paper review](docs/paper-review.md) | The research improvement pass |
+| [resources](docs/resources.md) | Short reference index |
 
----
+### Evidence from the reference build
 
-## A note on the writing
+These record what following this guide actually produced on `answer-key`,
+including its failures and its unmet targets. They are results, not instructions.
 
-These documents use ASD-STE100 Simplified Technical English: short sentences,
-active voice, and one idea per sentence. The aim is that a step means the same
-thing to every reader.
+| Document | Responsibility |
+|----------|----------------|
+| [build validation](docs/build-validation.md) | Observed proofs and remaining release gates |
+| [live evaluation](docs/live-evaluation.md) | Checked-task results and preserved freeform failures |
+| [live comparisons](docs/live-comparisons.md) | Controlled context and streaming experiments |
+| [performance baseline](docs/performance-baseline.md) | Warm latency, concurrency, cancellation, soak |
+| [service load](docs/service-load.md) | Fixed arrivals and HTTP overload evidence |
+| [model preflight](docs/model-preflight.md) | The pinned model, server build, and wire fixtures |
+| [native state audit](docs/native-state-audit.md) | What the Windows state-tree check does and does not prove |

@@ -1,0 +1,12 @@
+{
+  "warm_count": 1000,
+  "warm_p50_ms": 33.255,
+  "warm_p95_ms": 76.612,
+  "warm_p99_ms": 107.296,
+  "overload_count": 354,
+  "overload_p95_ms": 0.003,
+  "memory_samples": 632,
+  "peak_rss_mib": 17.4609375,
+  "peak_private_mib": 6.0625,
+  "last_rss_mib": 17.4609375
+}

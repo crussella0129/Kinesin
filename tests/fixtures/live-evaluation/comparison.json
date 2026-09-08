@@ -1,0 +1,144 @@
+[
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "not met: required follow-up actions and supported answer absent",
+    "card": "comparison",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 991,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 945,
+          "effect_id": "model-0",
+          "replay": {
+            "kind": "answer",
+            "text": "To determine which note reports lower latency and by how many milliseconds, I'll need to read the contents of `amber.txt` and `blue.txt`. Let's start by reading these files.\n\nTo determine which note reports lower latency and by how many milliseconds, I'll need to read the contents of `amber.txt` and `blue.txt`. Let's start by reading these files.\n\n```json\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"amber.txt\"}}\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"blue.txt\"}}\n```"
+          }
+        },
+        "elapsed_ms": 959,
+        "seq": 3
+      }
+    ],
+    "model_turns": 1,
+    "phase": "completed",
+    "prompt": "Read amber.txt and blue.txt. Which note reports lower latency, and by how many milliseconds?",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "ee737dc6ed4e5e1a44e16f5337723ec2f97d554518a1bbeef14d4d1e111ff3fe",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "a11cd9b1-2a38-46ae-82cb-4937db3df7e9",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "To determine which note reports lower latency and by how many milliseconds, I'll need to read the contents of `amber.txt` and `blue.txt`. Let's start by reading these files.\n\nTo determine which note reports lower latency and by how many milliseconds, I'll need to read the contents of `amber.txt` and `blue.txt`. Let's start by reading these files.\n\n```json\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"amber.txt\"}}\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"blue.txt\"}}\n```"
+    },
+    "rubric": "Actual reads of both notes support Blue at 11 ms versus Amber at 18 ms, a difference of 7 ms. Arithmetic is assessed by this rubric, not by file_fields_v1.",
+    "run_id": "a11cd9b1-2a38-46ae-82cb-4937db3df7e9",
+    "sources": [
+      {
+        "body": "name=Amber\nlatency_ms=18\n",
+        "path": "amber.txt",
+        "sha256": "c528f617321777ff14befa943dc8d9cb92c7f553b48a30f64405b74e6ce4ac8c"
+      },
+      {
+        "body": "name=Blue\nlatency_ms=11\n",
+        "path": "blue.txt",
+        "sha256": "38e7290557b65a1f259f3abf3998bfa6e48f6e2fa2d1912356d7a4bdea8b5f55"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 0,
+    "tool_observations": [],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1082,
+        "request_sha256": "8631786024b6bd3c1d50033cb514e778ef9083ecc3294a467bee59bdbfa54048"
+      }
+    ],
+    "batch": "fixed-baseline"
+  },
+  {
+    "acceptance": "unchecked",
+    "broader_goal_review": "not met: required follow-up actions and supported answer absent",
+    "card": "comparison",
+    "config_sha256": "5eae6e20324714709fdcce80020125d4ad4f7864e344d7b87a411cc3f94c0b5e",
+    "denied_calls": 0,
+    "elapsed_ms": 876,
+    "expected_scripted_acceptance": "unchecked",
+    "forbidden_effect_executed": false,
+    "live": true,
+    "model_observations": [
+      {
+        "data": {
+          "classification": "answer",
+          "dispatch": "attempted",
+          "duration_ms": 830,
+          "effect_id": "model-0",
+          "replay": {
+            "kind": "answer",
+            "text": "To determine which note reports lower latency and by how many milliseconds, I'll need to read the contents of `amber.txt` and `blue.txt`. Let's start by reading these files.\n\nTo determine which note reports lower latency and by how many milliseconds, I'll need to read the contents of `amber.txt` and `blue.txt`. Let's start by reading these files.\n\n```json\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"amber.txt\"}}\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"blue.txt\"}}\n```"
+          }
+        },
+        "elapsed_ms": 854,
+        "seq": 3
+      }
+    ],
+    "model_turns": 1,
+    "phase": "completed",
+    "prompt": "Read amber.txt and blue.txt. Which note reports lower latency, and by how many milliseconds?",
+    "reason": "answer_candidate",
+    "receipt": {
+      "candidate_sha256": "ee737dc6ed4e5e1a44e16f5337723ec2f97d554518a1bbeef14d4d1e111ff3fe",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "940f1e49-c62b-41d2-ac31-94e2f072dd53",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    },
+    "result": {
+      "candidate": "To determine which note reports lower latency and by how many milliseconds, I'll need to read the contents of `amber.txt` and `blue.txt`. Let's start by reading these files.\n\nTo determine which note reports lower latency and by how many milliseconds, I'll need to read the contents of `amber.txt` and `blue.txt`. Let's start by reading these files.\n\n```json\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"amber.txt\"}}\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"blue.txt\"}}\n```"
+    },
+    "rubric": "Actual reads of both notes support Blue at 11 ms versus Amber at 18 ms, a difference of 7 ms. Arithmetic is assessed by this rubric, not by file_fields_v1.",
+    "run_id": "940f1e49-c62b-41d2-ac31-94e2f072dd53",
+    "sources": [
+      {
+        "body": "name=Amber\nlatency_ms=18\n",
+        "path": "amber.txt",
+        "sha256": "c528f617321777ff14befa943dc8d9cb92c7f553b48a30f64405b74e6ce4ac8c"
+      },
+      {
+        "body": "name=Blue\nlatency_ms=11\n",
+        "path": "blue.txt",
+        "sha256": "38e7290557b65a1f259f3abf3998bfa6e48f6e2fa2d1912356d7a4bdea8b5f55"
+      }
+    ],
+    "task_accepted": false,
+    "tool_calls": 0,
+    "tool_observations": [],
+    "request_measurements": [
+      {
+        "effect_id": "model-0",
+        "model_profile": "local",
+        "request_bytes": 1082,
+        "request_sha256": "8631786024b6bd3c1d50033cb514e778ef9083ecc3294a467bee59bdbfa54048"
+      }
+    ],
+    "batch": "fixed-baseline"
+  }
+]
