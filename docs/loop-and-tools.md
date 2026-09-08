@@ -1,6 +1,6 @@
 # Runtime and tool contracts
 
-This document specifies behavior. The [build guide](build-guide.md) supplies the
+This document specifies behavior. The [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md) supplies the
 implementation order; [security](security.md), [performance](performance.md), and
 [traces](traces.md) own authority, shared limits, and persistence details.
 
@@ -159,7 +159,7 @@ search retrieves nothing when the caller guesses the wrong form of a term, and a
 smaller model is the least reliable at noticing that and refining the query, so
 the forgiving mode is the default and exactness is the deliberate request. Case
 folding decides the match only; a reported line is always the file's own bytes.
-See the [paper review](paper-review.md) for the measurement behind this.
+See the [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) for the measurement behind this.
 
 **Only `read_file` mints evidence, and that is a deliberate boundary.** A
 listing and a search both return partial views of the workspace. If a search
@@ -246,7 +246,7 @@ There is no requirement to emit or parse a free-form `Thought:` trace, add a
 Backend speculative decoding verifies candidate output tokens. Kinesin separately
 validates and authorizes effects. A sidecar prediction, valid JSON prefix, or
 decoder-accepted draft is never permission to execute a tool; the full reply and
-batch must still pass the existing gate. See the [paper review](paper-review.md).
+batch must still pass the existing gate. See the [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md).
 
 1. Validate the full reply structure, all IDs, and the entire batch's remaining
    tool budget before any handler executes. Reject a structurally invalid or

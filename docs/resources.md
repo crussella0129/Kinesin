@@ -1,6 +1,6 @@
 # Reference index
 
-The [build guide](build-guide.md) links readings at the step where they become
+The [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md) links readings at the step where they become
 useful. Use this page to find them again, not as a reading assignment to finish
 before writing code.
 
@@ -71,7 +71,7 @@ before writing code.
 
 ## Paper-guided improvements
 
-The [paper review](paper-review.md) maps the supplied PDFs and related research
+The [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) maps the supplied PDFs and related research
 to concrete decisions, limitations, and experiments. Read the relevant section
 alongside the guide: ICM for context selection, ReAct for feedback, PDDL-INSTRUCT
 and PlanBench for independent checks, and OoO-Spec/ToolSpec/LLMCompiler for the

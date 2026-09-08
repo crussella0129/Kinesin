@@ -28,7 +28,7 @@ describes that destination.
 | Explicit no generation/tool retry | Avoids inventing safe replay of ambiguous effects | Transient failures can end a run | Effect-specific retry/reconciliation is designed |
 | Single-controller authenticated service | Useful shared deployment without distributed ownership protocol | One controller is a trust/availability boundary | Load/availability evidence justifies another architecture |
 
-See [research](research.md) for the primary evidence and
+See [research](https://github.com/crussella0129/building-an-agent-harness/blob/main/research.md) for the primary evidence and
 [architecture](architecture.md) for the resulting contracts.
 
 ## Why this is still minimal
@@ -75,7 +75,7 @@ a named source, which is the distribution where measured lexical search wins:
 vector for every harness and model pair they evaluate. A vector path would add an
 embedding model, an index, and indexing latency to serve answers that are already
 literal. Revisit for a task class whose evidence is paraphrased rather than
-quoted, and see the [paper review](paper-review.md) for what that result does not
+quoted, and see the [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) for what that result does not
 cover.
 
 **File-pointer (programmatic) tool results.** Writing a large result to disk and
@@ -118,7 +118,7 @@ operational needs. Do not mix VPN maintenance into model-message code.
 
 ## Paper-informed refinement
 
-The [paper improvement pass](paper-review.md) preserves the selected runtime.
+The [paper improvement pass](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) preserves the selected runtime.
 It adds explicit input provenance, feedback-dependent tasks, and independent
 goal evaluation. ReAct informs the feedback loop; ICM informs context authoring;
 PDDL-INSTRUCT informs validation exercises; OoO-Spec belongs to optional backend

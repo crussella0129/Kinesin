@@ -4,7 +4,7 @@ Kinesin's first complete release runs several agents for one owner. Its later
 shared service accepts authenticated users on one controller host. Security,
 latency, scalability, and a small understandable implementation are design goals
 at both stages. This document defines the security claims each stage must earn;
-the [build guide](build-guide.md) supplies the implementation sequence.
+the [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md) supplies the implementation sequence.
 
 ## Three trust levels
 
@@ -139,7 +139,7 @@ different trust class: arbitrary process spawning, argument-vector construction,
 output bounding, and its own timeout and reconciliation. Each earns its place
 against a demonstrated task, with its own effect-specific authority and confirm
 policy, before it is built. See [decisions](decisions.md) and the
-[roadmap](roadmap.md).
+[roadmap](https://github.com/crussella0129/building-an-agent-harness/blob/main/roadmap.md).
 
 ## Filesystem tools from their first implementation
 

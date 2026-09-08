@@ -3,7 +3,7 @@
 Kinesin's first complete release should run several bounded sessions, stream
 model output, and remain responsive when an operation is slow. Its next release
 can expose those sessions through a shared service. The implementation sequence
-is in the [build guide](build-guide.md); this document defines the resource and
+is in the [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md); this document defines the resource and
 measurement contract.
 
 **The settings below are defaults and objectives, not benchmark results.**
@@ -330,7 +330,7 @@ as a profiling question, not permission to weaken policy or hide journal costs.
 ## Experiments after the baseline
 
 Before introducing another execution mechanism, use the experiments in the
-[paper review](paper-review.md#optional-optimization-experiments). Context
+[paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md#optional-optimization-experiments). Context
 selection, overlapping independent tool operations, and speculative decoding
 optimize different parts of the critical path. A reported decoding speedup is
 not an end-to-end agent-task or shared-service speedup.

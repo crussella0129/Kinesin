@@ -91,7 +91,7 @@ snapshot. Keep all selected bytes within existing history/request/queue budgets.
 Readable task recipes can describe inputs, work, and expected outputs, with a
 human review between separate runs. Their folder layout never replaces the
 scheduler or journal. A future bounded loader must use explicit operator-selected
-sources and preserve these rules. The [paper review](paper-review.md) explains
+sources and preserve these rules. The [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) explains
 the evidence and the experiment to try before adding that loader.
 
 ## One model effect

@@ -73,7 +73,8 @@ Rust 1.96.0 (ac68faa20 2026-05-25), Cargo 1.96.0. rustfmt, Clippy, and local Rus
 documentation are installed. Runtime and model facts are recorded after checks.
 
 Working branch: `answer-key`, renamed from `codex/build-guide-validation` at the
-user's request. Git branch names cannot contain spaces. The preceding uncommitted guide
+user's request, and later renamed again to `dev` when the build guide moved to its
+own repository and this branch became the sprint branch. Git branch names cannot contain spaces. The preceding uncommitted guide
 was copied to a uniquely named `Kinesin-before-build-*` directory beneath `%TEMP%`.
 Implementation and validation results remain separate from the guide's claims.
 
@@ -493,7 +494,7 @@ the deliberate request. The same pass recorded two choices that had been
 unexamined defaults rather than decisions: lexical search over an embedding index,
 and inline tool results over file-pointer delivery. Both now carry their evidence
 and their revisit condition in [decisions](decisions.md), with the study's own
-scope limits in the [paper review](paper-review.md).
+scope limits in the [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md).
 
 Six tests cover the tool: one-based line reporting and an empty result for an
 absent term; the absence of an evidence reference even when the runner offers

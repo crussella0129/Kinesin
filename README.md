@@ -1,19 +1,21 @@
 # Kinesin
 
-[![Rust checks](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml/badge.svg?branch=answer-key)](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml?query=branch%3Aanswer-key)
+[![Rust checks](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml?query=branch%3Adev)
 
 A small Rust runtime for agents with explicit authority and bounded resources.
-
-**Status: working answer key with local validation evidence.** The Rust CLI, concurrent
-controller, file tools, checker, journal, replay, streaming, and authenticated
-loopback service run locally. The [validation ledger](docs/build-validation.md)
-separates passing proofs from model-quality failures and deployment gates that
-remain unproven. The `answer-key` branch is the reference implementation; the
-guide remains the path for your own handwritten build in a separate directory.
 
 Kinesin gives a model context, interprets its proposed tool calls, decides which
 may run, records outcomes, and controls how the run ends. It also controls how
 many runs may compete for model, filesystem, memory, and storage resources.
+
+**This is the reference implementation.** The Rust CLI and interactive session,
+concurrent controller, read and write file tools, checker, journal, replay,
+streaming, and authenticated loopback service run locally. The
+[validation ledger](docs/build-validation.md) separates passing proofs from
+model-quality failures and deployment gates that remain unproven. The handwritten
+**build guide that teaches how to construct this from scratch lives in its own
+repository**:
+[building-an-agent-harness](https://github.com/crussella0129/building-an-agent-harness).
 
 Execution completion and task acceptance are separate outcomes. A final answer
 is a candidate: scoped tasks pass only after an independent checker verifies
@@ -25,19 +27,16 @@ service**. Security, low latency, scalability, and minimality are equal design
 goals. Minimality means a small number of necessary mechanisms you can explain,
 rather than the fewest dependencies or source files.
 
-## Start here
+## Working here
 
+- `main` is the released branch. `dev` is where sprints happen; each sprint lands
+  on `main` through a pull request.
 - Read [the architecture](docs/architecture.md) for the complete shape.
-- Start with [the build guide](docs/build-guide.md#before-you-start) for first-sitting
-  orientation and the handwritten build.
-- Track checkpoints in [the roadmap](docs/roadmap.md).
-- Read [feedback on your understanding](docs/understanding.md) for what the
-  original plan gets right and the next concepts to master.
-- Use [the research and decisions](docs/research.md) to understand this redesign.
-- See [the paper review](docs/paper-review.md) for the research improvement pass.
-- Use [the CLI instructions](docs/cli.md) to run the implemented product.
+- Use [the CLI instructions](docs/cli.md) to run the product.
 - Read the [live task evaluation](docs/live-evaluation.md) and
   [performance baseline](docs/performance-baseline.md) before interpreting success.
+- To build the runtime yourself by hand, follow the separate
+  [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md#before-you-start).
 
 ## What the first complete release does
 
@@ -123,10 +122,13 @@ Kinesin/
 
 ## Documentation map
 
+These describe and validate the runtime. The build guide, roadmap, working
+process, and research review moved to the separate
+[building-an-agent-harness](https://github.com/crussella0129/building-an-agent-harness)
+repository.
+
 | Document | Responsibility |
 |----------|----------------|
-| [build-guide](docs/build-guide.md) | First-sitting orientation and numbered build/read/prove/break steps |
-| [roadmap](docs/roadmap.md) | Checkpoints and release gates |
 | [architecture](docs/architecture.md) | Ownership, interfaces, deployment, scale boundary |
 | [loop and tools](docs/loop-and-tools.md) | Domain/protocol and tool execution contracts |
 | [configuration](docs/configuration.md) | Configuration examples and per-run limits |
@@ -143,10 +145,7 @@ Kinesin/
 | [task acceptance](docs/verification.md) | Execution versus acceptance, first checker, evidence and verdicts |
 | [adversarial review](docs/adversarial-review.md) | Attacks, findings, fixes, and remaining limits |
 | [components](docs/components.md) | Module ownership and Rust learning map |
-| [process](docs/process.md) | Daily workflow, dependencies, CI |
 | [decisions](docs/decisions.md) | Chosen tradeoffs and superseded choices |
-| [research](docs/research.md) | Primary evidence and review results |
-| [understanding](docs/understanding.md) | Feedback and self-check questions |
 | [resources](docs/resources.md) | Short reference index |
 
 No milestone is complete merely because its design is documented. Shared use has
