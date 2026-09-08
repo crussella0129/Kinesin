@@ -98,7 +98,7 @@ implementation must demonstrate the expected result before the release gate.
 | An LLM judge returns high confidence | No path to deterministic acceptance in the initial design |
 
 Detailed assertions and fixture guidance are in [testing](testing.md#per-run-task-acceptance).
-The guide adds [an acceptance-checking step](build-guide.md#21-check-file-fields-before-accepting-a-task)
+The guide adds [an acceptance-checking step](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md#21-check-file-fields-before-accepting-a-task)
 before concurrent execution, then carries its ownership, persistence, replay,
 metrics, and API consequences through later steps.
 

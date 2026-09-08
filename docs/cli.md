@@ -1,5 +1,37 @@
 # Local CLI
 
+## The session
+
+```text
+kinesin
+```
+
+No arguments. It reads `kinesin.toml` from the working directory, then asks what
+to do. Each entry becomes its own run that cites the previous one, so a follow-up
+needs no run id and no flag:
+
+```text
+> what does project.txt say the language is?
+> and where else is that recorded?
+```
+
+A session takes no workspace or model alias. With one of each configured there is
+nothing to choose; with several, the operator names them in a `run` command
+instead, because guessing would silently pick an authority. `kinesin --config
+other.toml` opens a session against a different file. End it with Ctrl+C or by
+closing the input.
+
+Each entry is a separate immutable run in the journal, linked by the answer it
+cites. Nothing rewrites an earlier run, so `inspect` and `export` work on any
+entry in the thread exactly as they do on a single run. Only the previous
+**answer** carries forward: metadata capture deliberately does not retain a
+prompt, and a thread whose content depended on the capture mode would behave
+differently for two owners running the same words.
+
+The cited answer enters as reference data with its own entry in the input
+inventory, marked as earlier model output. It is information, not instruction,
+and grants no permission.
+
 Run these commands from the repository root after building the guide's matching
 milestones. `run` and `batch` require the verified model server. Configuration paths resolve
 relative to the configuration file; CLI input-file paths resolve from your current

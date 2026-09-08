@@ -65,7 +65,7 @@ or message is enough.
 
 Inspect selected versions/features, commit `Cargo.lock`, and record the toolchain.
 Do not copy stale feature flags or add every row before its step. The
-[build guide](build-guide.md) tells you when each has a job.
+[build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md) tells you when each has a job.
 
 ## Boundaries intentionally absent
 

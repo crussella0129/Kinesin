@@ -226,7 +226,7 @@ global observer cap holds across different retained runs and terminal streams
 close after catch-up. Failed provisional streams never add text to metadata.
 
 No live shared-service exposure until the full gate in
-[the build guide](build-guide.md) passes on the selected deployment OS.
+[the build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md) passes on the selected deployment OS.
 
 ## Model evaluation and latency
 
@@ -268,7 +268,7 @@ an independent checker or documented human rubric. Formal action preconditions
 can be tested in pure Rust fixtures; a PDDL parser, fine-tuning job, or model
 self-verification loop is not necessary. Repeat model-dependent cases and report
 sample sizes, correctness, policy violations, bytes/tokens when available, turns,
-and latency. See [paper evidence and limits](paper-review.md).
+and latency. See [paper evidence and limits](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md).
 
 Use paired fixtures with renamed files/entities, reordered irrelevant entries,
 changed fact values, and evidence beyond the read truncation boundary. Keep an

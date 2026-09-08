@@ -1,6 +1,6 @@
 # Runtime and tool contracts
 
-This document specifies behavior. The [build guide](build-guide.md) supplies the
+This document specifies behavior. The [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md) supplies the
 implementation order; [security](security.md), [performance](performance.md), and
 [traces](traces.md) own authority, shared limits, and persistence details.
 
@@ -72,8 +72,22 @@ Koil prepares `POST /v1/chat/completions` with the approved model identity,
 structured messages, and explicit `n: 1`. Tools are omitted until enabled.
 When tools are present, use `tool_choice: "auto"` and
 `parallel_tool_calls: false`; still handle a returned batch safely.
-Keep top-level `grammar`, `json_schema`, and `response_format` absent in the
-initial tool loop.
+A request carries **either** `tools` **or** a constraint, never both. The server
+derives its own grammar for tool calls from the chat template, so a second
+constraint has no slot to occupy; supplying one alongside tools is rejected by
+request parsing. Build the two as disjoint branches so the exclusion holds by
+construction rather than by convention.
+
+A checked run therefore answers twice. While it gathers, requests carry tools and
+no constraint. When it produces a prose answer, the runtime asks once more with
+tools withdrawn and `response_format` set to a JSON Schema derived from the
+frozen contract. That turn's reply is the candidate.
+
+The schema constrains **shape only**. llama.cpp's converter skips unsupported
+keywords silently, so depending on one for correctness would mean believing a
+constraint that was never applied. Which ids are acceptable, which values are
+right, and whether the cited observation supports them stay with the checker: a
+well-formed candidate carrying a wrong value still fails.
 
 Require exactly one choice at index zero and an assistant message. For calls,
 require `type: "function"`, nonempty bounded IDs/names, and a string-valued
@@ -117,9 +131,77 @@ argument shape; the Rust handler still validates authority and semantics.
 ```
 
 The real request includes this in its `tools` array, with the other chat fields.
-Start with only `read_file` and `list_files`. Both take `path: string`.
 Use typed structs with unknown-field rejection and a shared lexical path
-validator. Do not write a general JSON Schema engine for two fixed tools.
+validator. Do not write a general JSON Schema engine for a fixed tool set.
+
+Seven tools are offered. The first three only read; `write_file`, `edit_file`,
+`delete_file`, and `move_file` change the workspace and are gated separately (see
+below and [security](security.md)).
+
+| Tool | Arguments | Returns | Mints evidence |
+|------|-----------|---------|----------------|
+| `read_file` | `path` | A bounded UTF-8 prefix of one file | **Yes** |
+| `list_files` | `path` | A bounded nonrecursive listing | No |
+| `search_files` | `path`, `query`, optional `case_sensitive` | Matching file names and one-based line numbers below `path` | No |
+| `write_file` | `path`, `content` | Bytes written; replaces one file atomically | No |
+| `edit_file` | `path`, `find`, `replace` | Bytes written; replaces one unique passage | No |
+| `delete_file` | `path` | Removes one regular file | No |
+| `move_file` | `path`, `to` | Renames one file; never overwrites | No |
+
+`search_files` exists because listing and reading alone cannot answer "which
+file mentions this" without walking the tree one directory at a time, spending
+steps and context. Its `query` is **literal text, not a pattern language**: an
+expression engine would add a dependency and an unbounded matching cost on
+model-selected input.
+
+Matching **ignores capitalization unless `case_sensitive` is set**. Lexical
+search retrieves nothing when the caller guesses the wrong form of a term, and a
+smaller model is the least reliable at noticing that and refining the query, so
+the forgiving mode is the default and exactness is the deliberate request. Case
+folding decides the match only; a reported line is always the file's own bytes.
+See the [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) for the measurement behind this.
+
+**Only `read_file` mints evidence, and that is a deliberate boundary.** A
+listing and a search both return partial views of the workspace. If a search
+hit could be cited, a candidate could claim a field equals a value it never
+observed completely. The acceptance contract compares a claimed value against a
+complete successful read; a search result can locate a file but can never
+certify its contents. A run that intends to report a value must read it.
+
+Search is bounded on every axis it can grow: directory depth, total entries
+visited, bytes read from any one file, and the caller's result budget. Symlinks
+and non-regular files are skipped rather than followed, and content that is not
+valid UTF-8 is skipped rather than searched as replacement characters. Any bound
+reached or content skipped sets `truncated`, so an empty result never implies
+the workspace was fully examined.
+
+`write_file` is the first tool that changes the workspace, and it changes the
+trust model with it. Read the safety properties in [security](security.md) before
+implementing it. The essentials here: it lives behind a **separate**
+`WorkspaceWriter` capability, so the read tools have no method that can write; it
+is built only for a workspace whose operator listed it, so a run that was not
+granted writes has no writer at all; the write is atomic, landing in a temporary
+sibling then renaming into place; and it refuses to leave the root, write through
+a symbolic link, overwrite a directory, or create parent directories. It mints no
+evidence. Content is bounded, and it arrives inside the tool arguments so it is
+already under the argument limit.
+
+`edit_file` replaces one exact passage. The `find` text must occur **exactly
+once**: an absent passage cannot edit, and an ambiguous one is refused rather than
+guessed, so an edit is never applied to the wrong place. It shares `write_file`'s
+capability and guards, requires the file to already exist, refuses a file larger
+than the editable bound rather than truncating it, and is atomic.
+
+`delete_file` removes one **regular** file. A directory or a symbolic link is
+refused, so it never removes curated structure or reaches outside the root, and a
+missing file is an error rather than a silent success. `move_file` renames one
+regular file, and the destination must not already exist, so a move never
+silently overwrites another file. Both share the writer's capability and guards.
+
+A **checked** task cannot enable any mutating tool. If a run could edit a file it
+then reads, it could plant the value a criterion checks and cite its own change as
+evidence, so authorization refuses that combination. Writes and edits are a
+freeform-run capability.
 
 ## Complete tool history
 
@@ -164,7 +246,7 @@ There is no requirement to emit or parse a free-form `Thought:` trace, add a
 Backend speculative decoding verifies candidate output tokens. Kinesin separately
 validates and authorizes effects. A sidecar prediction, valid JSON prefix, or
 decoder-accepted draft is never permission to execute a tool; the full reply and
-batch must still pass the existing gate. See the [paper review](paper-review.md).
+batch must still pass the existing gate. See the [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md).
 
 1. Validate the full reply structure, all IDs, and the entire batch's remaining
    tool budget before any handler executes. Reject a structurally invalid or

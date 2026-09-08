@@ -4,7 +4,7 @@ Kinesin's first complete release runs several agents for one owner. Its later
 shared service accepts authenticated users on one controller host. Security,
 latency, scalability, and a small understandable implementation are design goals
 at both stages. This document defines the security claims each stage must earn;
-the [build guide](build-guide.md) supplies the implementation sequence.
+the [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md) supplies the implementation sequence.
 
 ## Three trust levels
 
@@ -66,6 +66,16 @@ reading alone does not validate an answer: the checker independently compares
 the submitted field with its required source. Failed, denied, truncated, forged,
 or wrong-source evidence cannot establish a complete-file claim.
 
+**Only a complete successful read mints evidence.** `list_files` and
+`search_files` return partial views of the workspace and deliberately carry no
+evidence reference, even when the runner has one available. A search can tell a
+run where a value lives; it can never certify what that value is, because it
+returns matched lines rather than the observed file. Without this boundary a
+candidate could cite a search hit as proof of a field it never observed
+completely. Adding a further read-only tool does not change the rule: a new tool
+mints evidence only if it returns a complete successful observation of the
+resource a criterion names.
+
 The first checker is compiled, pure, and bounded. Give it read-only typed inputs,
 with no filesystem, network, database, model, or code-execution capabilities.
 It neither follows source instructions nor accepts a model's `passed` field.
@@ -80,6 +90,56 @@ must not expose hidden expected values or unrelated contents. Metadata capture
 retains the receipt and final candidate, including rejected candidates, but no
 additional evidence bodies. Replay requires explicit capture permission and the
 actual frozen inputs; a stored verdict alone is not reproducible proof.
+
+## Write tools change the trust model
+
+The first three tools only observe the workspace. `write_file` changes it, and
+that is a deliberate step across the read-only boundary, gated the same way every
+other authority is.
+
+**Consent is the operator's, at configuration time.** A workspace grants writes
+only when its operator lists a write tool in that workspace's `tools`. The model
+proposing a write is not authorization; the operator enabling the tool is, exactly
+as installing a skill rather than ingesting a web page is the consent. The model
+is never consulted on a security decision.
+
+**The capability is separate by construction.** Writes run through a
+`WorkspaceWriter` distinct from `WorkspaceReader`; the read tools have no method
+that can change a file. A writer is built only for a workspace that granted a
+write tool, so a run without that grant has no writer to reach, and an
+unauthorized write is denied before any handler runs and is still journalled.
+
+**The write itself is bounded and structure-preserving.** It stays inside the
+capability root, refuses to write through a symbolic link or over a directory,
+does not create parent directories, and replaces the whole file atomically
+through a temporary sibling and a rename, so a crash leaves either the old file
+or the new one. Content is bounded and mints no evidence.
+
+**A checked task cannot write.** Acceptance depends on observing files the run did
+not author. A run that could edit a source and then read it back would certify its
+own change, so authorization refuses a write tool in a checked task's workspace.
+
+**`edit_file` is the second mutating tool, and the same capability.** It replaces
+one exact passage in an existing file and requires the passage to be **unique**:
+an absent match cannot edit and an ambiguous one is refused, so the change never
+lands in the wrong place. It runs through the same `WorkspaceWriter`, the same
+symlink and directory guards, the same atomic replace, and the same bar on write
+tools in checked runs.
+
+**`delete_file` and `move_file` complete the file-mutation set, same capability.**
+Delete removes only a regular file, refusing a directory or a symbolic link so it
+cannot remove curated structure or follow a link outside the root; a missing file
+is an error. Move renames a regular file and refuses a destination that already
+exists, so it never silently overwrites. Both run through the same
+`WorkspaceWriter` and the same checked-run bar.
+
+**Still deferred, and gated the same way.** Shell or command execution is the
+remaining surface, and the largest. Shell execution especially is a
+different trust class: arbitrary process spawning, argument-vector construction,
+output bounding, and its own timeout and reconciliation. Each earns its place
+against a demonstrated task, with its own effect-specific authority and confirm
+policy, before it is built. See [decisions](decisions.md) and the
+[roadmap](https://github.com/crussella0129/building-an-agent-harness/blob/main/roadmap.md).
 
 ## Filesystem tools from their first implementation
 

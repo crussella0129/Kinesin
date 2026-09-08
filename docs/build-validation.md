@@ -73,7 +73,8 @@ Rust 1.96.0 (ac68faa20 2026-05-25), Cargo 1.96.0. rustfmt, Clippy, and local Rus
 documentation are installed. Runtime and model facts are recorded after checks.
 
 Working branch: `answer-key`, renamed from `codex/build-guide-validation` at the
-user's request. Git branch names cannot contain spaces. The preceding uncommitted guide
+user's request, and later renamed again to `dev` when the build guide moved to its
+own repository and this branch became the sprint branch. Git branch names cannot contain spaces. The preceding uncommitted guide
 was copied to a uniquely named `Kinesin-before-build-*` directory beneath `%TEMP%`.
 Implementation and validation results remain separate from the guide's claims.
 
@@ -156,10 +157,15 @@ the enclosed waits and applies it to the scheduler waits; it does not weaken an
 assertion, shorten a production timeout, or treat the grace path as a fault.
 Watchdogs detect a hung wait, and latency remains the benchmarks' claim.
 
-The same shape exists in several integration tests, which have passed hosted CI
-repeatedly and did not execute in the failing run because Cargo stopped at the
-library target. They are recorded here as a known remaining assumption rather
-than changed without evidence.
+The same shape existed in several integration tests. They were recorded as a
+known remaining assumption rather than changed without evidence, because they had
+passed hosted CI repeatedly and did not execute in that failing run: Cargo stopped
+at the library target. Hosted CI later supplied the evidence. Four service tests
+failed together, including the helper that waits for a run to reach a terminal
+phase, whose five-second poll enclosed admission, the model call, the tool, the
+checker and the journal commit. Those waits now use the same named bound above
+the sum of the production waits they enclose. Waiting for evidence was the right
+call, and the evidence arrived.
 
 A second hosted run then failed two different tests while the corrected
 scheduler test passed, and its unit suite took 51.7 s against the previous run's
@@ -455,6 +461,142 @@ Two additional native fault tests passed: a SQLite page ceiling produces actual
 a newly created Windows DACL denies state file creation before storage startup
 or model dispatch. These simulate capacity exhaustion and permission denial,
 without filling a physical volume or changing an existing directory's ACL.
+
+## Added after the first validation pass: bounded search
+
+A review of the finished harness found one capability gap that the deferred-work
+table had never gated: the tool surface was `read_file` and `list_files` only, so
+answering "which file mentions this" required walking the tree one directory at a
+time. The recorded live evaluation shows the workaround succeeding in a small
+workspace, so this is a scaling limit rather than a cause of those failures.
+
+`search_files(path, query)` is now implemented behind the same capability. Its
+term is literal text, not a pattern language, because an expression engine would
+add a dependency and an unbounded matching cost on model-selected input. Depth,
+entries visited, per-file bytes, and the caller's result budget are each bounded,
+symlinks and non-regular files are skipped rather than followed, and non-UTF-8
+content is skipped rather than searched as replacement characters. Every bound
+reached or item skipped sets `truncated`, so an empty result never implies a
+complete examination.
+
+**Only a complete successful read mints evidence.** The search deliberately
+returns none, so a candidate cannot cite a matched line as proof of a value it
+never observed completely. That rule now lives on `ToolName::mints_evidence`
+rather than at the one call site that previously compared against `ReadFile`.
+
+A later reading of [Sen et al.](https://arxiv.org/abs/2605.15184) corrected one
+choice in this tool. Their measurements name the failure mode of lexical search
+directly: it punishes vocabulary mismatch, and nothing is retrieved when the
+caller does not guess a distinctive substring. They also report the largest
+inline gaps and least reliable query refinement on weaker backbones, which is the
+class Kinesin runs. Case folding is therefore the default and `case_sensitive` is
+the deliberate request. The same pass recorded two choices that had been
+unexamined defaults rather than decisions: lexical search over an embedding index,
+and inline tool results over file-pointer delivery. Both now carry their evidence
+and their revisit condition in [decisions](decisions.md), with the study's own
+scope limits in the [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md).
+
+Six tests cover the tool: one-based line reporting and an empty result for an
+absent term; the absence of an evidence reference even when the runner offers
+one; a missing term, a term supplied to the wrong tool, and empty, oversized or
+control-character terms; an escaping path, an outside sentinel that stays
+unreachable, and skipped non-UTF-8 content; the depth and byte bounds; and case
+folding by default with exact matching on request, where a reported line keeps
+the file's own bytes rather than the folded form. The suite is 177 offline tests,
+with formatting and all-target Clippy clean.
+
+## Added after the first validation pass: a constrained candidate turn
+
+The first live checked run returned fenced JSON with invented values. Fencing is
+the failure constrained decoding removes, and the earlier note that grammar and
+tools conflict was accurate but drew too strong a conclusion. llama.cpp treats
+tool calling as a grammar case: with `--jinja` the server derives a lazy,
+trigger-activated grammar from the chat template, which is why a second custom
+grammar has no slot. Tool calls were therefore already constrained; the
+unconstrained part was the final candidate.
+
+A checked run now answers twice. Gather turns carry tools and no constraint. The
+prose answer proposes one more model effect whose request withdraws tools and
+carries `response_format` with a JSON Schema derived from the frozen contract.
+The two modes are disjoint branches in the request builder, so a constrained
+request cannot carry tools by construction. Replay mirrors the same decision, or
+it would rebuild different bytes and report a fingerprint mismatch that never
+happened.
+
+The cost is one extra model call per checked run, which the fixtures now show
+explicitly. The schema constrains shape only: llama.cpp skips unsupported
+keywords silently, so `enum` was deliberately not used to restrict criterion ids.
+Values, ids and evidence binding remain the checker's, and the adversarial
+counterexample still fails. The suite is 178 offline tests.
+
+## Added after the first validation pass: a session and cited answers
+
+Every run was independent, and there was no way to follow up on one. The first
+attempt added a `--continue RUN_ID` flag to `run`, which the operator rejected as
+the wrong shape: a command should be short, and following up should not require
+naming what you just did. The entry point is now `kinesin` with no arguments,
+which opens a session and asks what to do. That is the usual way to use it; the
+flag-based commands remain for scripted and operator work.
+
+Continuity keeps runs immutable. Each entry is a new run that cites the previous
+one's recorded answer, so nothing reopens or rewrites an earlier run and the
+journal stays an append-only chain. Only the answer travels: metadata capture
+deliberately does not retain a prompt, and a thread whose content depended on the
+capture mode would answer the same words differently for two owners. The cited
+answer is bounded, and it enters the conversation as its own message with its own
+input-inventory entry marked as earlier model output, so its trust class is
+visible rather than implied by position. It is data, exactly as a tool
+observation is.
+
+A checked run cannot continue one: its acceptance is a single verdict against a
+frozen contract, and unverified prose beside criteria that only file observations
+may satisfy would blur that. Resolution reads the cited run under the owner's own
+scope and accepts only a finished one, since a run still in flight has no
+recorded answer to quote. A session inherits the cited run's workspace and model
+rather than letting a thread change authority halfway through, and authorization
+still checks those aliases: inheriting repeats an earlier decision, it does not
+bypass one. The suite is 181 offline tests.
+
+## Added after the first validation pass: a bounded write tool
+
+The read-only posture was a security stance, and it was crossed deliberately, not
+loosened. `write_file` is the first tool that changes the workspace. It runs
+through a `WorkspaceWriter` that is a separate type from the reader, so the read
+tools have no method that can write, and the writer is constructed only for a
+workspace whose operator listed a write tool. A run without that grant has no
+writer, and an unauthorized write is denied before any handler runs and is still
+journalled.
+
+The write itself is atomic: content lands in a temporary sibling and is renamed
+into place, so a crash leaves the old file or the new one, never a partial. It
+refuses to leave the root, write through a symbolic link, overwrite a directory,
+or create parent directories, and its content is bounded. It mints no evidence.
+
+One acceptance interaction drove a hard bar: a checked run must not enable a write
+tool. If it could edit a source and then read it back, it would plant the value a
+criterion checks and cite its own change, so authorization refuses that
+combination. This was found and closed by construction, with a test, before the
+tool shipped.
+
+Seven tests cover it: atomic create and replace with no temporary left behind;
+refusal to escape the root, write through a symlink, or clobber a directory; the
+content bound and a reader's inability to write; the per-tool argument shape;
+the authorization bar in a checked workspace; a freeform run that writes end to
+end and journals the effect; and a denied write where the workspace grants none.
+`edit_file` followed as the second mutating tool, on the same capability and
+guards. It replaces one exact passage and requires it to be unique: an absent
+match cannot edit and an ambiguous one is refused rather than guessed, so an edit
+never lands in the wrong place. It requires the file to exist, refuses a file
+larger than the editable bound rather than truncating, and is atomic. Four more
+tests cover the unique-match contract, the existence and byte bounds, the
+argument shape, and a freeform edit end to end. `delete_file` and `move_file` then completed the file-mutation set on the same
+capability. Delete removes only a regular file, refusing a directory or symbolic
+link, with a missing file an error. Move renames a regular file and refuses a
+destination that already exists, so it never silently overwrites. Three more tests
+cover the delete structure refusals, the move no-overwrite and source/destination
+rules, and the argument shape for both. Shell or command execution remains the one
+deferred write surface, and the largest: a distinct process-spawning trust class.
+The suite is 195 offline tests.
 
 ## Original intent and remaining exposure evidence
 

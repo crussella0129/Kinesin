@@ -6,7 +6,7 @@ real network operation. Later, the same adapter supports several admitted runs
 and streaming. Kineserve is an optional process owner after those features work.
 There is no FFI or extra forwarding process in this path.
 
-Follow the [build guide](build-guide.md) in order. The
+Follow the [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md) in order. The
 [loop contract](loop-and-tools.md), [security policy](security.md), and
 [resource limits](performance.md) define behavior the adapter must preserve.
 [Task acceptance](verification.md) distinguishes a complete provider answer from
@@ -277,7 +277,7 @@ integration; the ordinary chat endpoint supplies no such hook. If an independent
 verified backend supports it, record that mode in its compatibility profile and
 repeat the text/tool/stream, context, cancellation, and concurrent-load checks.
 Do not advertise OoO-Spec support for the current llama.cpp profile merely because
-both systems expose HTTP. [Research boundary](paper-review.md#speculation-belongs-to-inference)
+both systems expose HTTP. [Research boundary](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md#speculation-belongs-to-inference)
 
 Treat any sidecar receiving dialogue/tool schemas, or historical-call cache, as
 part of the approved data flow. Apply owner isolation, capture/retention policy,

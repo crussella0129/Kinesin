@@ -39,7 +39,7 @@ more inference capacity. Reqwest supplies a reusable connection pool.
 | Run runner | Conversation, counters, phase, authority snapshot, cancellation token | One isolated execution |
 | K-Core | Pure state and transition rules | Event in; next state and proposed effect out |
 | Koil | Provider serialization, pooled client, response/stream decoding | Prepare exact request; async send; normalize result |
-| WorkspaceReader | Open directory capability and read/list policy | Two bounded operations |
+| WorkspaceReader / WorkspaceWriter | Open directory capability; reads are separate from the granted, atomic write | Bounded read/list/search; gated write |
 | Runner / pure checker | Frozen task contract, bounded observed evidence, acceptance receipt | Candidate assessment without I/O or new authority |
 | Storage worker | SQLite connection and transactions | Bounded commands and commit acknowledgements |
 | API | Verified principal and public request/response types | Owner-scoped submission, status, events, cancel, export |
@@ -91,7 +91,7 @@ snapshot. Keep all selected bytes within existing history/request/queue budgets.
 Readable task recipes can describe inputs, work, and expected outputs, with a
 human review between separate runs. Their folder layout never replaces the
 scheduler or journal. A future bounded loader must use explicit operator-selected
-sources and preserve these rules. The [paper review](paper-review.md) explains
+sources and preserve these rules. The [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) explains
 the evidence and the experiment to try before adding that loader.
 
 ## One model effect
