@@ -378,6 +378,12 @@ fn task_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Detects a hung wait; it is not a latency assertion. Supervision joins the
+    /// controller, storage and monitor, so this must exceed that work on a slow
+    /// shared runner. The short bound below it is a negative assertion and stays
+    /// short on purpose.
+    const WATCHDOG: Duration = Duration::from_secs(30);
     use crate::config::test_support::{BASE, Fixture, OWNER, TASK};
     use crate::policy::Submission;
     use crate::scheduler::Job;
@@ -511,7 +517,7 @@ idempotency_retention_hours = 24
         let signal = signal(harness.shutdown.clone(), signal_settled.clone());
         let monitor = tokio::spawn(async { panic!("injected readiness monitor panic") });
         let result = timeout(
-            Duration::from_secs(1),
+            WATCHDOG,
             supervise(
                 listener,
                 harness.state.clone(),
@@ -548,7 +554,7 @@ idempotency_retention_hours = 24
         let worker = {
             let reloaded = reloaded.clone();
             tokio::task::spawn_blocking(move || {
-                released.recv_timeout(Duration::from_secs(2)).unwrap();
+                released.recv_timeout(WATCHDOG).unwrap();
                 reloaded.store(true, Ordering::Release);
                 Err("injected reload result".into())
             })
@@ -582,7 +588,7 @@ idempotency_retention_hours = 24
         assert!(!supervisor.is_finished());
         assert!(!reloaded.load(Ordering::Acquire));
         release.send(()).unwrap();
-        timeout(Duration::from_secs(1), supervisor)
+        timeout(WATCHDOG, supervisor)
             .await
             .unwrap()
             .unwrap()
@@ -620,16 +626,9 @@ temperature = 0.0
             harness.state.clone(),
             harness.shutdown.clone(),
         ));
-        let (_blocked_socket, _) = timeout(Duration::from_secs(2), first.accept())
-            .await
-            .unwrap()
-            .unwrap();
+        let (_blocked_socket, _) = timeout(WATCHDOG, first.accept()).await.unwrap().unwrap();
         harness.shutdown.cancel();
-        timeout(Duration::from_millis(250), monitor)
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
+        timeout(WATCHDOG, monitor).await.unwrap().unwrap().unwrap();
         assert!(
             timeout(Duration::from_millis(30), second.accept())
                 .await

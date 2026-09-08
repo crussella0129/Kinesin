@@ -1258,9 +1258,14 @@ mod tests {
         std::fs::write(&input, "{\"submission\":{\"mode\":\"checked\",\"task\":\"practice-fields\",\"model\":\"local\"}}\n".repeat(6)).unwrap();
         // A finite synthetic provider uses only the tool observation to answer.
         // Every checked task needs a real read and a second HTTP exchange.
+        // The gap between exchanges covers journal, checker, admission and batch
+        // pacing for the next run, so this deadline detects a hung fixture rather
+        // than asserting a rate. If it expires early the listener drops and the
+        // next connect is refused, which reports as a model connection failure.
+        let accept_deadline = Duration::from_secs(60);
         let provider = std::thread::spawn(move || {
             for _ in 0..12 {
-                let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                let deadline = std::time::Instant::now() + accept_deadline;
                 let (mut connection, _) = loop {
                     match listener.accept() {
                         Ok(connection) => break connection,
@@ -1278,7 +1283,7 @@ mod tests {
                 // The finite fixture reads blocking HTTP with its own timeout.
                 connection.set_nonblocking(false).unwrap();
                 connection
-                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .set_read_timeout(Some(Duration::from_secs(30)))
                     .unwrap();
                 let mut header = Vec::new();
                 while !header.ends_with(b"\r\n\r\n") {
