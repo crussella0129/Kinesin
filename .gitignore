@@ -38,3 +38,8 @@ target
 # Added by cargo
 
 /target
+# >>> sprint-loops >>>
+# The Book is tracked. Ignore only transient helper output.
+*.tmp
+/guards-report.ndjson
+# <<< sprint-loops <<<
