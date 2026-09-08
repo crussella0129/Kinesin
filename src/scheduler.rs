@@ -597,6 +597,30 @@ mod tests {
     use crate::storage::{QueueLimits, Storage};
     use tokio::time::timeout;
 
+    fn test_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    /// Wait for a scripted run to actually record its model request. The fake
+    /// captures the prepared bytes before its configured delay, so this observes
+    /// a started request instead of inferring one from another run's finish.
+    async fn started_model_request(client: &ModelClient, label: &str) {
+        timeout(Duration::from_secs(5), async {
+            loop {
+                if !client.captured_requests().unwrap().is_empty() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("{label} never started its model request"));
+    }
+
     fn config(fixture: &Fixture) -> Config {
         fixture
             .parse(&BASE.replace("tools = [\"read_file\"]", "tools = []"))
@@ -638,7 +662,7 @@ mod tests {
         let config = config(&fixture);
         let storage =
             Storage::start(config.storage().path.clone(), QueueLimits::default()).unwrap();
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
+        test_runtime().block_on(async {
             let limits = ConcurrencyConfig {
                 max_active_runs: 1,
                 max_queued_runs: 1,
@@ -709,7 +733,7 @@ mod tests {
             .unwrap();
         let storage =
             Storage::start(config.storage().path.clone(), QueueLimits::default()).unwrap();
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
+        test_runtime().block_on(async {
             let limits = ConcurrencyConfig {
                 max_active_runs: 2,
                 max_queued_runs: 0,
@@ -726,6 +750,12 @@ mod tests {
             let mut fast = handle.try_submit(fast_job, None).unwrap();
             slow.admitted().await.unwrap();
             fast.admitted().await.unwrap();
+            // Overlap is observed, not inferred: the slow run holds an in-flight
+            // request of its own before the fast run is allowed to finish. Each
+            // wait carries its own watchdog so one slow start cannot consume the
+            // budget of the other.
+            started_model_request(&slow_client, "slow-isolated").await;
+            started_model_request(&fast_client, "fast-isolated").await;
             let fast = timeout(Duration::from_secs(5), fast.finished())
                 .await
                 .unwrap()
@@ -762,7 +792,7 @@ mod tests {
             .unwrap();
         let path = config.storage().path.clone();
         let storage = Storage::start(path.clone(), QueueLimits::default()).unwrap();
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
+        test_runtime().block_on(async {
             let limits = ConcurrencyConfig {
                 max_active_runs: 2,
                 max_queued_runs: 1,
@@ -850,7 +880,7 @@ mod tests {
             let config = config(&fixture);
             let storage =
                 Storage::start(config.storage().path.clone(), QueueLimits::default()).unwrap();
-            tokio::runtime::Runtime::new().unwrap().block_on(async {
+            test_runtime().block_on(async {
                 let limits = ConcurrencyConfig {
                     max_active_runs: 1,
                     max_queued_runs: queue,
@@ -883,7 +913,7 @@ mod tests {
         let config = config(&fixture);
         let storage =
             Storage::start(config.storage().path.clone(), QueueLimits::default()).unwrap();
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
+        test_runtime().block_on(async {
             let resources = RunResources::single(1, ConcurrencyConfig::default());
             let (handle, controller) =
                 Controller::start(ConcurrencyConfig::default(), storage.client(), false).unwrap();
@@ -934,7 +964,7 @@ mod tests {
         let config = config(&fixture);
         let storage =
             Storage::start(config.storage().path.clone(), QueueLimits::default()).unwrap();
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
+        test_runtime().block_on(async {
             let limits = ConcurrencyConfig {
                 max_active_runs: 1,
                 max_queued_runs: 1,
@@ -992,7 +1022,7 @@ allow_freeform = true
             .unwrap();
         let storage =
             Storage::start(config.storage().path.clone(), QueueLimits::default()).unwrap();
-        tokio::runtime::Runtime::new().unwrap().block_on(async {
+        test_runtime().block_on(async {
             let limits = ConcurrencyConfig {
                 max_active_runs: 1,
                 max_queued_runs: 2,

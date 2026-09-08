@@ -63,6 +63,20 @@ better than lifetime parameters you cannot yet explain.
 When a Rust concept is unfamiliar, reproduce it in scratch code. Finish the
 current proof before adding another module or dependency.
 
+When a diagnostic stops you, work down this list before changing the design:
+
+1. Read the whole diagnostic, starting at its `help:` and `note:` lines.
+2. Run `rustc --explain` on the error code.
+3. Read the type's signature in the standard library documentation.
+4. Reduce the problem to the smallest case that still fails.
+5. Write the expected behavior as a sentence; a wrong assumption often appears
+   while you write it.
+6. Return to it later. Borrow-checker errors respond well to a break.
+7. Ask on the [Rust users forum](https://users.rust-lang.org/).
+
+Most early ownership errors resolve at step 1 or 2. Reach for a redesign after
+that list, not before it.
+
 At coherent checkpoints, run:
 
 ```text
@@ -129,6 +143,9 @@ then propagate it with `?` from another fallible function.
 **Read:** [ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html)
 and [recoverable errors](https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html).
 Focus on moves, short borrows, and the caller's responsibility for failure.
+For the diagnostic you just produced, the Brown fork's
+[fixing ownership errors](https://rust-book.cs.brown.edu/ch04-03-fixing-ownership-errors.html)
+explains each rejection and its correction directly.
 
 ## 3. Create one package and a repeatable checkpoint
 

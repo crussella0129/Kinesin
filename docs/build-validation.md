@@ -120,6 +120,28 @@ their outcomes in the linked reports. The separately ignored process worker is
 executed by its three crash-recovery parent tests. See
 [offline evidence](evidence/checks/offline-suite.txt).
 
+The first clean-clone run of `0719c38` then hit five watchdog failures: four
+scheduler waits and the CLI fixture's shared provider deadline. The isolated
+overlap test passed, and an unchanged full rerun passed all 171 tests. This
+does not establish the cause of the clustered delay. Review found avoidable
+fixture assumptions: seven scheduler tests each created a default full-sized
+runtime, the overlap test inferred one request's start from another's finish,
+and one ten-second fake-provider deadline covered startup plus twelve HTTP
+exchanges. The test corrections bound scheduler runtimes, observe actual request
+starts and give each expected exchange its own watchdog. Production limits,
+durability and acceptance rules are unchanged; original failed logs remain local.
+
+The overlap correction observes each scripted client's captured request, which
+the fake records before its configured delay, so the assertion rests on a
+started request rather than on a peak counter read after another run finished.
+The CLI fixture also joins its provider thread before unwrapping the command
+result, so a failing run reports its own error instead of a panic that abandons
+the thread. After the corrections the suite passed formatting, all-target Clippy
+with warnings denied, and 171 offline tests, and five consecutive unit-suite
+repeats finished in 2.21–2.66 s against unchanged five- and ten-second
+watchdogs. Repeats on one idle machine reduce the remaining margin for this
+timing assumption; they do not prove the clustered delay cannot recur.
+
 Environment finding: an unrelated invalid `%USERPROFILE%\Cargo.toml` caused
 Cargo ancestor-workspace discovery to fail. Adding an explicit `[workspace]`
 boundary to each new package stopped that search without editing the parent.

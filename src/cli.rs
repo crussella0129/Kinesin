@@ -1259,8 +1259,8 @@ mod tests {
         // A finite synthetic provider uses only the tool observation to answer.
         // Every checked task needs a real read and a second HTTP exchange.
         let provider = std::thread::spawn(move || {
-            let deadline = std::time::Instant::now() + Duration::from_secs(10);
             for _ in 0..12 {
+                let deadline = std::time::Instant::now() + Duration::from_secs(10);
                 let (mut connection, _) = loop {
                     match listener.accept() {
                         Ok(connection) => break connection,
@@ -1326,12 +1326,12 @@ mod tests {
                 connection.flush().unwrap();
             }
         });
-        let code = execute(CliCommand::Batch(BatchCommand {
+        let result = execute(CliCommand::Batch(BatchCommand {
             config: fixture.path(),
             input,
-        }))
-        .unwrap();
+        }));
         provider.join().unwrap();
+        let code = result.unwrap();
         assert_eq!(code, 0);
         let mut store = Store::open(&fixture.root.join("state/kinesin.sqlite")).unwrap();
         let Response::Runs(records) = store
