@@ -639,21 +639,28 @@ async fn events(
         if observer.done {
             return None;
         }
+        // A stalled consumer may first poll after the whole stream lifetime.
+        // Stop before a historical lookup can compete with an expired timer.
+        if let Some(code) = observer.stop_reason() {
+            observer.done = true;
+            return Some((Ok::<_, Infallible>(close_frame(code)), observer));
+        }
         let shutdown = observer.state.shutdown.clone();
         let frame = tokio::select! {
+            biased;
             _ = shutdown.cancelled() => Some(close_frame("service_shutdown")),
             _ = tokio::time::sleep_until(observer.deadline) => Some(close_frame("observer_lifetime_exceeded")),
             result = observer.next() => result,
         };
-        match frame {
-            Some(frame) => {
-                if observer.state.shutdown.is_cancelled() || Instant::now() >= observer.deadline {
-                    observer.done = true;
-                }
-                Some((Ok::<_, Infallible>(frame), observer))
-            }
-            None => None,
-        }
+        // A lookup may finish at the same time as expiry or shutdown. Its
+        // lifecycle frame must not replace the explicit closure notification.
+        let frame = if let Some(code) = observer.stop_reason() {
+            observer.done = true;
+            Some(close_frame(code))
+        } else {
+            frame
+        };
+        frame.map(|frame| (Ok::<_, Infallible>(frame), observer))
     });
     Ok(Sse::new(stream)
         .keep_alive(sse::KeepAlive::new().interval(Duration::from_secs(15)))
@@ -661,6 +668,16 @@ async fn events(
 }
 
 impl Observer {
+    fn stop_reason(&self) -> Option<&'static str> {
+        if self.state.shutdown.is_cancelled() {
+            Some("service_shutdown")
+        } else if Instant::now() >= self.deadline {
+            Some("observer_lifetime_exceeded")
+        } else {
+            None
+        }
+    }
+
     async fn next(&mut self) -> Option<sse::Event> {
         loop {
             let result = self

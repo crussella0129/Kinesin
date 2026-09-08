@@ -28,6 +28,8 @@ inputs. They do not time configuration parsing, private-state startup checks,
 authenticated service ingress, TLS, or a live model. The freeform receipt remains
 `unchecked`; this latency distribution does not measure a file-evidence checker
 or establish task correctness. Those behaviors have separate functional tests.
+The scripted candidate is nineteen ASCII bytes; this is a small-payload
+baseline, not a worst-case byte-cap measurement.
 Process memory includes the driver's bounded buffer of at most 1,000 authority
 snapshots retained for post-sample journal queries; it is not application-only
 allocation accounting.
@@ -58,6 +60,71 @@ one excess Alice submission, and completes Bob's short run while Alice's runs
 settle. The soak offers bursts of 25 and waits for each burst before continuing.
 Both are closed-loop checks. Neither replaces fixed-arrival service-load testing
 or measures fairness across a large population.
+
+## Measurements at the first validated implementation checkpoint
+
+Checkpoint `e346207bd2ebedec061caa76fd07aaacc3c5c486` passed the clean-clone
+checks. Its copied release measurement executable has SHA-256
+`acef5c0d5372cedfab73340b3689f527a4c2a12daecb91cd810b781d848c0031`.
+It used SQLite 3.53.2, WAL/FULL, metadata capture, and the configured 4 GiB,
+100,000-run, minimum-24-hour retention policy. Two successive runs each recorded
+1,000 warm samples after twenty warmups, on separate new databases:
+
+| Warm measurement | p50 | p95 | p99 | 50 ms p95 target |
+|---|---:|---:|---:|---|
+| Warm-only process | 15.479 ms | 20.226 ms | 32.058 ms | Met in this sample |
+| Warm segment before the full soak | 29.911 ms | 60.365 ms | 79.233 ms | Missed |
+
+All 2,000 recorded runs completed with unchecked acceptance. The target was
+therefore **not consistently met**. The second profile's p95 admission latency
+was 12.605 ms, pre-terminal journal wait 37 ms, and terminal-tail upper estimate
+8.837 ms. Its slowest complete run took 124.457 ms. These overlapping percentile
+summaries cannot be added to reconstruct a percentile of total latency.
+
+The scripted provider still awaited `sleep(Duration::ZERO)` in this executable.
+Its recorded model-exchange p95 was 5 ms in the first process and 15 ms in the
+second. Tokio documents millisecond timers and potentially coarser resolution
+on Windows. [Tokio sleep](https://docs.rs/tokio/1.53.1/tokio/time/fn.sleep.html)
+Removing a timer from the zero-delay fake is a separate measurement correction
+to test; it does not establish the cause of journal/admission jitter, and it
+must not erase these results or alter the actual HTTP provider.
+
+The full process also settled all 100 cancellations. Cancellation-call p95 was
+0.004 ms, socket-close p95 0.094 ms, and committed cancelled-receipt p95
+36.081 ms. All peer closures were observed, all receipts remained unchecked,
+and no additional model/tool effect was planned. Thus even the measured upper
+bound on cancellation observation was below the 100 ms target in this sample.
+
+Twenty owner-quota cycles admitted 120 Alice runs and twenty Bob runs while
+rejecting twenty excess Alice submissions. Owner-rejection p95 was 0.003 ms;
+Bob's completion p95 was 189.248 ms while sharing the two backend slots with
+100 ms synthetic work. This records progress and quota enforcement for this
+small workload, without a broader fairness or service-latency guarantee.
+
+The 600.463-second overload soak offered 10,575 submissions in 423 bursts,
+completed 10,152 runs, and immediately rejected the other 423. Overload-rejection
+p95 was 0.003 ms. Peaks were eight active runs, sixteen queued runs, and 26,480
+queued input bytes. Shutdown joined every runner and the writer, reported zero
+runner errors, and returned active/queued counts, queued bytes, and storage
+reservations to zero. This soak used 100 ms scripted delays, so its workload is
+separate from the zero-delay measurement issue above.
+
+Across 635 roughly one-second process samples, peak working set was 14.949 MiB
+and peak private bytes 7.063 MiB; final working set was 14.770 MiB. The minute
+bins show a plateau rather than accumulating retained work. The final database
+held 11,412 rows, including warmups and the cancellation/fairness experiments;
+its allocated live pages occupied 38,023,168 bytes and the WAL 4,165,352 bytes
+at the final health query. These are observed storage figures, not a disk-size
+guarantee under different payloads or retention intervals. The complete
+[full-process evidence](evidence/performance/checkpoint-e346207/full/summary.json)
+includes every sample, the ten-minute memory series, outcomes, and settlement
+checks. Percentiles use nearest rank, `ceil(p * n)`, without interpolation.
+
+All agent model work and local builds/tests were paused during these runs.
+Before launch, aggregate CPU samples were 4.4–8.7%, available RAM about
+19.2 GiB, and GPU utilization 13%. Unrelated user applications remained; this
+is not an idle-machine claim. Raw samples, source hashes, and host context are
+preserved in [checkpoint evidence](evidence/performance/checkpoint-e346207/warm/summary.json).
 
 ## First baseline, before retention/headroom integration
 

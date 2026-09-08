@@ -14,7 +14,7 @@ finishes. Teaching improvements for testing and SDLC follow the validation pass.
 - [x] Step 4: pin and preflight the available model/server combination.
 - [x] Steps 5–8: owned pure core, async exercise, scripted runner and failure proofs.
 - [x] Steps 9–14: validated authority, transactional storage, bounded live turn and cancellation.
-- [x] Steps 15–22: capability tools, task checker, failure cases, live task evaluation (including failures).
+- [ ] Steps 15–22: core proofs pass; remaining filesystem-race and controlled context/layout exercises are being reconciled.
 - [ ] Steps 23–31: concurrent admission, resource ownership, measurements, replay, streaming.
 - [x] Steps 32–33: record not applicable for the selected local attach profile.
 - [x] Steps 34–40 local proofs: authenticated API, fairness, recovery and operations.
@@ -72,7 +72,8 @@ Started 2026-09-08 on native Windows, x86_64-pc-windows-msvc. Installed compiler
 Rust 1.96.0 (ac68faa20 2026-05-25), Cargo 1.96.0. rustfmt, Clippy, and local Rust
 documentation are installed. Runtime and model facts are recorded after checks.
 
-Working branch: `codex/build-guide-validation`. The preceding uncommitted guide
+Working branch: `answer-key`, renamed from `codex/build-guide-validation` at the
+user's request. Git branch names cannot contain spaces. The preceding uncommitted guide
 was copied to `C:\Users\charl\AppData\Local\Temp\Kinesin-before-build-ec313665c35b4765877ddc30adc6348c`.
 Implementation and validation results remain separate from the guide's claims.
 
@@ -89,10 +90,21 @@ The package's deliberately incorrect assertion failed with Cargo exit 101.
 After correcting it, one unit test and the binary passed. `cargo fmt --all`,
 `cargo clippy --locked --all-targets --all-features -- -D warnings`, and
 `cargo test --locked` completed successfully. The binary calls the library.
-The workflow uses the same commands and recorded Rust 1.96.0 toolchain; its
-definition is present, but no hosted CI run has been claimed.
+The workflow uses the same commands and recorded Rust 1.96.0 toolchain.
 The same format/Clippy/test commands also passed from a clean local clone of
 checkpoint `17439a2`; this checks clean-checkout reproducibility, not hosted CI.
+
+The implementation checkpoint `e346207` also passed formatting, all-target
+Clippy and 164 offline tests from a clean local clone, with no copied runtime
+state, workspace or model. The dependency build cache was reused. See
+[clean-clone evidence](evidence/checks/clean-clone.txt).
+
+Its first [hosted CI run](https://github.com/crussella0129/Kinesin/actions/runs/34196726263)
+passed formatting and Clippy but exposed an SSE observer-expiry race. When a
+historical event and the lifetime timer were both ready, unbiased selection
+could emit the event instead of the explicit expiry frame. Local success was
+insufficient evidence for that boundary. The correction prioritizes stopping,
+checks before fetching and again before emission, and keeps the expiry assertion.
 
 Environment finding: an unrelated invalid `C:\Users\charl\Cargo.toml` caused
 Cargo ancestor-workspace discovery to fail. Adding an explicit `[workspace]`
@@ -218,6 +230,19 @@ are kept in [performance baseline](performance-baseline.md). The original
 1,000-sample p95 of 76.612 ms missed the proposed 50 ms overhead goal; that
 negative result remains evidence even when later measurements improve.
 
+The quiet checkpoint soak completed 10,152 synthetic runs in 600.463 seconds.
+All 423 excess submissions were rejected; observed peaks stayed at eight active
+and sixteen queued runs. Shutdown returned all controller and storage
+reservations with zero runner errors. The two preceding warm repeats measured
+p95 20.226 ms and 60.365 ms, so the 50 ms goal was not consistently met.
+The zero-delay scripted provider still created a Tokio timer in those runs.
+A separate correction removes that artificial wait when its configured delay is
+zero, while preserving delayed scripts and the HTTP provider. A regression first
+failed because the immediate fake required a timer runtime; it passes after the
+correction. Repeated measurements must retain the older misses and identify
+their own executable; the timer correction does not explain every source of
+admission or journal variability.
+
 ## Steps 32–33: selected deployment profile
 
 Inference runs on this machine through a loopback-only llama.cpp process.
@@ -310,7 +335,7 @@ it is not a proof that an arbitrary user goal was correctly understood or solved
 Shared-service exposure remains gated. This session has not provisioned a
 dedicated OS service identity, proved denial of unrelated operator credentials
 under that identity, restricted model egress with OS policy, deployed TLS ingress,
-tested another operating system, or observed hosted CI. Native capability and
+tested another operating system, or passed the shared-service exposure gate. Native capability and
 ACL tests are narrower evidence. A process-crash test is not a power-loss test.
 Do not mark step 41 passed or describe this as a production shared deployment.
 The next teaching pass can integrate these actual failure discoveries and proofs

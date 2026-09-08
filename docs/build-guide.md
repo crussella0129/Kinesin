@@ -1,14 +1,32 @@
 # Build guide
 
 This guide takes Kinesin from an empty Cargo package to concurrent local agents,
-then to a deliberately bounded shared service. You write the implementation.
-The steps supply contracts, reading, exercises, and evidence; they are not a
-finished Rust solution to copy.
+then to a deliberately bounded shared service. It is the path for writing your
+own Rust implementation, with contracts, reading, exercises, and proofs at each
+boundary.
 
-**Everything described here is planned work.** A checked document does not mean
-its implementation exists. Mark a step complete only after its proof passes.
-Steps are numbered for navigation, and some will take several sittings. Split,
-add, or reorder them as the design develops; the guide has no fixed step count.
+The **`answer-key` branch contains the reference implementation**. Its observed
+results and remaining deployment gates are in the [validation ledger](build-validation.md).
+Keep that checkout available for comparison and use a separate empty directory
+for your handwritten build. Mark your own steps complete only after their proofs
+pass; the reference's results do not establish your implementation's behavior.
+
+## Before you start
+
+For your first sitting, work through steps 1–3: describe the personal and shared
+operating profiles, practice ownership and `Result` in a separate scratch
+package, and create one small package whose binary calls its library. The
+numbered steps below supply the commands and checks.
+
+You can learn the pure core and run a scripted model without a downloaded model
+or GPU. Step 4's provider preflight is a separate gate before live networking
+and real tool calls.
+
+Each completed checkpoint remains useful even if the next takes weeks. Step
+numbers express dependency order, not a schedule or a fixed step count. Use the
+[roadmap](roadmap.md) as your checkpoint checklist, [resources](resources.md) as
+the reading index, and [understanding](understanding.md) for feedback and
+self-check questions.
 
 | Steps | Checkpoint |
 |-------|------------|
@@ -29,8 +47,9 @@ contract and its tests together.
 
 Use one package. Add modules as their steps arrive: `core.rs`, `runner.rs`,
 `model.rs`, `config.rs`, `policy.rs`, `tools.rs`, `storage.rs`, `verification.rs`, and later
-`scheduler.rs` and `server.rs`. K-Core names the decision-making role; Koil
-names the model adapter. Kineserve is an optional process supervisor.
+`scheduler.rs`, `service.rs`, `ingress.rs`, and `operator.rs`. K-Core names the
+decision-making role; Koil names the model adapter. Kineserve is an optional
+process supervisor.
 
 The pure core stays synchronous. The first real HTTP client uses Tokio and
 reqwest. SQLite owns journal transactions from the first persisted run.
@@ -41,6 +60,8 @@ Each step has a build task, a proof, a failure exercise, and focused reading.
 Read enough to attempt the exercise, then return to the reference when a real
 question appears. Prefer owned data first. A small understandable clone is
 better than lifetime parameters you cannot yet explain.
+When a Rust concept is unfamiliar, reproduce it in scratch code. Finish the
+current proof before adding another module or dependency.
 
 At coherent checkpoints, run:
 
@@ -111,7 +132,9 @@ Focus on moves, short borrows, and the caller's responsibility for failure.
 
 ## 3. Create one package and a repeatable checkpoint
 
-**Build:** from the documentation-only repository root, initialize the package:
+**Build:** create a separate empty directory for your handwritten Kinesin and
+open a terminal there. Keep the `answer-key` checkout as your reference; it
+already has a Cargo package. Initialize your learning package:
 
 ```text
 cargo init --bin --name kinesin .

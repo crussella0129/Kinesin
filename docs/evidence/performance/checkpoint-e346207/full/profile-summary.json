@@ -1,0 +1,118 @@
+{
+  "admission_ms": {
+    "p50": 2.502,
+    "p95": 12.605,
+    "p99": 33.893,
+    "max": 45.03
+  },
+  "journal_ms": {
+    "p50": 11.0,
+    "p95": 37.0,
+    "p99": 37.0,
+    "max": 72.0
+  },
+  "terminal_tail_ms": {
+    "p50": 3.027,
+    "p95": 8.837,
+    "p99": 34.115,
+    "max": 34.707
+  },
+  "model_ms": {
+    "p50": 7.0,
+    "p95": 15.0,
+    "p99": 15.0,
+    "max": 17.0
+  },
+  "slowest": [
+    {
+      "index": "944",
+      "total_us": "124457",
+      "admission_us": "33905",
+      "journal_before_terminal_ms": "72",
+      "terminal_event_ms": "122",
+      "terminal_tail_upper_us": "2457",
+      "model_duration_ms": "14"
+    },
+    {
+      "index": "929",
+      "total_us": "99120",
+      "admission_us": "45030",
+      "journal_before_terminal_ms": "36",
+      "terminal_event_ms": "96",
+      "terminal_tail_upper_us": "3120",
+      "model_duration_ms": "14"
+    },
+    {
+      "index": "862",
+      "total_us": "94658",
+      "admission_us": "35090",
+      "journal_before_terminal_ms": "40",
+      "terminal_event_ms": "92",
+      "terminal_tail_upper_us": "2658",
+      "model_duration_ms": "15"
+    },
+    {
+      "index": "817",
+      "total_us": "92810",
+      "admission_us": "33562",
+      "journal_before_terminal_ms": "12",
+      "terminal_event_ms": "59",
+      "terminal_tail_upper_us": "33810",
+      "model_duration_ms": "13"
+    },
+    {
+      "index": "275",
+      "total_us": "87812",
+      "admission_us": "2562",
+      "journal_before_terminal_ms": "37",
+      "terminal_event_ms": "54",
+      "terminal_tail_upper_us": "33812",
+      "model_duration_ms": "12"
+    },
+    {
+      "index": "928",
+      "total_us": "85780",
+      "admission_us": "33739",
+      "journal_before_terminal_ms": "37",
+      "terminal_event_ms": "75",
+      "terminal_tail_upper_us": "10780",
+      "model_duration_ms": "4"
+    },
+    {
+      "index": "185",
+      "total_us": "83817",
+      "admission_us": "34079",
+      "journal_before_terminal_ms": "37",
+      "terminal_event_ms": "75",
+      "terminal_tail_upper_us": "8817",
+      "model_duration_ms": "2"
+    },
+    {
+      "index": "286",
+      "total_us": "83175",
+      "admission_us": "33891",
+      "journal_before_terminal_ms": "37",
+      "terminal_event_ms": "74",
+      "terminal_tail_upper_us": "9175",
+      "model_duration_ms": "2"
+    },
+    {
+      "index": "880",
+      "total_us": "82526",
+      "admission_us": "33490",
+      "journal_before_terminal_ms": "37",
+      "terminal_event_ms": "74",
+      "terminal_tail_upper_us": "8526",
+      "model_duration_ms": "3"
+    },
+    {
+      "index": "507",
+      "total_us": "80137",
+      "admission_us": "2628",
+      "journal_before_terminal_ms": "38",
+      "terminal_event_ms": "46",
+      "terminal_tail_upper_us": "34137",
+      "model_duration_ms": "5"
+    }
+  ]
+}

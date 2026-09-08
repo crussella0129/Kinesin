@@ -736,6 +736,8 @@ async fn sse_shutdown_releases_observer() {
     )
     .unwrap();
     assert!(text.contains("service_shutdown"));
+    assert_eq!(text.matches("event:").count(), 1);
+    assert!(!text.contains("id:") && !text.contains("current_run") && !text.contains("receipt"));
     assert_eq!(harness.state.observer_count(), 0);
     harness.close().await;
 }
@@ -877,11 +879,11 @@ async fn a_slow_unpolled_stream_expires_at_its_total_lifetime() {
     tokio::time::pause();
     tokio::time::advance(Duration::from_secs(301)).await;
     let bytes = to_bytes(response.into_body(), 8192).await.unwrap();
-    assert!(
-        std::str::from_utf8(&bytes)
-            .unwrap()
-            .contains("observer_lifetime_exceeded")
-    );
+    let text = std::str::from_utf8(&bytes).unwrap();
+    assert!(text.contains("observer_lifetime_exceeded"));
+    assert_eq!(text.matches("event:").count(), 1);
+    assert!(text.contains("event: stream_closed"));
+    assert!(!text.contains("id:") && !text.contains("current_run") && !text.contains("receipt"));
     assert_eq!(harness.state.observer_count(), 0);
     tokio::time::resume();
     harness.close().await;

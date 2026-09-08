@@ -6,7 +6,8 @@ A small Rust runtime for agents with explicit authority and bounded resources.
 controller, file tools, checker, journal, replay, streaming, and authenticated
 loopback service run locally. The [validation ledger](docs/build-validation.md)
 separates passing proofs from model-quality failures and deployment gates that
-remain unproven. The guide remains the path for your own handwritten implementation.
+remain unproven. The `answer-key` branch is the reference implementation; the
+guide remains the path for your own handwritten build in a separate directory.
 
 Kinesin gives a model context, interprets its proposed tool calls, decides which
 may run, records outcomes, and controls how the run ends. It also controls how
@@ -25,7 +26,8 @@ rather than the fewest dependencies or source files.
 ## Start here
 
 - Read [the architecture](docs/architecture.md) for the complete shape.
-- Follow [the build guide](docs/build-guide.md) to write it.
+- Start with [the build guide](docs/build-guide.md#before-you-start) for first-sitting
+  orientation and the handwritten build.
 - Track checkpoints in [the roadmap](docs/roadmap.md).
 - Read [feedback on your understanding](docs/understanding.md) for what the
   original plan gets right and the next concepts to master.
@@ -119,7 +121,7 @@ Kinesin/
 
 | Document | Responsibility |
 |----------|----------------|
-| [build-guide](docs/build-guide.md) | Numbered build/read/prove/break steps |
+| [build-guide](docs/build-guide.md) | First-sitting orientation and numbered build/read/prove/break steps |
 | [roadmap](docs/roadmap.md) | Checkpoints and release gates |
 | [architecture](docs/architecture.md) | Ownership, interfaces, deployment, scale boundary |
 | [loop and tools](docs/loop-and-tools.md) | Domain/protocol and tool execution contracts |
@@ -137,7 +139,6 @@ Kinesin/
 | [research](docs/research.md) | Primary evidence and review results |
 | [understanding](docs/understanding.md) | Feedback and self-check questions |
 | [resources](docs/resources.md) | Short reference index |
-| [first steps](docs/first-steps.md) | Orientation for returning readers |
 
 No milestone is complete merely because its design is documented. Shared use has
 a separate exposure gate; passing a local demo is not that gate.

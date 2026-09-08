@@ -1,0 +1,14 @@
+{
+  "warm_count": 1000,
+  "warm_p50_ms": 29.911,
+  "warm_p95_ms": 60.365,
+  "warm_p99_ms": 79.233,
+  "cancel_count": 100,
+  "cancel_call_p95_ms": 0.004,
+  "cancel_terminal_p95_ms": 36.081,
+  "peer_unobserved": 0,
+  "peer_close_p95_ms": 0.094,
+  "fair_cycles": 20,
+  "owner_reject_p95_ms": 0.003,
+  "bob_finish_p95_ms": 189.248
+}

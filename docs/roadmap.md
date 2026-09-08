@@ -42,7 +42,7 @@ Freeform completion is explicitly unchecked. The demonstration's
 - [x] 19. [Complete one model/tool/model round trip](build-guide.md#19-complete-one-modeltoolmodel-round-trip).
 - [x] 20. [Prove policy, protocol, and loop failure paths](build-guide.md#20-prove-policy-protocol-and-loop-failure-paths).
 - [x] 21. [Check file fields before accepting a task](build-guide.md#21-check-file-fields-before-accepting-a-task).
-- [x] 22. [Evaluate the useful read-only agent](build-guide.md#22-evaluate-the-useful-read-only-agent). The recorded evaluation includes model failures; see [results](live-evaluation.md).
+- [ ] 22. [Evaluate the useful read-only agent](build-guide.md#22-evaluate-the-useful-read-only-agent). The live task baseline includes model failures; separate controlled layout/context-size experiments remain unperformed. See [results](live-evaluation.md).
 
 **Gate:** an authorized run lists a directory, reads relevant text, and answers.
 A greeting can finish without tools. Malformed batches, unapproved tools,

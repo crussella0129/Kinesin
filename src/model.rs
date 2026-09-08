@@ -484,7 +484,9 @@ impl ModelClient {
                     .map_err(|_| "script lock poisoned")?
                     .pop_front()
                     .ok_or("script_exhausted")?;
-                tokio::time::sleep(step.delay).await;
+                if !step.delay.is_zero() {
+                    tokio::time::sleep(step.delay).await;
+                }
                 check_scripted_size(&step.reply, request.max_response_bytes)?;
                 if request.stream
                     && let (Some(observer), ModelReply::Answer(text)) = (observer, &step.reply)
@@ -1000,5 +1002,19 @@ mod tests {
         assert_eq!(wire["parallel_tool_calls"], false);
         assert_eq!(wire["n"], 1);
         assert!(wire.get("response_format").is_none());
+    }
+
+    #[test]
+    fn zero_delay_script_is_ready_without_a_timer_runtime() {
+        use futures_util::FutureExt;
+
+        let (state, _) = core::initiate("Instructions".into(), "Question".into()).unwrap();
+        let prepared = prepare(state.messages(), &options()).unwrap();
+        let client = ModelClient::scripted([ModelReply::Answer("Answer".into()).into()]);
+        assert_eq!(
+            client.send(&prepared).now_or_never(),
+            Some(Ok(ModelReply::Answer("Answer".into())))
+        );
+        assert_eq!(client.captured_requests().unwrap().len(), 1);
     }
 }
