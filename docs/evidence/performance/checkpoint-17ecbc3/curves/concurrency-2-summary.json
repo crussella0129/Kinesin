@@ -1,0 +1,33 @@
+{
+  "active_cap": 2,
+  "backend_slots": 2,
+  "final_stats": {
+    "active": 0,
+    "completed_runners": 40,
+    "queued": 0,
+    "queued_bytes": 0,
+    "runner_errors": 0
+  },
+  "measurement_error": null,
+  "name": "concurrency-2",
+  "phases": [
+    {
+      "admitted": 40,
+      "batches": 20,
+      "completed_unchecked": 40,
+      "elapsed_ms": 2763,
+      "failed_outcomes": 0,
+      "final_active": 0,
+      "final_queued": 0,
+      "final_queued_bytes": 0,
+      "measurement_error": null,
+      "offered": 40,
+      "peak_active": 2,
+      "phase": "steady",
+      "rejected": 0,
+      "script_delay_ms": 100
+    }
+  ],
+  "queue_cap": 0,
+  "scope": "closed-loop fixed batches; per-run latency includes injected positive delay; descriptive tails, not open-loop service load"
+}

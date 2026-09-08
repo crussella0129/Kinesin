@@ -1,0 +1,15 @@
+{
+  "production_baseline_commit": "17ecbc36fcdc9946c907d4807b2e9d8d19c933ed",
+  "driver_path": "tests/live_comparisons.rs",
+  "driver_sha256": "7c94eaa184f33c89f9c94847475e74995838784c53751a547ee77c671ad49cbf",
+  "measured_test_executable_sha256": "463097ceccfc8cd430c230a79e2270287a3943c7f87736496dd704453fc83bd0",
+  "cargo_lock_sha256": "083e08b1e04da561966e1c8b16e3f55290ecf63896211ad6ba129623bf59d782",
+  "report_sha256": "6cf4c797b5902c1bb9efc58da596eeb47c07b8c371f074ffd5a30685d2ebc6e1",
+  "rust": "1.96.0 (ac68faa20 2026-05-25)",
+  "target": "x86_64-pc-windows-msvc",
+  "build_profile": "debug test executable",
+  "source_state": "driver was uncommitted on the named production baseline; driver source remained unchanged between final scripted checks and live execution",
+  "command": "live_comparisons-98ca72081b9dea23.exe --exact pinned_live_context_and_streaming_comparisons --ignored --nocapture",
+  "generation_endpoint": "http://127.0.0.1:8083",
+  "interpretation": "model/task comparison, not a release-build runtime overhead benchmark"
+}

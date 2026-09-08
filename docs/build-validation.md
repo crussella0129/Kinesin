@@ -10,12 +10,12 @@ finishes. Teaching improvements for testing and SDLC follow the validation pass.
 - [x] Step 1: write operating profiles, resources, and observable goals below.
 - [x] Step 2: ownership exercise and toolchain verified.
 - [x] Step 3 local proof: package, deliberately failing/corrected test, format and Clippy.
-- [ ] Step 3 hosted proof: the first run exposed an expiry race; the corrected checkpoint awaits a passing hosted result.
+- [x] Step 3 hosted proof: the corrected `4a38cf2` checkpoint passed GitHub's Windows formatting, Clippy and offline-test job.
 - [x] Step 4: pin and preflight the available model/server combination.
 - [x] Steps 5–8: owned pure core, async exercise, scripted runner and failure proofs.
 - [x] Steps 9–14: validated authority, transactional storage, bounded live turn and cancellation.
-- [ ] Steps 15–22: capability/checker proofs and live baseline pass their recorded scope; controlled context/layout comparisons remain open.
-- [ ] Steps 23–31: concurrent admission, resource ownership, measurements, replay, streaming.
+- [x] Steps 15–22: capability/checker proofs, live baseline and controlled context comparisons recorded, including model failures.
+- [ ] Steps 23–31: concurrency/replay/streaming and synthetic performance proofs pass; the remaining live-performance scope in step 29 stays open.
 - [x] Steps 32–33: record not applicable for the selected local attach profile.
 - [x] Steps 34–40 local proofs: authenticated API, fairness, recovery and operations.
 - [ ] Step 38 deployment identity/egress and step 41 shared-service exposure gate.
@@ -74,13 +74,13 @@ documentation are installed. Runtime and model facts are recorded after checks.
 
 Working branch: `answer-key`, renamed from `codex/build-guide-validation` at the
 user's request. Git branch names cannot contain spaces. The preceding uncommitted guide
-was copied to `C:\Users\charl\AppData\Local\Temp\Kinesin-before-build-ec313665c35b4765877ddc30adc6348c`.
+was copied to a uniquely named `Kinesin-before-build-*` directory beneath `%TEMP%`.
 Implementation and validation results remain separate from the guide's claims.
 
 ## Steps 2–3: observed results and guide friction
 
 The scratch package is outside the repository at
-`C:\Users\charl\AppData\Local\Temp\Kinesin-ownership-build-validation`.
+`%TEMP%\Kinesin-ownership-build-validation`.
 Passing a String to `consume` and then printing it produced compiler E0382,
 “borrow of moved value.” Borrowing it through `&str` preserved caller ownership;
 the corrected program printed `Kinesin: 7`. A failing `Result` was handled with
@@ -105,8 +105,22 @@ historical event and the lifetime timer were both ready, unbiased selection
 could emit the event instead of the explicit expiry frame. Local success was
 insufficient evidence for that boundary. The correction prioritizes stopping,
 checks before fetching and again before emission, and keeps the expiry assertion.
+The corrected checkpoint `4a38cf2` then passed the same
+[hosted job](https://github.com/crussella0129/Kinesin/actions/runs/34198396569).
+The subsequent 170-test checkpoint `17ecbc3` also passed
+[hosted CI](https://github.com/crussella0129/Kinesin/actions/runs/34199184804).
+Later checkpoints retain the same required workflow; the branch badge links to
+its current state rather than claiming that an earlier pass validates future edits.
 
-Environment finding: an unrelated invalid `C:\Users\charl\Cargo.toml` caused
+The final local suite, including the controlled-comparison driver, passed
+formatting, all-target Clippy with warnings denied, and **171 offline tests**.
+Five opt-in live/timing tests remain excluded from ordinary CI; this session
+ran the relevant live evaluation and timing experiments separately and records
+their outcomes in the linked reports. The separately ignored process worker is
+executed by its three crash-recovery parent tests. See
+[offline evidence](evidence/checks/offline-suite.txt).
+
+Environment finding: an unrelated invalid `%USERPROFILE%\Cargo.toml` caused
 Cargo ancestor-workspace discovery to fail. Adding an explicit `[workspace]`
 boundary to each new package stopped that search without editing the parent.
 Kinesin still has one package with library/binary targets. Initial scratch
@@ -139,7 +153,7 @@ exercise path; live execution requires the journal composition.
 The selected model is the existing Qwen2.5-Coder 7B Q4_K_M file. Its checksum,
 official source, tested server builds, template, GPU allocation, launch arguments,
 and positive/negative wire fixtures are recorded in [model preflight](model-preflight.md).
-The additional `Y:\Models\gguf` location was not visible in this execution context.
+The additional mapped model directory was not visible in this execution context.
 The first 27B suggestion was superseded by the user's 7B model selection.
 
 Configuration/authority tests cover unknown and duplicate fields, disjoint
@@ -191,6 +205,14 @@ and the original failures are retained in [live evaluation](live-evaluation.md).
 They establish a bounded extraction contract and demonstrate prompt-sensitive
 agent behavior; they do not establish general problem-solving correctness.
 
+The follow-up [controlled comparisons](live-comparisons.md) retained twelve
+measured checked samples and a separate warmup. Both equal-byte source variants
+kept payload blocks, order and field positions fixed while changing section
+labels; a third condition removed only irrelevant blocks before admission.
+All twelve checked samples passed with actual reads. Four samples per condition
+and unknown token counts cannot establish a general layout advantage. This
+experiment preserves the original failed freeform cards rather than replacing them.
+
 ## Steps 23–31: concurrent local execution
 
 The controller owns admitted work after a caller disconnects, bounds active and
@@ -208,6 +230,13 @@ premature EOF, oversized data, slow display consumers, reconnect cursors and
 terminal receipt delivery. A separate CLI process displays provisional text
 before the provider finishes. Tool dispatch waits for a complete validated call.
 Public service frames expose the committed receipt only on terminal events.
+
+The same comparison driver retained eight measured live text runs, paired by
+prompt with streaming on/off, plus two separate mode warmups. All eight completed
+with unchecked acceptance. It measured the first non-whitespace observer frame
+versus the returned durable nonstream candidate, separately from total runtime;
+the report reviews candidate equality and the explanation rubric. These are
+controller-consumer timings, not physical screen or token-timing claims.
 
 Replay capture version 2 records actual pre-dispatch and pre-terminal-arbitration
 control observations. Pure replay now checks cancellation, execution deadlines,
@@ -252,6 +281,27 @@ correction. Repeated measurements must retain the older misses and identify
 their own executable; the timer correction does not explain every source of
 admission or journal variability.
 
+At checkpoint `17ecbc3`, two rebuilt immutable release runs each measured 1,000
+warm samples after twenty warmups. Their p95 values were 12.273 ms and 42.527 ms,
+both below 50 ms, with every result completed/unchecked and reservations returned.
+The second p99 remained 74.484 ms; this is scoped workstation evidence, not a
+latency guarantee. The same executable completed 420 concurrency/slowdown
+samples with no errors: actual active caps 1/2/4/8 were reached while two model
+slots stayed fixed. Beyond two active runs, throughput improved modestly while
+per-run waiting increased. Changing the fake delay from 100 to 400 ms and back
+produced the corresponding slowdown and recovery without accumulating work.
+These positive-delay workloads preserve the distinction between harness
+overhead, model waiting and completed versus accepted-task throughput.
+
+The separate [fixed-arrival service probe](service-load.md) used actual bearer
+authentication, loopback HTTP ingress and the journal with a delayed fake model.
+At 5 scheduled requests/s, all 40 submissions were admitted and completed. At
+100 scheduled requests/s, the generator sent 30, skipped ten late ticks, and
+received nine admissions and 21 overload rejections. Peak active/queued counts
+were two/four; every admitted run completed unchecked. All run, queue, connection,
+observer and journal ownership returned to zero. Reporting skipped generator
+work avoids claiming that all 40 high-rate arrivals actually reached the service.
+
 ## Steps 32–33: selected deployment profile
 
 Inference runs on this machine through a loopback-only llama.cpp process.
@@ -287,7 +337,7 @@ treating an injected cancellation token as proof of native signal delivery.
 and invalid credentials do not prevent the process-liveness check from responding.
 
 A fresh synthetic Windows state tree was created with a protected DACL at
-creation, explicitly trusting charl, the current controller identity, SYSTEM
+creation, explicitly trusting the operator, the current controller identity, SYSTEM
 and Administrators. The production read-only private-state validator accepted
 it. The prior broad development state remains unchanged and fails that audit.
 See [native state audit](native-state-audit.md) for what this does and does not prove.
@@ -371,19 +421,19 @@ The final audit separates implementation from a fully completed guide:
 | Concurrent local agents | Admission, owner isolation, shared model/tool limits, durable outcomes, cancellation, batch execution and replay have local integration evidence. The ten-minute synthetic soak kept bounded ownership. |
 | Low latency and scaling | Results retain target misses and the workload/version that produced each sample. Synthetic measurements do not establish live concurrent accepted-task throughput or production arrival-rate capacity. |
 | Secure shared service later | Authenticated loopback API and native private-state checks work locally. Dedicated deployment identity, OS egress policy, TLS ingress and the actual shared exposure drill remain gates. |
-| Follow every guide exercise | The core implementation is present, but equal-byte organization versus selected-context-size comparisons, live concurrency/warm-cold performance, fixed-arrival service load and a measured streaming/nonstreaming first-text comparison remain unperformed. Steps 22, 29 and 31 therefore remain open in the roadmap. |
+| Follow every guide exercise | Context and streaming comparisons and fixed-arrival service load are now measured. Step 29 still lacks a live model capacity curve and cold-versus-warm comparison, plus worst-case payload/checker timing. The current inference profile verifies one slot; the synthetic two-slot curve is separate evidence. |
 
 This is an implemented answer key with scoped evidence, not a declaration that
 every original quality and deployment requirement has passed. Adding routine
 SDLC lessons throughout the learning sequence remains the user's next teaching
 pass; missing evidence is recorded rather than converted into a checked box.
 
-## Open contract clarifications from implementation preparation
+## Contract corrections retained in the guide
 
 The authoritative performance/storage contract controls journal reservations:
 input-queue bytes transfer at dequeue, but journal count/bytes stay held through
-actual command completion. Step 24's shorter wording must not release journal
-capacity early. Terminal cancellation can change a receipt after storage capacity
+actual command completion. Step 24 now states this distinction explicitly.
+Terminal cancellation can change a receipt after storage capacity
 is reserved; reserve sufficient bounded space and verify the final bytes fit
 without an unchecked await. Metadata recovery retrieves frozen criterion IDs
 from run_accepted, not today's task profile.

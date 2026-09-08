@@ -1,0 +1,741 @@
+{
+  "arch": "x86_64",
+  "generated_unix_ms": 1788852878357,
+  "harness_version": "0.1.0",
+  "max_active_runs": 2,
+  "max_generator_requests": 8,
+  "max_queued_input_bytes": 65536,
+  "max_queued_runs": 4,
+  "max_response_bytes": 8192,
+  "model_delay_ms": 100,
+  "model_kind": "scripted",
+  "model_slots": 1,
+  "os": "windows",
+  "reports": [
+    {
+      "acknowledged_admissions": 40,
+      "arrivals_per_second": 5,
+      "completed_runs": 40,
+      "controller_joined": true,
+      "dispatched_requests": 40,
+      "durable_admissions": 40,
+      "elapsed_until_requests_joined_ms": 7805,
+      "elapsed_until_runs_settled_ms": 7929,
+      "generator_peak_requests": 1,
+      "http_outcomes": {
+        "202": 40
+      },
+      "ingress_joined": true,
+      "ingress_rejections": 0,
+      "missed_tick_tolerance_us": 200000,
+      "model_requests": 40,
+      "offered_ticks": 40,
+      "passed_tasks": 0,
+      "peak_active_runs": 1,
+      "peak_ingress_connections": 1,
+      "peak_queued_input_bytes": 0,
+      "peak_queued_runs": 0,
+      "remaining_active_runs": 0,
+      "remaining_ingress_connections": 0,
+      "remaining_journal_bytes": 0,
+      "remaining_journal_commands": 0,
+      "remaining_observers": 0,
+      "remaining_queued_input_bytes": 0,
+      "remaining_queued_runs": 0,
+      "requests": [
+        {
+          "error": null,
+          "response_us": 5458,
+          "run_id": "0294e58b-2a45-4570-a391-d6b3cacdd1fd",
+          "send_lag_us": 7528,
+          "status": 202,
+          "tick": 0
+        },
+        {
+          "error": null,
+          "response_us": 4144,
+          "run_id": "4a24286e-cf0f-4b21-90b6-09cffd696580",
+          "send_lag_us": 8564,
+          "status": 202,
+          "tick": 1
+        },
+        {
+          "error": null,
+          "response_us": 4726,
+          "run_id": "a2f1ac0f-1795-4b63-a015-0ca0196327d9",
+          "send_lag_us": 11327,
+          "status": 202,
+          "tick": 2
+        },
+        {
+          "error": null,
+          "response_us": 3965,
+          "run_id": "892ba82b-d6a9-4aa7-9740-8bac73fd4c59",
+          "send_lag_us": 14808,
+          "status": 202,
+          "tick": 3
+        },
+        {
+          "error": null,
+          "response_us": 4421,
+          "run_id": "6fd82b42-097d-4cf3-9d7e-af2ecd374cfa",
+          "send_lag_us": 1543,
+          "status": 202,
+          "tick": 4
+        },
+        {
+          "error": null,
+          "response_us": 5311,
+          "run_id": "641f5fd5-7db4-45bd-bb5d-8fdad49b5872",
+          "send_lag_us": 4623,
+          "status": 202,
+          "tick": 5
+        },
+        {
+          "error": null,
+          "response_us": 4185,
+          "run_id": "eb55aa06-3c1e-4f3a-a25b-00380023dfd8",
+          "send_lag_us": 6330,
+          "status": 202,
+          "tick": 6
+        },
+        {
+          "error": null,
+          "response_us": 4216,
+          "run_id": "6db93d78-8e02-485a-8492-8abe36ba61bb",
+          "send_lag_us": 7531,
+          "status": 202,
+          "tick": 7
+        },
+        {
+          "error": null,
+          "response_us": 4303,
+          "run_id": "2e237f8b-6f1d-4559-b2cc-bbdec70e4629",
+          "send_lag_us": 8762,
+          "status": 202,
+          "tick": 8
+        },
+        {
+          "error": null,
+          "response_us": 4318,
+          "run_id": "282ede46-db87-4df6-a9a5-1698c1210b26",
+          "send_lag_us": 9421,
+          "status": 202,
+          "tick": 9
+        },
+        {
+          "error": null,
+          "response_us": 4184,
+          "run_id": "63d6d8b1-7523-4157-acee-6390f2a210d5",
+          "send_lag_us": 8750,
+          "status": 202,
+          "tick": 10
+        },
+        {
+          "error": null,
+          "response_us": 5287,
+          "run_id": "02435903-b4df-420c-a396-cf65f2476e8b",
+          "send_lag_us": 11000,
+          "status": 202,
+          "tick": 11
+        },
+        {
+          "error": null,
+          "response_us": 4025,
+          "run_id": "240abe6e-08a6-4de1-b609-dab88be1b636",
+          "send_lag_us": 12302,
+          "status": 202,
+          "tick": 12
+        },
+        {
+          "error": null,
+          "response_us": 3886,
+          "run_id": "f80945ab-d8e0-40a4-a72e-a22ad75f3db6",
+          "send_lag_us": 15618,
+          "status": 202,
+          "tick": 13
+        },
+        {
+          "error": null,
+          "response_us": 4254,
+          "run_id": "54bd17f1-3686-4ade-a6f7-7f3ddf65fc6a",
+          "send_lag_us": 1681,
+          "status": 202,
+          "tick": 14
+        },
+        {
+          "error": null,
+          "response_us": 3958,
+          "run_id": "878470f4-f835-4a3a-8748-7421566689c9",
+          "send_lag_us": 3538,
+          "status": 202,
+          "tick": 15
+        },
+        {
+          "error": null,
+          "response_us": 6481,
+          "run_id": "7dabe907-08f5-44ea-a4ae-dc3e2f3e19da",
+          "send_lag_us": 5776,
+          "status": 202,
+          "tick": 16
+        },
+        {
+          "error": null,
+          "response_us": 4042,
+          "run_id": "215cf0e1-2456-4c80-ba8e-75e504b533a3",
+          "send_lag_us": 5305,
+          "status": 202,
+          "tick": 17
+        },
+        {
+          "error": null,
+          "response_us": 3916,
+          "run_id": "7d9a9f9b-b5be-4d53-8a64-4a7ac7338c73",
+          "send_lag_us": 6535,
+          "status": 202,
+          "tick": 18
+        },
+        {
+          "error": null,
+          "response_us": 4209,
+          "run_id": "d9ff4884-0979-44e9-8aa2-14f22c60ecfc",
+          "send_lag_us": 11526,
+          "status": 202,
+          "tick": 19
+        },
+        {
+          "error": null,
+          "response_us": 4078,
+          "run_id": "793969ba-1c07-4b4e-96c6-7c35bf805d96",
+          "send_lag_us": 12199,
+          "status": 202,
+          "tick": 20
+        },
+        {
+          "error": null,
+          "response_us": 4512,
+          "run_id": "4dfd364f-700b-4409-a941-b1b93dfd60c4",
+          "send_lag_us": 11818,
+          "status": 202,
+          "tick": 21
+        },
+        {
+          "error": null,
+          "response_us": 4203,
+          "run_id": "e8562092-b4d2-4c39-b0a0-a14c7a6dd187",
+          "send_lag_us": 12317,
+          "status": 202,
+          "tick": 22
+        },
+        {
+          "error": null,
+          "response_us": 4227,
+          "run_id": "714005e1-6f28-48b7-81a1-982ad2d8643b",
+          "send_lag_us": 13733,
+          "status": 202,
+          "tick": 23
+        },
+        {
+          "error": null,
+          "response_us": 4697,
+          "run_id": "8921d705-bcb7-4859-aea8-e28ff504e7a1",
+          "send_lag_us": 2315,
+          "status": 202,
+          "tick": 24
+        },
+        {
+          "error": null,
+          "response_us": 4953,
+          "run_id": "04706f30-632f-4b95-a6ee-6f5d53143ccc",
+          "send_lag_us": 3032,
+          "status": 202,
+          "tick": 25
+        },
+        {
+          "error": null,
+          "response_us": 4327,
+          "run_id": "bfae4a13-52bf-4941-8959-78c41ed2aeaa",
+          "send_lag_us": 7759,
+          "status": 202,
+          "tick": 26
+        },
+        {
+          "error": null,
+          "response_us": 4408,
+          "run_id": "46f1f1c2-1a7f-4585-ae31-dc6562e51e0e",
+          "send_lag_us": 6759,
+          "status": 202,
+          "tick": 27
+        },
+        {
+          "error": null,
+          "response_us": 4299,
+          "run_id": "63cdbf07-493a-4974-9257-7a68c4c1f61e",
+          "send_lag_us": 8760,
+          "status": 202,
+          "tick": 28
+        },
+        {
+          "error": null,
+          "response_us": 4134,
+          "run_id": "46cf062f-ecd3-46b4-a2f1-7b8e12476598",
+          "send_lag_us": 9296,
+          "status": 202,
+          "tick": 29
+        },
+        {
+          "error": null,
+          "response_us": 6457,
+          "run_id": "bb90f9ca-21f7-475a-a5fd-34b08b5344c3",
+          "send_lag_us": 10124,
+          "status": 202,
+          "tick": 30
+        },
+        {
+          "error": null,
+          "response_us": 4465,
+          "run_id": "dc46505a-fa63-478f-920a-77077511676e",
+          "send_lag_us": 10318,
+          "status": 202,
+          "tick": 31
+        },
+        {
+          "error": null,
+          "response_us": 4052,
+          "run_id": "fa8b0327-4c94-4c6b-a836-d096beeb3a38",
+          "send_lag_us": 14421,
+          "status": 202,
+          "tick": 32
+        },
+        {
+          "error": null,
+          "response_us": 3909,
+          "run_id": "2e383044-fde4-490a-85be-5ce91611a16b",
+          "send_lag_us": 758,
+          "status": 202,
+          "tick": 33
+        },
+        {
+          "error": null,
+          "response_us": 4170,
+          "run_id": "ffe4bd96-3924-4d6c-a525-f224e28f5ff2",
+          "send_lag_us": 3560,
+          "status": 202,
+          "tick": 34
+        },
+        {
+          "error": null,
+          "response_us": 4011,
+          "run_id": "ee592aac-567e-44b6-ac7e-5a040aee96c1",
+          "send_lag_us": 7391,
+          "status": 202,
+          "tick": 35
+        },
+        {
+          "error": null,
+          "response_us": 5831,
+          "run_id": "39c85295-046b-452d-af75-306bf73cde60",
+          "send_lag_us": 9093,
+          "status": 202,
+          "tick": 36
+        },
+        {
+          "error": null,
+          "response_us": 3876,
+          "run_id": "7e6d7a97-52b5-4bc2-be1d-c5b5dbf8d720",
+          "send_lag_us": 13125,
+          "status": 202,
+          "tick": 37
+        },
+        {
+          "error": null,
+          "response_us": 4410,
+          "run_id": "6ebac180-bb02-4a6c-b087-3ec7cb3b1242",
+          "send_lag_us": 15703,
+          "status": 202,
+          "tick": 38
+        },
+        {
+          "error": null,
+          "response_us": 4015,
+          "run_id": "81510365-e57d-4417-931f-e68cde856a80",
+          "send_lag_us": 1779,
+          "status": 202,
+          "tick": 39
+        }
+      ],
+      "response_errors": 0,
+      "server_rejections": 0,
+      "settled_before_shutdown": true,
+      "skipped_generator_capacity": 0,
+      "skipped_late_ticks": 0,
+      "tick_lag_us": [
+        7484,
+        8519,
+        11293,
+        14775,
+        1505,
+        4588,
+        6286,
+        7492,
+        8708,
+        9383,
+        8716,
+        10951,
+        12257,
+        15581,
+        1647,
+        3495,
+        5730,
+        5273,
+        6500,
+        11483,
+        12163,
+        11761,
+        12280,
+        13700,
+        2279,
+        2989,
+        7708,
+        6720,
+        8728,
+        9228,
+        10074,
+        10266,
+        14380,
+        706,
+        3522,
+        7338,
+        9046,
+        13081,
+        15659,
+        1746
+      ],
+      "writer_joined": true
+    },
+    {
+      "acknowledged_admissions": 9,
+      "arrivals_per_second": 100,
+      "completed_runs": 9,
+      "controller_joined": true,
+      "dispatched_requests": 30,
+      "durable_admissions": 9,
+      "elapsed_until_requests_joined_ms": 398,
+      "elapsed_until_runs_settled_ms": 1017,
+      "generator_peak_requests": 2,
+      "http_outcomes": {
+        "202": 9,
+        "429": 21
+      },
+      "ingress_joined": true,
+      "ingress_rejections": 0,
+      "missed_tick_tolerance_us": 10000,
+      "model_requests": 9,
+      "offered_ticks": 40,
+      "passed_tasks": 0,
+      "peak_active_runs": 2,
+      "peak_ingress_connections": 2,
+      "peak_queued_input_bytes": 6875,
+      "peak_queued_runs": 4,
+      "remaining_active_runs": 0,
+      "remaining_ingress_connections": 0,
+      "remaining_journal_bytes": 0,
+      "remaining_journal_commands": 0,
+      "remaining_observers": 0,
+      "remaining_queued_input_bytes": 0,
+      "remaining_queued_runs": 0,
+      "requests": [
+        {
+          "error": null,
+          "response_us": 5447,
+          "run_id": "a160b666-fa73-48b6-9cf3-08cb39c1a190",
+          "send_lag_us": 5393,
+          "status": 202,
+          "tick": 0
+        },
+        {
+          "error": null,
+          "response_us": 12168,
+          "run_id": "f33a432f-3740-44ad-b6dc-668e2c1a95be",
+          "send_lag_us": 553,
+          "status": 202,
+          "tick": 1
+        },
+        {
+          "error": null,
+          "response_us": 6452,
+          "run_id": "f0c51c4e-78e4-4d06-9f39-c0140366526c",
+          "send_lag_us": 1385,
+          "status": 202,
+          "tick": 2
+        },
+        {
+          "error": null,
+          "response_us": 4505,
+          "run_id": "da2c69ee-8353-4a7d-bdf8-29f33945709d",
+          "send_lag_us": 6631,
+          "status": 202,
+          "tick": 3
+        },
+        {
+          "error": null,
+          "response_us": 3668,
+          "run_id": "b5e07a24-db4b-4eef-866f-2487fee41b8e",
+          "send_lag_us": 896,
+          "status": 202,
+          "tick": 4
+        },
+        {
+          "error": null,
+          "response_us": 3698,
+          "run_id": "5f124e2a-eab1-4750-aee7-6dba2e70aad0",
+          "send_lag_us": 2761,
+          "status": 202,
+          "tick": 5
+        },
+        {
+          "error": null,
+          "response_us": 799,
+          "run_id": null,
+          "send_lag_us": 8289,
+          "status": 429,
+          "tick": 6
+        },
+        {
+          "error": null,
+          "response_us": 832,
+          "run_id": null,
+          "send_lag_us": 4299,
+          "status": 429,
+          "tick": 8
+        },
+        {
+          "error": null,
+          "response_us": 1058,
+          "run_id": null,
+          "send_lag_us": 5425,
+          "status": 429,
+          "tick": 11
+        },
+        {
+          "error": null,
+          "response_us": 7991,
+          "run_id": "5422bcf4-d44a-45b5-8815-8e426a929c93",
+          "send_lag_us": 2128,
+          "status": 202,
+          "tick": 12
+        },
+        {
+          "error": null,
+          "response_us": 742,
+          "run_id": null,
+          "send_lag_us": 1412,
+          "status": 429,
+          "tick": 13
+        },
+        {
+          "error": null,
+          "response_us": 935,
+          "run_id": null,
+          "send_lag_us": 7405,
+          "status": 429,
+          "tick": 14
+        },
+        {
+          "error": null,
+          "response_us": 888,
+          "run_id": null,
+          "send_lag_us": 2952,
+          "status": 429,
+          "tick": 16
+        },
+        {
+          "error": null,
+          "response_us": 971,
+          "run_id": null,
+          "send_lag_us": 7896,
+          "status": 429,
+          "tick": 17
+        },
+        {
+          "error": null,
+          "response_us": 900,
+          "run_id": null,
+          "send_lag_us": 3918,
+          "status": 429,
+          "tick": 19
+        },
+        {
+          "error": null,
+          "response_us": 861,
+          "run_id": null,
+          "send_lag_us": 8929,
+          "status": 429,
+          "tick": 20
+        },
+        {
+          "error": null,
+          "response_us": 865,
+          "run_id": null,
+          "send_lag_us": 3913,
+          "status": 429,
+          "tick": 22
+        },
+        {
+          "error": null,
+          "response_us": 10299,
+          "run_id": "4ee1bb7e-52ca-4c18-b3ad-a866911291e4",
+          "send_lag_us": 1886,
+          "status": 202,
+          "tick": 23
+        },
+        {
+          "error": null,
+          "response_us": 822,
+          "run_id": null,
+          "send_lag_us": 1925,
+          "status": 429,
+          "tick": 24
+        },
+        {
+          "error": null,
+          "response_us": 879,
+          "run_id": null,
+          "send_lag_us": 5431,
+          "status": 429,
+          "tick": 25
+        },
+        {
+          "error": null,
+          "response_us": 840,
+          "run_id": null,
+          "send_lag_us": 935,
+          "status": 429,
+          "tick": 27
+        },
+        {
+          "error": null,
+          "response_us": 848,
+          "run_id": null,
+          "send_lag_us": 6969,
+          "status": 429,
+          "tick": 28
+        },
+        {
+          "error": null,
+          "response_us": 777,
+          "run_id": null,
+          "send_lag_us": 2472,
+          "status": 429,
+          "tick": 30
+        },
+        {
+          "error": null,
+          "response_us": 722,
+          "run_id": null,
+          "send_lag_us": 7774,
+          "status": 429,
+          "tick": 31
+        },
+        {
+          "error": null,
+          "response_us": 2649,
+          "run_id": null,
+          "send_lag_us": 3777,
+          "status": 429,
+          "tick": 33
+        },
+        {
+          "error": null,
+          "response_us": 12249,
+          "run_id": "afbff11c-e7cf-46a4-8fe6-2b4dca2710bc",
+          "send_lag_us": 1585,
+          "status": 202,
+          "tick": 34
+        },
+        {
+          "error": null,
+          "response_us": 771,
+          "run_id": null,
+          "send_lag_us": 3585,
+          "status": 429,
+          "tick": 35
+        },
+        {
+          "error": null,
+          "response_us": 782,
+          "run_id": null,
+          "send_lag_us": 5303,
+          "status": 429,
+          "tick": 36
+        },
+        {
+          "error": null,
+          "response_us": 813,
+          "run_id": null,
+          "send_lag_us": 1289,
+          "status": 429,
+          "tick": 38
+        },
+        {
+          "error": null,
+          "response_us": 819,
+          "run_id": null,
+          "send_lag_us": 7320,
+          "status": 429,
+          "tick": 39
+        }
+      ],
+      "response_errors": 0,
+      "server_rejections": 21,
+      "settled_before_shutdown": true,
+      "skipped_generator_capacity": 0,
+      "skipped_late_ticks": 10,
+      "tick_lag_us": [
+        5360,
+        504,
+        1346,
+        6595,
+        881,
+        2731,
+        8269,
+        14254,
+        4258,
+        10283,
+        15371,
+        5379,
+        2102,
+        1376,
+        7366,
+        12907,
+        2912,
+        7865,
+        13883,
+        3888,
+        8895,
+        13862,
+        3868,
+        1853,
+        1904,
+        5395,
+        10894,
+        898,
+        6931,
+        12421,
+        2426,
+        7746,
+        13740,
+        3744,
+        1563,
+        3562,
+        5273,
+        11250,
+        1254,
+        7279
+      ],
+      "writer_joined": true
+    }
+  ],
+  "request_timeout_s": 5,
+  "version": 1
+}

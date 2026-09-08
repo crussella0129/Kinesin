@@ -1,5 +1,7 @@
 # Kinesin
 
+[![Rust checks](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml/badge.svg?branch=answer-key)](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml?query=branch%3Aanswer-key)
+
 A small Rust runtime for agents with explicit authority and bounded resources.
 
 **Status: working answer key with local validation evidence.** The Rust CLI, concurrent
@@ -128,6 +130,11 @@ Kinesin/
 | [configuration](docs/configuration.md) | Configuration examples and per-run limits |
 | [security](docs/security.md) | Authority, data disclosure, authentication, isolation |
 | [performance](docs/performance.md) | Shared limits, scheduling, latency targets, experiments |
+| [build validation](docs/build-validation.md) | Observed proofs and remaining release gates |
+| [live evaluation](docs/live-evaluation.md) | Checked-task results and preserved freeform failures |
+| [live comparisons](docs/live-comparisons.md) | Controlled context and streaming experiments |
+| [performance baseline](docs/performance-baseline.md) | Warm latency, concurrency, cancellation and soak evidence |
+| [service load](docs/service-load.md) | Fixed arrivals, generator omissions and HTTP overload evidence |
 | [traces](docs/traces.md) | SQLite journal, capture modes, replay, crash semantics |
 | [integration](docs/integration.md) | Model API, streaming, process, remote inference |
 | [testing](docs/testing.md) | Invariant and adversarial verification |

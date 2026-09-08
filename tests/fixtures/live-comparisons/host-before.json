@@ -1,0 +1,7 @@
+{
+  "platform": "native Windows x86_64",
+  "build_overlap": false,
+  "other_model_work_overlap": false,
+  "background_applications": "Unrelated applications remained",
+  "privacy": "Machine/process identifiers and full host observations remain in ignored local evidence"
+}

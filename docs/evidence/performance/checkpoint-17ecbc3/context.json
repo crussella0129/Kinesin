@@ -1,0 +1,7 @@
+{
+  "checkpoint": "17ecbc36fcdc9946c907d4807b2e9d8d19c933ed",
+  "executable_sha256": "dcb52f14666dcaead6e5cf2b74894c0b694460431c82eac1d957d7144448a0ac",
+  "platform": "native Windows x86_64",
+  "local_work": "No local builds/tests or model requests during measurements; unrelated applications remained.",
+  "publication": "Machine/process identifiers and system-wide host snapshots are retained only in ignored local evidence."
+}

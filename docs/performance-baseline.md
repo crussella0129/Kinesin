@@ -1,5 +1,12 @@
 # Local measurements
 
+The corrected release met the proposed 50 ms warm-run p95 target in both
+1,000-sample repeats: **12.273 ms and 42.527 ms**. The earlier validated
+checkpoint's ten-minute soak completed **10,152 runs** with bounded resources
+and clean settlement. All measured tasks were synthetic and unchecked. Earlier
+misses, remaining tail variation, and unmeasured service/load cases are retained
+below rather than hidden behind these successful checkpoints.
+
 The preserved first measurement below is a historical baseline. The measurement
 driver now applies the configured retention/headroom policy, records executable,
 configuration, lockfile, and SQLite versions, and joins its controller and storage
@@ -70,8 +77,80 @@ slow terminal write alone cannot diagnose slow cancellation observation.
 The two-owner experiment fills Alice's two active and four queued slots, rejects
 one excess Alice submission, and completes Bob's short run while Alice's runs
 settle. The soak offers bursts of 25 and waits for each burst before continuing.
-Both are closed-loop checks. Neither replaces fixed-arrival service-load testing
-or measures fairness across a large population.
+Both are closed-loop checks. The separate [fixed-arrival service experiment](service-load.md)
+records actual HTTP arrivals, generator omissions, overload and settlement.
+None of these small workloads measures fairness across a large population.
+
+## Corrected zero-delay provider checkpoint
+
+Checkpoint `17ecbc36fcdc9946c907d4807b2e9d8d19c933ed` makes the scripted
+provider return immediately when its requested delay is zero. Positive scripted
+delays and the real HTTP adapter retain their behavior; durable writes and
+acceptance rules were not reduced. The new immutable release driver has SHA-256
+`dcb52f14666dcaead6e5cf2b74894c0b694460431c82eac1d957d7144448a0ac`.
+Two fresh-database repeats each excluded twenty warmups and recorded 1,000 runs:
+
+| Corrected warm repeat | p50 | p95 | p99 | Maximum |
+|---|---:|---:|---:|---:|
+| A | 10.457 ms | 12.273 ms | 16.845 ms | 17.808 ms |
+| B | 10.600 ms | 42.527 ms | 74.484 ms | 113.306 ms |
+
+**Both measured p95 values meet the 50 ms target.** All 2,000 recorded runs
+completed unchecked, and both processes returned storage reservations to zero.
+The fake-model exchange duration rounded to zero milliseconds in every sample;
+this means below the retained timestamp resolution, not zero work. Repeat B
+still had admission p99 33.732 ms and terminal-tail p99 33.977 ms. Removing the
+fake timer did not eliminate tail variation or explain every storage/scheduling
+delay. Two runs on one workstation do not establish a deployment-wide latency
+guarantee. Both complete distributions are preserved in
+[repeat A](evidence/performance/checkpoint-17ecbc3/warm-a/summary.json) and
+[repeat B](evidence/performance/checkpoint-17ecbc3/warm-b/summary.json).
+
+The same executable then completed the separate fixed-batch concurrency curve.
+All 300 offered runs were admitted and completed unchecked, no submission was
+rejected, and each intended active cap was reached. The controller queue cap
+was zero and the shared fake backend capacity stayed at two slots:
+
+| Active cap | Batches / runs | Completion throughput | Per-run p95 including 100 ms delay |
+|---|---:|---:|---:|
+| 1 | 20 / 20 | 8.019 runs/s | 125.984 ms |
+| 2 | 20 / 40 | 14.477 runs/s | 159.038 ms |
+| 4 | 20 / 80 | 15.072 runs/s | 269.393 ms |
+| 8 | 20 / 160 | 16.150 runs/s | 510.544 ms |
+
+With two backend slots, increasing the active cap beyond two mostly adds
+waiting in these batches. The modest throughput increase accompanies longer
+per-run latency; the curve does not support an eightfold scaling claim.
+
+The controlled slowdown kept four active slots and the same controller/resources
+alive, offering forty runs per phase. Requested fake delay changed from
+100 ms to 400 ms and back to 100 ms. All 120 runs completed unchecked without
+rejection or error:
+
+| Phase | Completion throughput | Per-run p95 |
+|---|---:|---:|
+| Initial 100 ms delay | 15.829 runs/s | 262.526 ms |
+| Slower 400 ms delay | 4.613 runs/s | 875.347 ms |
+| Restored 100 ms delay | 15.742 runs/s | 263.544 ms |
+
+Every phase returned active/queued counts and queued bytes to zero, every
+controller joined without runner errors, and the writer ended with 420 rows and
+zero storage reservations. This approximately 35-second curve process peaked
+at 11.996 MiB working set and 5.035 MiB private bytes. Its
+[complete evidence](evidence/performance/checkpoint-17ecbc3/curves/summary.json)
+records all offered/admitted/rejected outcomes and the descriptive timing
+samples. Fixed-arrival authenticated-service load has its own
+[bounded experiment](service-load.md); worst-case payload performance and a
+live model capacity curve remain unmeasured. This is not completion of every
+performance exercise in guide step 29.
+
+No agent builds, tests, or model calls overlapped these measurements. Unrelated
+applications remained. Full system-wide snapshots, process IDs and launch
+timestamps are retained only in ignored local evidence; published samples keep
+workload durations, memory counters and reproducible hashes. The ten-minute soak
+below was not rerun after the zero-delay fake and separate SSE corrections:
+it exercises the unchanged positive-100-ms fake, controller, and writer paths.
+Its executable and checkpoint remain explicitly distinct.
 
 ## Measurements at the first validated implementation checkpoint
 
@@ -177,7 +256,7 @@ The current successful one-turn path commits admission, run start, model intent,
 model observation, and terminal receipt separately. WAL with `FULL` synchronizes
 each transaction, and automatic checkpoints can make occasional commits slower.
 [SQLite's performance discussion](https://sqlite.org/wal.html#performance_considerations)
-explains these costs. If the quiet repeat still misses the target, first compare
+explains these costs. If future repetitions miss the target, first compare
 admission, pre-terminal journal wait, and terminal tail. Returning the committed
 record directly from the terminal command could remove a redundant query and
 async round trip without changing durability. That is a proposed optimization,

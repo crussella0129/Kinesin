@@ -13,7 +13,7 @@ only after its proof and failure exercise pass.
 
 - [x] 1. [Write the two operating profiles](build-guide.md#1-write-the-two-operating-profiles).
 - [x] 2. [Set up Rust and an ownership scratch project](build-guide.md#2-set-up-rust-and-an-ownership-scratch-project).
-- [ ] 3. [Create one package and a repeatable checkpoint](build-guide.md#3-create-one-package-and-a-repeatable-checkpoint).
+- [x] 3. [Create one package and a repeatable checkpoint](build-guide.md#3-create-one-package-and-a-repeatable-checkpoint).
 - [x] 4. [Prove the model contract independently](build-guide.md#4-prove-the-model-contract-independently).
 - [x] 5. [Define owned domain types](build-guide.md#5-define-owned-domain-types).
 - [x] 6. [Make state transitions without I/O](build-guide.md#6-make-state-transitions-without-io).
@@ -42,7 +42,7 @@ Freeform completion is explicitly unchecked. The demonstration's
 - [x] 19. [Complete one model/tool/model round trip](build-guide.md#19-complete-one-modeltoolmodel-round-trip).
 - [x] 20. [Prove policy, protocol, and loop failure paths](build-guide.md#20-prove-policy-protocol-and-loop-failure-paths).
 - [x] 21. [Check file fields before accepting a task](build-guide.md#21-check-file-fields-before-accepting-a-task).
-- [ ] 22. [Evaluate the useful read-only agent](build-guide.md#22-evaluate-the-useful-read-only-agent). The live task baseline includes model failures; separate controlled layout/context-size experiments remain unperformed. See [results](live-evaluation.md).
+- [x] 22. [Evaluate the useful read-only agent](build-guide.md#22-evaluate-the-useful-read-only-agent). The [baseline](live-evaluation.md) preserves model failures; separate [controlled context comparisons](live-comparisons.md) record equal-byte and selected-source conditions.
 
 **Gate:** an authorized run lists a directory, reads relevant text, and answers.
 A greeting can finish without tools. Malformed batches, unapproved tools,
@@ -60,9 +60,9 @@ strict exit zero requires completed execution and passed contract checks.
 - [x] 26. [Bound blocking tool work by its real lifetime](build-guide.md#26-bound-blocking-tool-work-by-its-real-lifetime).
 - [x] 27. [Shut down and cancel without losing ownership](build-guide.md#27-shut-down-and-cancel-without-losing-ownership).
 - [x] 28. [Add a batch command for independent agents](build-guide.md#28-add-a-batch-command-for-independent-agents).
-- [ ] 29. [Measure saturation before tuning concurrency](build-guide.md#29-measure-saturation-before-tuning-concurrency).
+- [ ] 29. [Measure saturation before tuning concurrency](build-guide.md#29-measure-saturation-before-tuning-concurrency). Synthetic warm/curve/slowdown/soak and fixed-arrival HTTP probes pass; live capacity/cold-warm and worst-case payload/checker performance remain open.
 - [x] 30. [Inspect stored runs and replay decisions](build-guide.md#30-inspect-stored-runs-and-replay-decisions).
-- [ ] 31. [Stream output with bounded assembly](build-guide.md#31-stream-output-with-bounded-assembly). Functional streaming proofs pass; the measured first-useful-text comparison with nonstreaming remains open.
+- [x] 31. [Stream output with bounded assembly](build-guide.md#31-stream-output-with-bounded-assembly). Functional proofs and the paired [live first-visible-text comparison](live-comparisons.md) pass within their recorded scope.
 
 **Gate:** independent runs share bounded admission, model, tool, journal, and
 observer capacity without mixing state or releasing permits early. Saturation,

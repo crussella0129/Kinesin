@@ -6,6 +6,12 @@ relative to the configuration file; CLI input-file paths resolve from your curre
 directory. Run execution uses the implicit local operator identity; `--owner`
 is limited to provisioning credentials for a configured service owner.
 
+The bundled examples expect a deliberately prepared `workspace/project.txt`;
+its synthetic contents are in [the checked-task setup](configuration.md#add-an-explicit-checked-task).
+They also expect the verified `kinesin-qwen25-coder-7b` model alias on loopback
+port 8080. Follow [the recorded server startup](model-preflight.md#reproduce-the-baseline)
+or edit your copied example to match the separately verified endpoint.
+
 ```text
 cargo run -- run --config examples/file-task.toml --task practice-fields --model local
 cargo run -- run --config examples/first-turn.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked

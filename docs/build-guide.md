@@ -142,6 +142,12 @@ cargo check
 cargo run
 ```
 
+If Cargo reports an unrelated or invalid ancestor `Cargo.toml`, add an empty
+`[workspace]` table to this package's manifest and rerun `cargo check`. That
+explicit boundary keeps Cargo's workspace discovery inside your independent
+learning package. This was required on the validation machine; see the
+[recorded setup friction](build-validation.md#steps-23-observed-results-and-guide-friction).
+
 Keep `main.rs` small. Add `lib.rs` with one public function that the binary
 calls and a small unit test. Add a CI workflow running the checks in [process](process.md).
 Commit `Cargo.lock` for this application and record the toolchain used in CI.
