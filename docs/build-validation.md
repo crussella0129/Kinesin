@@ -156,10 +156,15 @@ the enclosed waits and applies it to the scheduler waits; it does not weaken an
 assertion, shorten a production timeout, or treat the grace path as a fault.
 Watchdogs detect a hung wait, and latency remains the benchmarks' claim.
 
-The same shape exists in several integration tests, which have passed hosted CI
-repeatedly and did not execute in the failing run because Cargo stopped at the
-library target. They are recorded here as a known remaining assumption rather
-than changed without evidence.
+The same shape existed in several integration tests. They were recorded as a
+known remaining assumption rather than changed without evidence, because they had
+passed hosted CI repeatedly and did not execute in that failing run: Cargo stopped
+at the library target. Hosted CI later supplied the evidence. Four service tests
+failed together, including the helper that waits for a run to reach a terminal
+phase, whose five-second poll enclosed admission, the model call, the tool, the
+checker and the journal commit. Those waits now use the same named bound above
+the sum of the production waits they enclose. Waiting for evidence was the right
+call, and the evidence arrived.
 
 A second hosted run then failed two different tests while the corrected
 scheduler test passed, and its unit suite took 51.7 s against the previous run's

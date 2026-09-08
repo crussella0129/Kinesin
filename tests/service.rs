@@ -9,6 +9,12 @@ use std::sync::Arc;
 use std::task::Poll;
 use std::time::Duration;
 
+/// Detects a hung wait; it is not a latency assertion. A request or a run can
+/// legitimately wait through journal admission and then the settlement grace,
+/// which are five seconds each, so this exceeds their sum rather than equalling
+/// one of them. Latency belongs to the separate benchmarks.
+const WATCHDOG: Duration = Duration::from_secs(30);
+
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
@@ -213,7 +219,7 @@ impl Harness {
         request
     }
     async fn send(&self, request: Request<Body>) -> Response {
-        timeout(Duration::from_secs(5), self.app.clone().oneshot(request))
+        timeout(WATCHDOG, self.app.clone().oneshot(request))
             .await
             .unwrap()
             .unwrap()
@@ -224,7 +230,7 @@ impl Harness {
         decode(response).await
     }
     async fn terminal(&self, owner: &str, id: &str) -> Value {
-        timeout(Duration::from_secs(5), async {
+        timeout(WATCHDOG, async {
             loop {
                 let response = self
                     .send(self.request(owner, "GET", &format!("/v1/runs/{id}"), Body::empty()))
@@ -540,7 +546,7 @@ async fn checked_retry_retains_its_original_receipt_after_task_profile_changes()
         .unwrap(),
     );
     let response = timeout(
-        Duration::from_secs(5),
+        WATCHDOG,
         router(replacement).oneshot(harness.create_request("alice", "stable-contract", submission)),
     )
     .await
@@ -565,7 +571,7 @@ async fn cancelling_queued_owner_then_revoking_credentials_preserves_other_owner
     let active = harness
         .create("alice", "active-a", freeform("alice active"))
         .await;
-    timeout(Duration::from_secs(5), async {
+    timeout(WATCHDOG, async {
         while harness.client.captured_requests().unwrap().len() != 1 {
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
@@ -620,7 +626,7 @@ async fn cancelling_queued_owner_then_revoking_credentials_preserves_other_owner
     // trusted controller still owns cleanup of Alice's active and cancelled work.
     harness.shutdown.cancel();
     harness.controller.shutdown();
-    let stats = timeout(Duration::from_secs(5), harness.controller_task.join())
+    let stats = timeout(WATCHDOG, harness.controller_task.join())
         .await
         .unwrap()
         .unwrap();
@@ -1077,13 +1083,10 @@ async fn live_subscription_observes_terminal_commit_and_completed_wrong_answer_s
         ))
         .await;
     assert_eq!(harness.state.observer_count(), 1);
-    let bytes = timeout(
-        Duration::from_secs(5),
-        to_bytes(response.into_body(), 262144),
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let bytes = timeout(WATCHDOG, to_bytes(response.into_body(), 262144))
+        .await
+        .unwrap()
+        .unwrap();
     let text = std::str::from_utf8(&bytes).unwrap();
     let final_frame = text
         .split("\n\n")
