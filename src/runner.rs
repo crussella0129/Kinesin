@@ -852,6 +852,7 @@ pub async fn run_admitted_with_text(
                                     args.as_ref().map_err(|_| "validated arguments missing")?;
                                 let path = validated.path.clone();
                                 let query = validated.query.clone();
+                                let case_sensitive = validated.case_sensitive.unwrap_or(false);
                                 let maximum = authority.limits().max_tool_result_bytes;
                                 let evidence_id = name.mints_evidence().then(|| evidence.next_id());
                                 dispatched = true;
@@ -862,6 +863,7 @@ pub async fn run_admitted_with_text(
                                         name,
                                         &path,
                                         query.as_deref(),
+                                        case_sensitive,
                                         maximum,
                                         evidence_id.as_deref(),
                                     )

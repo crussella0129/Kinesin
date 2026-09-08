@@ -116,10 +116,11 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
                     "type":"object","properties":{"path":{"type":"string"}},
                     "required":["path"],"additionalProperties":false
                 })),
-                "search_files" => ("Find a literal term in workspace text files below a relative path, or . for its root. Returns matching file names and line numbers, not whole files, and reports incomplete results. It cites no evidence: read a file to observe a value you intend to report.", json!({
+                "search_files" => ("Find a literal term in workspace text files below a relative path, or . for its root. Returns matching file names and line numbers, not whole files, and reports incomplete results. Prefer a distinctive term: matching is exact text, so an absent term returns nothing rather than something similar. It cites no evidence: read a file to observe a value you intend to report.", json!({
                     "type":"object","properties":{
                         "path":{"type":"string"},
-                        "query":{"type":"string","description":"Literal text to find. Not a pattern or expression."}
+                        "query":{"type":"string","description":"Literal text to find. Not a pattern or expression."},
+                        "case_sensitive":{"type":"boolean","description":"Omit to ignore capitalization, which is usually what you want."}
                     },
                     "required":["path","query"],"additionalProperties":false
                 })),

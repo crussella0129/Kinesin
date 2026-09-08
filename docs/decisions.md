@@ -68,6 +68,25 @@ or durable workers span hosts. Initially they add deployment/lifecycle work
 without removing a measured bottleneck. Do not claim SQLite on a shared mount
 is an equivalent shortcut.
 
+**An embedding index and vector retrieval.** Reasonable when evidence is rarely
+literal. Kinesin's checked contract compares a claimed field against the bytes of
+a named source, which is the distribution where measured lexical search wins:
+[Sen et al.](https://arxiv.org/abs/2605.15184) report inline grep above inline
+vector for every harness and model pair they evaluate. A vector path would add an
+embedding model, an index, and indexing latency to serve answers that are already
+literal. Revisit for a task class whose evidence is paraphrased rather than
+quoted, and see the [paper review](paper-review.md) for what that result does not
+cover.
+
+**File-pointer (programmatic) tool results.** Writing a large result to disk and
+returning a path decouples result size from context pressure, and it is the right
+answer for a strong backbone that reliably closes a read-then-integrate loop. The
+same study measures the cost when it does not: one pair falls from 93.1% inline
+to 55.2% programmatic, and weaker backbones show the largest gaps. Kinesin runs
+8B local models, so it keeps inline results with explicit truncation and an
+honest `truncated` flag. Revisit when a measured task needs a result larger than
+the context can hold, and treat closing that loop as the thing to prove first.
+
 **MCP immediately.** Add it when existing tool servers solve a real task.
 Discovery and schemas do not establish authority. It must adapt into the same
 policy and execution limits.

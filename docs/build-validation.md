@@ -478,12 +478,26 @@ returns none, so a candidate cannot cite a matched line as proof of a value it
 never observed completely. That rule now lives on `ToolName::mints_evidence`
 rather than at the one call site that previously compared against `ReadFile`.
 
-Five tests cover the tool: one-based line reporting and an empty result for an
+A later reading of [Sen et al.](https://arxiv.org/abs/2605.15184) corrected one
+choice in this tool. Their measurements name the failure mode of lexical search
+directly: it punishes vocabulary mismatch, and nothing is retrieved when the
+caller does not guess a distinctive substring. They also report the largest
+inline gaps and least reliable query refinement on weaker backbones, which is the
+class Kinesin runs. Case folding is therefore the default and `case_sensitive` is
+the deliberate request. The same pass recorded two choices that had been
+unexamined defaults rather than decisions: lexical search over an embedding index,
+and inline tool results over file-pointer delivery. Both now carry their evidence
+and their revisit condition in [decisions](decisions.md), with the study's own
+scope limits in the [paper review](paper-review.md).
+
+Six tests cover the tool: one-based line reporting and an empty result for an
 absent term; the absence of an evidence reference even when the runner offers
 one; a missing term, a term supplied to the wrong tool, and empty, oversized or
 control-character terms; an escaping path, an outside sentinel that stays
-unreachable, and skipped non-UTF-8 content; and the depth and byte bounds. The
-suite is 176 offline tests, with formatting and all-target Clippy clean.
+unreachable, and skipped non-UTF-8 content; the depth and byte bounds; and case
+folding by default with exact matching on request, where a reported line keeps
+the file's own bytes rather than the folded form. The suite is 177 offline tests,
+with formatting and all-target Clippy clean.
 
 ## Original intent and remaining exposure evidence
 

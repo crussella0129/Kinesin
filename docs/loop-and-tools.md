@@ -126,13 +126,20 @@ Three read-only tools are offered:
 |------|-----------|---------|----------------|
 | `read_file` | `path` | A bounded UTF-8 prefix of one file | **Yes** |
 | `list_files` | `path` | A bounded nonrecursive listing | No |
-| `search_files` | `path`, `query` | Matching file names and one-based line numbers below `path` | No |
+| `search_files` | `path`, `query`, optional `case_sensitive` | Matching file names and one-based line numbers below `path` | No |
 
 `search_files` exists because listing and reading alone cannot answer "which
 file mentions this" without walking the tree one directory at a time, spending
 steps and context. Its `query` is **literal text, not a pattern language**: an
 expression engine would add a dependency and an unbounded matching cost on
 model-selected input.
+
+Matching **ignores capitalization unless `case_sensitive` is set**. Lexical
+search retrieves nothing when the caller guesses the wrong form of a term, and a
+smaller model is the least reliable at noticing that and refining the query, so
+the forgiving mode is the default and exactness is the deliberate request. Case
+folding decides the match only; a reported line is always the file's own bytes.
+See the [paper review](paper-review.md) for the measurement behind this.
 
 **Only `read_file` mints evidence, and that is a deliberate boundary.** A
 listing and a search both return partial views of the workspace. If a search

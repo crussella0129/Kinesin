@@ -641,7 +641,8 @@ disappearing entry. The handler must return a defined result without a panic.
 
 Then add `search_files(path, query)`, so a run can find which file mentions a
 term instead of walking the tree one directory at a time. Keep `query` literal
-text. A pattern language would add a dependency and an unbounded matching cost
+text, and fold case unless the caller asks for exactness: lexical search returns
+nothing on a wrong casing guess, and a small model rarely recovers from that. A pattern language would add a dependency and an unbounded matching cost
 on model-selected input. Bound every axis it can grow along: directory depth,
 entries visited, bytes read from any one file, and the caller's result budget.
 Skip symlinks and non-regular files rather than following them, and skip content

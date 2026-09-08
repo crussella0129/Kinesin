@@ -84,6 +84,12 @@ pub struct TypedToolArgs {
     /// unexpected term on `read_file` still fails the typed contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub query: Option<String>,
+    /// Optional for `search_files`; absent means an insensitive match. Lexical
+    /// search fails when the caller guesses the wrong casing, and a smaller
+    /// model refines a failed query least reliably, so the forgiving mode is
+    /// the default and exactness is the deliberate request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub case_sensitive: Option<bool>,
 }
 
 impl TypedToolArgs {
@@ -161,7 +167,7 @@ impl WorkspaceReader {
         max_bytes: usize,
         evidence_id: Option<&str>,
     ) -> ToolResult {
-        self.execute_with_query(name, path, None, max_bytes, evidence_id)
+        self.execute_with_query(name, path, None, false, max_bytes, evidence_id)
     }
 
     /// `query` is required by `search_files` and rejected by the other tools,
@@ -171,6 +177,7 @@ impl WorkspaceReader {
         name: ToolName,
         path: &str,
         query: Option<&str>,
+        case_sensitive: bool,
         max_bytes: usize,
         evidence_id: Option<&str>,
     ) -> ToolResult {
@@ -219,9 +226,12 @@ impl WorkspaceReader {
         match name {
             ToolName::ReadFile => self.read_file(path, limit, evidence_id),
             ToolName::ListFiles => self.list_files(path, limit),
-            ToolName::SearchFiles => {
-                self.search_files(path, &query.expect("search query checked above"), limit)
-            }
+            ToolName::SearchFiles => self.search_files(
+                path,
+                &query.expect("search query checked above"),
+                case_sensitive,
+                limit,
+            ),
         }
     }
 
@@ -359,7 +369,19 @@ impl WorkspaceReader {
     /// Bounded literal search below `path`. Returns matched lines, never the
     /// whole file, and never an evidence reference: a partial view cannot
     /// certify that a field equals a file's value. Read the file to cite it.
-    fn search_files(&self, path: &str, query: &str, limit: usize) -> ToolResult {
+    fn search_files(
+        &self,
+        path: &str,
+        query: &str,
+        case_sensitive: bool,
+        limit: usize,
+    ) -> ToolResult {
+        // Fold the term once. Each line is folded only while it is examined.
+        let needle = if case_sensitive {
+            query.to_owned()
+        } else {
+            query.to_lowercase()
+        };
         let mut result = ToolResult::success(None);
         let overhead = result.encoded().expect("fixed result shape").len();
         let body_budget = limit - overhead;
@@ -430,7 +452,14 @@ impl WorkspaceReader {
                 if !file_type.is_file() {
                     continue;
                 }
-                match self.scan_file(&joined, query, &mut matches, &mut body_cost, body_budget) {
+                match self.scan_file(
+                    &joined,
+                    &needle,
+                    case_sensitive,
+                    &mut matches,
+                    &mut body_cost,
+                    body_budget,
+                ) {
                     ScanOutcome::Continued => {}
                     ScanOutcome::Skipped => incomplete = true,
                     ScanOutcome::BudgetReached => {
@@ -451,7 +480,8 @@ impl WorkspaceReader {
     fn scan_file(
         &self,
         name: &str,
-        query: &str,
+        needle: &str,
+        case_sensitive: bool,
         matches: &mut Vec<SearchMatch>,
         body_cost: &mut usize,
         body_budget: usize,
@@ -477,7 +507,14 @@ impl WorkspaceReader {
             return ScanOutcome::Skipped;
         };
         for (index, line) in text.lines().enumerate() {
-            if !line.contains(query) {
+            // Case folding can change byte length, so it decides the match only.
+            // The reported text is always the line as the file actually holds it.
+            let matched = if case_sensitive {
+                line.contains(needle)
+            } else {
+                line.to_lowercase().contains(needle)
+            };
+            if !matched {
                 continue;
             }
             let candidate = SearchMatch {
@@ -607,10 +644,20 @@ mod tests {
     }
 
     fn search(reader: &WorkspaceReader, path: &str, query: &str) -> ToolResult {
+        search_cased(reader, path, query, false)
+    }
+
+    fn search_cased(
+        reader: &WorkspaceReader,
+        path: &str,
+        query: &str,
+        case_sensitive: bool,
+    ) -> ToolResult {
         reader.execute_with_query(
             ToolName::SearchFiles,
             path,
             Some(query),
+            case_sensitive,
             MAX_TOOL_BYTES,
             None,
         )
@@ -645,6 +692,44 @@ mod tests {
     }
 
     #[test]
+    fn search_folds_case_by_default_and_stays_exact_on_request() {
+        let fixture = Fixture::new();
+        fixture.write("readme.md", "Language=Rust\nSTATUS=Ready\n");
+        let reader = fixture.reader();
+
+        // Lexical search fails on a casing guess, and a smaller model refines a
+        // failed query least reliably, so the default match forgives casing.
+        let folded = search(&reader, ".", "language=");
+        assert_eq!(matches_of(&folded).len(), 1);
+        assert_eq!(
+            matches_of(&folded)[0].text,
+            "Language=Rust",
+            "the reported line is the file's bytes, not the folded form"
+        );
+        assert_eq!(matches_of(&search(&reader, ".", "STATUS")).len(), 1);
+        assert_eq!(matches_of(&search(&reader, ".", "status")).len(), 1);
+
+        // Exactness stays available for a caller that needs it.
+        let exact = search_cased(&reader, ".", "language=", true);
+        assert!(matches_of(&exact).is_empty());
+        assert_eq!(
+            matches_of(&search_cased(&reader, ".", "Language=", true)).len(),
+            1
+        );
+
+        let parsed =
+            TypedToolArgs::parse(r#"{"path":".","query":"x","case_sensitive":true}"#).unwrap();
+        assert_eq!(parsed.case_sensitive, Some(true));
+        assert_eq!(
+            TypedToolArgs::parse(r#"{"path":".","query":"x"}"#)
+                .unwrap()
+                .case_sensitive,
+            None,
+            "an absent flag means the forgiving default"
+        );
+    }
+
+    #[test]
     fn search_never_mints_evidence_a_candidate_could_cite() {
         let fixture = Fixture::new();
         fixture.write("alpha.txt", "language=Rust\n");
@@ -656,6 +741,7 @@ mod tests {
             ToolName::SearchFiles,
             ".",
             Some("language="),
+            false,
             MAX_TOOL_BYTES,
             Some("e0"),
         );
@@ -675,8 +761,14 @@ mod tests {
         fixture.write("alpha.txt", "language=Rust\n");
         let reader = fixture.reader();
 
-        let missing =
-            reader.execute_with_query(ToolName::SearchFiles, ".", None, MAX_TOOL_BYTES, None);
+        let missing = reader.execute_with_query(
+            ToolName::SearchFiles,
+            ".",
+            None,
+            false,
+            MAX_TOOL_BYTES,
+            None,
+        );
         assert_eq!(missing.status, ToolStatus::Denied);
         assert_eq!(missing.error.unwrap().code, "missing_query");
 
@@ -685,6 +777,7 @@ mod tests {
                 name,
                 "alpha.txt",
                 Some("language="),
+                false,
                 MAX_TOOL_BYTES,
                 None,
             );
@@ -751,8 +844,14 @@ mod tests {
 
         // Many matches must fit the caller's budget rather than overflow it.
         fixture.write("many.txt", "needle\n".repeat(4_000));
-        let capped =
-            reader.execute_with_query(ToolName::SearchFiles, ".", Some("needle"), 1_024, None);
+        let capped = reader.execute_with_query(
+            ToolName::SearchFiles,
+            ".",
+            Some("needle"),
+            false,
+            1_024,
+            None,
+        );
         assert_eq!(capped.status, ToolStatus::Ok);
         assert!(capped.encoded().unwrap().len() <= 1_024);
         assert!(capped.truncated);

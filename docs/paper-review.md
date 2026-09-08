@@ -27,6 +27,7 @@ decoding and scheduling optimizations behind measured experiments.
 | Out-of-Order Semantic Speculation for Fast Tool Calling.pdf | OoO-Spec, 2608.00814v1 | Speculative tool-call decoding inside an inference backend | Optional backend experiment; no predicted tool execution |
 | ReAct Loops.pdf | ReAct, 2210.03629v3 | Interleaved reasoning, actions, and observations | Strengthen feedback tests; retain structured tool protocol |
 | Teaching LLMs to Plan Logical-Chain-of-Thought.pdf | PDDL-INSTRUCT, 2509.13351v1 | Trained symbolic planning and formal plan validation | Borrow independent checking; no required training/planner subsystem |
+| Is Grep All You Need.pdf | Sen et al., 2605.15184v1 | Lexical versus dense retrieval across harnesses and delivery modes | Keep lexical search and inline delivery; record both as evidenced choices, not defaults |
 
 These findings address different layers. An editable task recipe, an execution
 runtime, a model's planning ability, and its decoding implementation are not
@@ -66,6 +67,61 @@ The paper's original repository link was unavailable during this pass. The
 author's current [icm-architect repository](https://github.com/RinDig/icm-architect)
 links the paper and describes the method. That is a reference to inspect, not
 a dependency or skill installed into Kinesin.
+
+## Retrieval strategy and delivery mode
+
+Sen et al. compare grep against vector retrieval on a 116-question LongMemEval-S
+subset, across five models and four harnesses, under two delivery modes. Three
+results bear on Kinesin directly.
+
+**Lexical retrieval wins for literal-witness tasks.** With inline delivery,
+grep exceeds vector for *every* harness and model pair they evaluate. Their
+explanation is the relevant part: the benchmark rewards recovering exact dates,
+counts, and spans that stay stable under tokenization, so lexical tools surface
+them without an embedding bottleneck. Kinesin's checked tasks are that
+distribution exactly. `FileFieldsV1` compares a claimed field against the bytes
+of a named source. So `search_files` is the right retrieval primitive here, and
+an embedding index would add a model, a vector store, and indexing latency to
+serve a workload whose answers are literal.
+
+**The harness moves accuracy as much as the retriever does.** The same Claude
+Opus 4.6 backbone scores 93.1% under their custom harness and 76.7% under a
+provider CLI, holding corpus and retrieval fixed. Their conclusion is that the
+system prompt, the tool descriptions, and how hits are rendered back into the
+conversation decide when the model searches and when it stops. Kinesin should
+therefore treat a tool description as a tuned artifact with its own evidence,
+not as incidental text, and should keep reading its own prompt-sensitivity
+results as harness findings rather than model findings.
+
+**Inline delivery is a real fork, and Kinesin is already on the favorable side.**
+Their programmatic mode writes results to a file and returns a pointer, which
+decouples result size from context pressure. It also reorders the comparison:
+programmatic vector beats programmatic grep on five of ten pairs, reversing the
+inline result. The cost appears in their sharpest regression, Codex with GPT-5.4
+falling from 93.1% inline grep to 55.2% programmatic grep, which they attribute
+to a brittle read–integrate–retry cycle. Their own summary is that programmatic
+routing trades context bandwidth for compositional tool competence, and pays off
+only when the agent reliably closes that loop.
+
+**Kinesin adaptation:** keep inline tool results with explicit truncation, and
+record it as an evidenced choice. Kinesin targets 8B local models, and this paper
+also finds weaker backbones show the largest inline gaps and least reliable
+iterative refinement. A file-pointer indirection asks precisely the models
+Kinesin runs to perform the step they are worst at.
+
+One concrete correction followed from this pass. `search_files` matched case
+sensitively, which is the failure mode the paper names: grep punishes vocabulary
+mismatch, and nothing is retrieved when the term is not guessed exactly. Case
+folding is now the default, with `case_sensitive` available when exactness is
+wanted. This does not make the tool a pattern language.
+
+**Limits.** The authors state their conclusions are tied to long-memory
+conversational QA where answers often license verbatim spans, and explicitly do
+not claim grep beats vector in general. Domains where evidence is rarely literal,
+including code semantics, may differ. Their grid also has incomplete rows and
+redrawn distractors between session limits, so mid-grid peaks are not capacity
+curves. Kinesin uses this to justify lexical search for its current checked-task
+contract, not to close the question for every future task class.
 
 ## Speculation belongs to inference
 
