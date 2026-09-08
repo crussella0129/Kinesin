@@ -150,6 +150,17 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
                     },
                     "required":["path","find","replace"],"additionalProperties":false
                 })),
+                "delete_file" => ("Delete one regular file at a relative workspace path. It refuses a directory or a symbolic link, and a missing file is an error. It cannot be undone, so delete only a file you are sure about.", json!({
+                    "type":"object","properties":{"path":{"type":"string"}},
+                    "required":["path"],"additionalProperties":false
+                })),
+                "move_file" => ("Rename or move one regular file from path to a new relative workspace path. The destination must not already exist, so a move never overwrites another file. Both paths stay inside the workspace.", json!({
+                    "type":"object","properties":{
+                        "path":{"type":"string"},
+                        "to":{"type":"string","description":"The new relative path. Must not already exist."}
+                    },
+                    "required":["path","to"],"additionalProperties":false
+                })),
                 _ => return Err("unsupported compiled tool".to_owned()),
             };
             Ok(json!({"type":"function","function":{

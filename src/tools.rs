@@ -111,50 +111,66 @@ pub struct TypedToolArgs {
     pub find: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replace: Option<String>,
+    /// The destination, present only for `move_file`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
 }
 
 impl TypedToolArgs {
     /// One place that decides which fields each tool accepts, so a field can
     /// never be silently ignored on a tool that does not use it.
     pub fn shape_for(&self, name: ToolName) -> Result<(), (&'static str, &'static str)> {
-        let query = self.query.is_some() || self.case_sensitive.is_some();
-        let content = self.content.is_some();
-        let edit = self.find.is_some() || self.replace.is_some();
-        match name {
-            ToolName::EditFile if self.find.is_none() || self.replace.is_none() => Err((
-                "missing_edit",
-                "edit_file requires both find and replace text.",
-            )),
-            ToolName::EditFile if query || content => Err((
-                "unexpected_field",
-                "edit_file takes only path, find and replace.",
-            )),
-            _ if edit && name != ToolName::EditFile => Err((
-                "unexpected_edit",
-                "Only edit_file accepts find and replace.",
-            )),
-            ToolName::SearchFiles if self.query.is_none() => Err((
+        // Each tool accepts a fixed set of optional fields. A required field
+        // that is missing, or any field a tool does not use, fails the contract,
+        // so a value can never be silently ignored on the wrong tool.
+        let has_query = self.query.is_some() || self.case_sensitive.is_some();
+        let has_content = self.content.is_some();
+        let has_edit = self.find.is_some() || self.replace.is_some();
+        let has_to = self.to.is_some();
+
+        let missing = match name {
+            ToolName::SearchFiles if self.query.is_none() => Some((
                 "missing_query",
                 "search_files requires a literal query term.",
             )),
-            ToolName::SearchFiles if content => {
-                Err(("unexpected_content", "search_files does not write content."))
-            }
             ToolName::WriteFile if self.content.is_none() => {
-                Err(("missing_content", "write_file requires content to write."))
+                Some(("missing_content", "write_file requires content to write."))
             }
-            ToolName::WriteFile if query => {
-                Err(("unexpected_query", "write_file does not take a query."))
+            ToolName::EditFile if self.find.is_none() || self.replace.is_none() => Some((
+                "missing_edit",
+                "edit_file requires both find and replace text.",
+            )),
+            ToolName::MoveFile if self.to.is_none() => {
+                Some(("missing_destination", "move_file requires a destination."))
             }
-            ToolName::ReadFile | ToolName::ListFiles if query => Err((
+            _ => None,
+        };
+        if let Some(error) = missing {
+            return Err(error);
+        }
+
+        if has_query && name != ToolName::SearchFiles {
+            return Err((
                 "unexpected_query",
                 "Only search_files accepts a query term.",
-            )),
-            ToolName::ReadFile | ToolName::ListFiles if content => {
-                Err(("unexpected_content", "Only write_file accepts content."))
-            }
-            _ => Ok(()),
+            ));
         }
+        if has_content && name != ToolName::WriteFile {
+            return Err(("unexpected_content", "Only write_file accepts content."));
+        }
+        if has_edit && name != ToolName::EditFile {
+            return Err((
+                "unexpected_edit",
+                "Only edit_file accepts find and replace.",
+            ));
+        }
+        if has_to && name != ToolName::MoveFile {
+            return Err((
+                "unexpected_destination",
+                "Only move_file accepts a destination.",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -166,6 +182,9 @@ impl TypedToolArgs {
         let mut args: Self =
             serde_json::from_str(raw).map_err(|_| "invalid tool arguments or fields")?;
         args.path = normalized_path(&args.path)?;
+        if let Some(to) = &args.to {
+            args.to = Some(normalized_path(to)?);
+        }
         if let Some(query) = &args.query {
             args.query = Some(validated_query(query)?);
         }
@@ -308,7 +327,10 @@ impl WorkspaceReader {
             ),
             // A read capability cannot write. The runner routes a write to the
             // separate WorkspaceWriter; reaching here is a routing fault.
-            ToolName::WriteFile | ToolName::EditFile => ToolResult::failure(
+            ToolName::WriteFile
+            | ToolName::EditFile
+            | ToolName::DeleteFile
+            | ToolName::MoveFile => ToolResult::failure(
                 ToolStatus::Denied,
                 "not_a_write_capability",
                 "This capability only reads.",
@@ -658,6 +680,8 @@ impl WorkspaceWriter {
                 args.find.as_deref().unwrap_or(""),
                 args.replace.as_deref().unwrap_or(""),
             ),
+            ToolName::DeleteFile => self.delete_file(&args.path),
+            ToolName::MoveFile => self.move_file(&args.path, args.to.as_deref().unwrap_or("")),
             // The reader owns the read tools; a non-mutating name here is a fault.
             _ => ToolResult::failure(
                 ToolStatus::Denied,
@@ -760,6 +784,53 @@ impl WorkspaceWriter {
             );
         }
         self.atomic_replace(path, &updated, "edited")
+    }
+
+    /// Remove one regular file. Only a regular file: a symbolic link or a
+    /// directory is refused, so a delete never removes curated structure or
+    /// reaches outside the root, and a missing file is an error, not a success.
+    pub fn delete_file(&self, path: &str) -> ToolResult {
+        match self.target_state(path, true) {
+            Ok(true) => {}
+            Ok(false) => return io_failure(ErrorKind::NotFound),
+            Err(denial) => return denial,
+        }
+        if let Err(error) = self.root.remove_file(path) {
+            return io_failure(error.kind());
+        }
+        let mut result = ToolResult::success(None);
+        result.body =
+            serde_json::to_string(&json!({ "deleted": path })).expect("fixed delete result shape");
+        result
+    }
+
+    /// Rename one regular file inside the capability. The source must be a
+    /// regular file; the destination must not already exist, so a move never
+    /// silently overwrites another file. The rename is atomic.
+    pub fn move_file(&self, from: &str, to: &str) -> ToolResult {
+        match self.target_state(from, true) {
+            Ok(true) => {}
+            Ok(false) => return io_failure(ErrorKind::NotFound),
+            Err(denial) => return denial,
+        }
+        match self.target_state(to, false) {
+            Ok(false) => {}
+            Ok(true) => {
+                return ToolResult::failure(
+                    ToolStatus::Denied,
+                    "destination_exists",
+                    "The destination already exists; move never overwrites.",
+                );
+            }
+            Err(denial) => return denial,
+        }
+        if let Err(error) = self.root.rename(from, &self.root, to) {
+            return io_failure(error.kind());
+        }
+        let mut result = ToolResult::success(None);
+        result.body = serde_json::to_string(&json!({ "moved": from, "to": to }))
+            .expect("fixed move result shape");
+        result
     }
 
     /// Refuse to write through a symlink or over a directory. Returns whether
@@ -1346,6 +1417,108 @@ language=note
                 .execute(ToolName::WriteFile, "note.txt", MAX_TOOL_BYTES, None);
         assert_eq!(denied.status, ToolStatus::Denied);
         assert_eq!(denied.error.unwrap().code, "not_a_write_capability");
+    }
+
+    #[test]
+    fn delete_removes_a_regular_file_and_refuses_structure() {
+        let fixture = Fixture::new();
+        fixture.write("gone.txt", "bye");
+        std::fs::create_dir(fixture.root.join("workspace/adir")).unwrap();
+        let workspace = fixture.root.join("workspace");
+        std::fs::write(fixture.root.join("outside.txt"), "keep").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(fixture.root.join("outside.txt"), workspace.join("link"))
+            .unwrap();
+        let writer = fixture.writer();
+
+        assert_eq!(writer.delete_file("gone.txt").status, ToolStatus::Ok);
+        assert!(!workspace.join("gone.txt").exists());
+
+        // A directory, a missing file, and an escaping path are all refused.
+        assert_eq!(writer.delete_file("adir").error.unwrap().code, "not_a_file");
+        assert_eq!(
+            writer.delete_file("absent.txt").error.unwrap().code,
+            "not_found"
+        );
+        assert_eq!(
+            writer.delete_file("../outside.txt").error.unwrap().code,
+            "invalid_path"
+        );
+        #[cfg(unix)]
+        {
+            // Deleting a symlink is refused, and its target survives.
+            assert_eq!(
+                writer.delete_file("link").error.unwrap().code,
+                "symlink_target"
+            );
+            assert!(workspace.join("link").exists());
+            assert_eq!(
+                std::fs::read_to_string(fixture.root.join("outside.txt")).unwrap(),
+                "keep"
+            );
+        }
+    }
+
+    #[test]
+    fn move_renames_a_file_and_never_overwrites() {
+        let fixture = Fixture::new();
+        fixture.write("from.txt", "payload");
+        fixture.write("occupied.txt", "existing");
+        std::fs::create_dir(fixture.root.join("workspace/sub")).unwrap();
+        let writer = fixture.writer();
+        let workspace = fixture.root.join("workspace");
+
+        // A plain rename into an existing directory.
+        assert_eq!(
+            writer.move_file("from.txt", "sub/to.txt").status,
+            ToolStatus::Ok
+        );
+        assert!(!workspace.join("from.txt").exists());
+        assert_eq!(fixture.read_back("sub/to.txt"), "payload");
+
+        // The source must exist; a missing source is not-found.
+        assert_eq!(
+            writer
+                .move_file("from.txt", "elsewhere.txt")
+                .error
+                .unwrap()
+                .code,
+            "not_found"
+        );
+        // Never overwrite: an existing destination is refused, both files intact.
+        assert_eq!(
+            writer
+                .move_file("sub/to.txt", "occupied.txt")
+                .error
+                .unwrap()
+                .code,
+            "destination_exists"
+        );
+        assert_eq!(fixture.read_back("occupied.txt"), "existing");
+        assert_eq!(fixture.read_back("sub/to.txt"), "payload");
+        // A destination whose parent is missing is not-found; escaping is denied.
+        assert_eq!(
+            writer
+                .move_file("sub/to.txt", "nodir/x.txt")
+                .error
+                .unwrap()
+                .code,
+            "not_found"
+        );
+        assert!(TypedToolArgs::parse(r#"{"path":"a","to":"../x"}"#).is_err());
+    }
+
+    #[test]
+    fn shape_gates_every_tool_field() {
+        // move needs a destination and nothing else; delete needs only a path.
+        let mv = TypedToolArgs::parse(r#"{"path":"a","to":"b"}"#).unwrap();
+        assert!(mv.shape_for(ToolName::MoveFile).is_ok());
+        assert!(mv.shape_for(ToolName::DeleteFile).is_err());
+        let del = TypedToolArgs::parse(r#"{"path":"a"}"#).unwrap();
+        assert!(del.shape_for(ToolName::DeleteFile).is_ok());
+        assert!(del.shape_for(ToolName::MoveFile).is_err());
+        // A destination on a non-move tool is rejected.
+        assert!(mv.shape_for(ToolName::WriteFile).is_err());
     }
 
     #[test]

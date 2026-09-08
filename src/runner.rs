@@ -848,6 +848,8 @@ pub async fn run_admitted_with_text(
                         "search_files" => Some(ToolName::SearchFiles),
                         "write_file" => Some(ToolName::WriteFile),
                         "edit_file" => Some(ToolName::EditFile),
+                        "delete_file" => Some(ToolName::DeleteFile),
+                        "move_file" => Some(ToolName::MoveFile),
                         _ => None,
                     };
                     let args = TypedToolArgs::parse(&call.arguments);

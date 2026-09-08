@@ -126,8 +126,15 @@ lands in the wrong place. It runs through the same `WorkspaceWriter`, the same
 symlink and directory guards, the same atomic replace, and the same bar on write
 tools in checked runs.
 
-**Still deferred, and gated the same way.** Deletion, move, and shell or command
-execution are larger surfaces. Shell execution especially is a
+**`delete_file` and `move_file` complete the file-mutation set, same capability.**
+Delete removes only a regular file, refusing a directory or a symbolic link so it
+cannot remove curated structure or follow a link outside the root; a missing file
+is an error. Move renames a regular file and refuses a destination that already
+exists, so it never silently overwrites. Both run through the same
+`WorkspaceWriter` and the same checked-run bar.
+
+**Still deferred, and gated the same way.** Shell or command execution is the
+remaining surface, and the largest. Shell execution especially is a
 different trust class: arbitrary process spawning, argument-vector construction,
 output bounding, and its own timeout and reconciliation. Each earns its place
 against a demonstrated task, with its own effect-specific authority and confirm

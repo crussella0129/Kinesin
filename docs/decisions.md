@@ -107,8 +107,10 @@ to leave the root, follow a symlink, or overwrite a directory; and a bar on writ
 tools in checked runs, since a run that could plant the value it later reads would
 certify its own change. `edit_file` follows: it replaces one
 unique passage through the same capability and guards, refusing an absent or
-ambiguous match rather than editing the wrong place. Deletion and move are the
-next increments and are not built yet. See [security](security.md).
+ambiguous match rather than editing the wrong place. `delete_file` and `move_file` complete
+the file-mutation set: delete removes only a regular file, and move refuses to
+overwrite an existing destination. Shell execution is the remaining, and largest,
+deferred surface. See [security](security.md).
 
 **Custom VPN/gateway.** An existing OS route reaches private inference already.
 A gateway must earn its place through authentication, policy, queueing, or

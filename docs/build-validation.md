@@ -588,9 +588,14 @@ match cannot edit and an ambiguous one is refused rather than guessed, so an edi
 never lands in the wrong place. It requires the file to exist, refuses a file
 larger than the editable bound rather than truncating, and is atomic. Four more
 tests cover the unique-match contract, the existence and byte bounds, the
-argument shape, and a freeform edit end to end. Deletion, move, and shell
-execution remain deferred, gated the same way, with shell called out as a
-distinct process-spawning trust class. The suite is 192 offline tests.
+argument shape, and a freeform edit end to end. `delete_file` and `move_file` then completed the file-mutation set on the same
+capability. Delete removes only a regular file, refusing a directory or symbolic
+link, with a missing file an error. Move renames a regular file and refuses a
+destination that already exists, so it never silently overwrites. Three more tests
+cover the delete structure refusals, the move no-overwrite and source/destination
+rules, and the argument shape for both. Shell or command execution remains the one
+deferred write surface, and the largest: a distinct process-spawning trust class.
+The suite is 195 offline tests.
 
 ## Original intent and remaining exposure evidence
 

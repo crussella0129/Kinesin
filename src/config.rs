@@ -91,6 +91,8 @@ pub enum ToolName {
     SearchFiles,
     WriteFile,
     EditFile,
+    DeleteFile,
+    MoveFile,
 }
 
 impl ToolName {
@@ -101,6 +103,8 @@ impl ToolName {
             Self::SearchFiles => "search_files",
             Self::WriteFile => "write_file",
             Self::EditFile => "edit_file",
+            Self::DeleteFile => "delete_file",
+            Self::MoveFile => "move_file",
         }
     }
 
@@ -108,7 +112,10 @@ impl ToolName {
     /// tools are barred from checked runs, because a run that could write the
     /// value it later reads would defeat the acceptance contract.
     pub fn is_mutating(self) -> bool {
-        matches!(self, Self::WriteFile | Self::EditFile)
+        matches!(
+            self,
+            Self::WriteFile | Self::EditFile | Self::DeleteFile | Self::MoveFile
+        )
     }
 
     /// Only a complete successful read mints evidence. A listing or a search

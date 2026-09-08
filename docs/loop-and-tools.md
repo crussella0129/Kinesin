@@ -134,8 +134,9 @@ The real request includes this in its `tools` array, with the other chat fields.
 Use typed structs with unknown-field rejection and a shared lexical path
 validator. Do not write a general JSON Schema engine for a fixed tool set.
 
-Five tools are offered. The first three only read; `write_file` and `edit_file`
-change the workspace and are gated separately (see below and [security](security.md)).
+Seven tools are offered. The first three only read; `write_file`, `edit_file`,
+`delete_file`, and `move_file` change the workspace and are gated separately (see
+below and [security](security.md)).
 
 | Tool | Arguments | Returns | Mints evidence |
 |------|-----------|---------|----------------|
@@ -144,6 +145,8 @@ change the workspace and are gated separately (see below and [security](security
 | `search_files` | `path`, `query`, optional `case_sensitive` | Matching file names and one-based line numbers below `path` | No |
 | `write_file` | `path`, `content` | Bytes written; replaces one file atomically | No |
 | `edit_file` | `path`, `find`, `replace` | Bytes written; replaces one unique passage | No |
+| `delete_file` | `path` | Removes one regular file | No |
+| `move_file` | `path`, `to` | Renames one file; never overwrites | No |
 
 `search_files` exists because listing and reading alone cannot answer "which
 file mentions this" without walking the tree one directory at a time, spending
@@ -188,6 +191,12 @@ once**: an absent passage cannot edit, and an ambiguous one is refused rather th
 guessed, so an edit is never applied to the wrong place. It shares `write_file`'s
 capability and guards, requires the file to already exist, refuses a file larger
 than the editable bound rather than truncating it, and is atomic.
+
+`delete_file` removes one **regular** file. A directory or a symbolic link is
+refused, so it never removes curated structure or reaches outside the root, and a
+missing file is an error rather than a silent success. `move_file` renames one
+regular file, and the destination must not already exist, so a move never
+silently overwrites another file. Both share the writer's capability and guards.
 
 A **checked** task cannot enable any mutating tool. If a run could edit a file it
 then reads, it could plant the value a criterion checks and cite its own change as
