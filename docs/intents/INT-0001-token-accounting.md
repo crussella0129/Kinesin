@@ -2,8 +2,8 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0001
-- **State:** proposed
-- **Work evidence:** none
+- **State:** planned
+- **Work evidence:** [T-001 build plan](../sprints/s0/sprint-plans/build-plan.md#t-001-parse-and-carry-usage-out-of-koil)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -34,8 +34,14 @@ A separate telemetry module (premature; owned timing records already exist).
 Per-span token attribution (deferred; larger and not yet needed).
 
 ## Consequences
-Adds fields to the run record; a storage-schema version bump and a replay
-compatibility decision for older captures.
+Adds optional token fields to the journalled events and the terminal `counters`.
+Research established these ride in the existing schemaless `data_json` column, so
+**no SQLite schema migration is required**. The added fields are additive and
+optional, so replay of older captures is unaffected; the one replay interaction
+is that requesting streamed usage changes the streaming request fingerprint, so
+any streaming replay capture must be re-recorded or confirmed absent.
 
 ## Transition history
 - 2026-09-08: created as `proposed`.
+- 2026-09-08: `proposed → planned`; selected for sprint 0 and linked to T-001 in the build plan.
+- 2026-09-08: amended Consequences after research — no SQLite migration is needed (usage rides in schemaless event data); the only replay interaction is the streaming request fingerprint change.

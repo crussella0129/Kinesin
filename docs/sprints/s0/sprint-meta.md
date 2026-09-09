@@ -8,6 +8,6 @@
 - **Bundle version:** 0.22.0
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
-- **Summary:** (one-line description of sprint goal, filled after Plan Phase)
-- **Intents:** (filled after Plan Phase)
+- **Summary:** Record and surface per-run model token usage (INT-0001).
+- **Intents:** [INT-0001](../../intents/INT-0001-token-accounting.md) — planned
 - **Completion evidence:** (filled at Loop Phase)
