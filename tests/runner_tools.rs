@@ -841,7 +841,59 @@ retries=1
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn usage_is_journalled_per_call_and_summed_into_terminal_counters() {
+async fn model_finished_carries_tokens_when_reported() {
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(CONFIG);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Say hello.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    // A single call that reports its usage.
+    let client = ModelClient::scripted([ScriptStep {
+        delay: Duration::ZERO,
+        reply: ModelReply::Answer("done".into()),
+        usage: Some(Usage {
+            prompt_tokens: 40,
+            completion_tokens: 8,
+        }),
+    }]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+
+    // The call journals the tokens it reported into its model_finished event.
+    let finished: Vec<_> = events
+        .iter()
+        .filter(|event| event.kind == "model_finished")
+        .collect();
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].data["prompt_tokens"], 40);
+    assert_eq!(finished[0].data["completion_tokens"], 8);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reported_usage_accumulates_into_terminal_counters() {
     let fixture = Fixture::new(&[("project.txt", SOURCE)]);
     let config = fixture.config(CONFIG);
     let authority = config
@@ -856,6 +908,7 @@ async fn usage_is_journalled_per_call_and_summed_into_terminal_counters() {
         .unwrap();
     let storage = fixture.storage().await;
     let store = storage.client();
+    // Two calls, each reporting usage.
     let client = ModelClient::scripted([
         ScriptStep {
             delay: Duration::ZERO,
@@ -891,17 +944,7 @@ async fn usage_is_journalled_per_call_and_summed_into_terminal_counters() {
     let events = events(&store, &authority).await;
     storage.shutdown().await.unwrap();
 
-    // Each model call journals the tokens it reported.
-    let finished: Vec<_> = events
-        .iter()
-        .filter(|event| event.kind == "model_finished")
-        .collect();
-    assert_eq!(finished.len(), 2);
-    assert_eq!(finished[0].data["prompt_tokens"], 40);
-    assert_eq!(finished[0].data["completion_tokens"], 8);
-    assert_eq!(finished[1].data["prompt_tokens"], 55);
-    assert_eq!(finished[1].data["completion_tokens"], 12);
-    // The terminal counters sum them.
+    // The terminal counters sum the tokens across both calls.
     let counters = &events
         .iter()
         .find(|event| event.kind == "run_finished")
