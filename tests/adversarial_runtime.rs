@@ -102,6 +102,7 @@ async fn inbox_capacity_expiry_settles_the_run_within_its_one_time_grace() {
     let model = ModelClient::scripted([ScriptStep {
         delay: Duration::from_millis(200),
         reply: ModelReply::Answer("candidate".into()),
+        usage: None,
     }]);
     let running = tokio::spawn(run_admitted(
         authority,

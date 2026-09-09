@@ -428,6 +428,11 @@ enum OutputLine {
         record: Box<RunRecord>,
         events: Vec<EventSummary>,
         events_complete: bool,
+        /// The terminal `run_finished` counters (model turns, tool calls, and
+        /// token totals when any call reported usage). The event summaries drop
+        /// event bodies, so these are lifted out for the reader.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        counters: Option<serde_json::Value>,
     },
     Exported {
         run_id: String,
@@ -776,6 +781,7 @@ async fn operator_action(command: CliCommand, store: &StorageClient) -> Result<O
         CliCommand::Inspect(command) => {
             let run = retained_run(store, command.run).await?;
             let mut summaries = Vec::new();
+            let mut counters = None;
             let mut after = None;
             let complete = loop {
                 let page = event_page(store, &run.run_id, after, 100).await?;
@@ -787,6 +793,11 @@ async fn operator_action(command: CliCommand, store: &StorageClient) -> Result<O
                         break;
                     }
                     after = Some(event.seq);
+                    // The terminal event carries the run's counters; lift them
+                    // out before the summary drops the event body.
+                    if event.kind == "run_finished" {
+                        counters = event.data.get("counters").cloned();
+                    }
                     summaries.push(EventSummary {
                         seq: event.seq,
                         kind: event.kind,
@@ -802,6 +813,7 @@ async fn operator_action(command: CliCommand, store: &StorageClient) -> Result<O
                 record: Box::new(run),
                 events: summaries,
                 events_complete: complete,
+                counters,
             })
         }
         CliCommand::Export(command) => {
@@ -1570,8 +1582,9 @@ mod tests {
                     )
                 };
                 let reply =
-                    json!({"choices":[{"index":0,"finish_reason":reason,"message":message}]})
-                        .to_string();
+                    json!({"choices":[{"index":0,"finish_reason":reason,"message":message}],
+                    "usage":{"prompt_tokens":11,"completion_tokens":3,"total_tokens":14}})
+                    .to_string();
                 write!(&mut connection, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", reply.len(), reply).unwrap();
                 connection.flush().unwrap();
             }
@@ -1597,6 +1610,124 @@ mod tests {
         assert_eq!(records.len(), 6);
         assert!(records.iter().all(RunRecord::task_accepted));
         assert!(records.iter().all(|record| record.receipt.is_some()));
+        drop(store);
+    }
+
+    #[test]
+    fn test_cli_run_records_token_totals() {
+        use crate::config::test_support::BASE;
+        use crate::storage::{Command, Response, Store};
+        use serde_json::json;
+        use std::io::Read;
+        use std::net::TcpListener;
+        use std::time::Duration;
+
+        // End to end through the real CLI surface, loopback HTTP and SQLite: a
+        // freeform run whose one reply carries a `usage` object records the
+        // reported prompt and completion tokens in the stored run's terminal
+        // counters, read back through the run record.
+        let fixture = Fixture::new();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let source = BASE.replace("http://127.0.0.1:8080", &origin);
+        std::fs::write(fixture.path(), source).unwrap();
+
+        let accept_deadline = Duration::from_secs(60);
+        let provider = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + accept_deadline;
+            let (mut connection, _) = loop {
+                match listener.accept() {
+                    Ok(connection) => break connection,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(
+                            std::time::Instant::now() < deadline,
+                            "provider fixture request deadline"
+                        );
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    Err(error) => panic!("provider fixture accept failed: {error}"),
+                }
+            };
+            connection.set_nonblocking(false).unwrap();
+            connection
+                .set_read_timeout(Some(Duration::from_secs(30)))
+                .unwrap();
+            let mut header = Vec::new();
+            while !header.ends_with(b"\r\n\r\n") {
+                assert!(header.len() < 16_384);
+                let mut byte = [0];
+                connection.read_exact(&mut byte).unwrap();
+                header.push(byte[0]);
+            }
+            let header = String::from_utf8(header).unwrap();
+            let length: usize = header
+                .lines()
+                .find_map(|line| {
+                    line.to_ascii_lowercase()
+                        .strip_prefix("content-length:")
+                        .map(|value| value.trim().parse().unwrap())
+                })
+                .unwrap();
+            let mut body = vec![0; length];
+            connection.read_exact(&mut body).unwrap();
+            // The model answers directly; its reply reports usage.
+            let reply = json!({
+                "choices":[{"index":0,"finish_reason":"stop",
+                    "message":{"role":"assistant","content":"hello"}}],
+                "usage":{"prompt_tokens":17,"completion_tokens":4,"total_tokens":21}})
+            .to_string();
+            write!(&mut connection, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", reply.len(), reply).unwrap();
+            connection.flush().unwrap();
+        });
+
+        let command = parse(args(&[
+            "run",
+            "--config",
+            &fixture.path().to_string_lossy(),
+            "--workspace",
+            "practice",
+            "--model",
+            "local",
+            "--prompt",
+            "Say hello.",
+            "--allow-unchecked",
+        ]))
+        .unwrap();
+        let result = execute(command);
+        provider.join().unwrap();
+        result.unwrap();
+
+        let mut store = Store::open(&fixture.root.join("state/kinesin.sqlite")).unwrap();
+        let Response::Runs(records) = store
+            .execute(Command::List {
+                owner_id: "local".into(),
+                after: None,
+                limit: 100,
+            })
+            .unwrap()
+        else {
+            panic!("run page")
+        };
+        assert_eq!(records.len(), 1);
+        let Response::Events(events) = store
+            .execute(Command::Events {
+                owner_id: "local".into(),
+                run_id: records[0].run_id.clone(),
+                after: None,
+                limit: 100,
+            })
+            .unwrap()
+        else {
+            panic!("event page")
+        };
+        let counters = &events
+            .iter()
+            .find(|event| event.kind == "run_finished")
+            .unwrap()
+            .data["counters"];
+        assert_eq!(counters["prompt_tokens"], 17);
+        assert_eq!(counters["completion_tokens"], 4);
         drop(store);
     }
 }

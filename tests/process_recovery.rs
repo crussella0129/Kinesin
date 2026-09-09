@@ -390,7 +390,7 @@ fn process_checkpoint_child() {
             journal.append("model_planned", json!({"effect_id":"model-0","request_sha256":prepared.sha256(),"request_bytes":prepared.bytes().len(),"model_profile":"local"})).await;
             if stage == "assessed" {
                 state.model_started().unwrap();
-                let observation = model.send(&prepared).await.unwrap();
+                let observation = model.send(&prepared).await.unwrap().reply;
                 journal.append("model_finished", json!({"effect_id":"model-0","dispatch":"attempted","classification":"tool_calls"})).await;
                 let Effect::Tools(calls) = state.observe_model(observation).unwrap() else { panic!("expected read effect") };
                 assert_eq!(calls.len(), 1);
@@ -405,7 +405,7 @@ fn process_checkpoint_child() {
                 let prepared = model::prepare(state.messages(), &options(&authority)).unwrap();
                 journal.append("model_planned", json!({"effect_id":"model-1","request_sha256":prepared.sha256(),"request_bytes":prepared.bytes().len(),"model_profile":"local"})).await;
                 state.model_started().unwrap();
-                let observation = model.send(&prepared).await.unwrap();
+                let observation = model.send(&prepared).await.unwrap().reply;
                 journal.append("model_finished", json!({"effect_id":"model-1","dispatch":"attempted","classification":"answer"})).await;
                 // A checked run answers twice. The prose turn proposes one more
                 // model effect, and that turn withdraws tools for its constraint.
@@ -414,7 +414,7 @@ fn process_checkpoint_child() {
                 let prepared = model::prepare(state.messages(), &finalize_options(&authority)).unwrap();
                 journal.append("model_planned", json!({"effect_id":"model-2","request_sha256":prepared.sha256(),"request_bytes":prepared.bytes().len(),"model_profile":"local"})).await;
                 state.model_started().unwrap();
-                let observation = model.send(&prepared).await.unwrap();
+                let observation = model.send(&prepared).await.unwrap().reply;
                 journal.append("model_finished", json!({"effect_id":"model-2","dispatch":"attempted","classification":"answer"})).await;
                 let Effect::Candidate(candidate) = state.observe_model(observation).unwrap() else { panic!("expected candidate") };
                 let receipt = assess(&authority, &candidate, &evidence);

@@ -657,6 +657,7 @@ mod tests {
             client: ModelClient::scripted([ScriptStep {
                 delay: Duration::from_millis(delay_ms),
                 reply: ModelReply::Answer(label.into()),
+                usage: None,
             }]),
             resources: resources.clone(),
             display: None,

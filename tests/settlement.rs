@@ -69,6 +69,7 @@ temperature = 0.0
     let client = ModelClient::scripted([ScriptStep {
         delay: Duration::from_millis(150),
         reply: ModelReply::Answer("candidate".into()),
+        usage: None,
     }]);
     let cancel = CancellationToken::new();
     let owner = tokio::spawn(run_admitted(

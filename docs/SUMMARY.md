@@ -1,0 +1,12 @@
+# Summary
+- [Project Book](README.md)
+- [Intents](intents/README.md)
+  - [INT-0001 Token accounting](intents/INT-0001-token-accounting.md)
+  - [INT-0002 Context compaction](intents/INT-0002-context-compaction.md)
+  - [INT-0003 Shell / command execution](intents/INT-0003-shell-execution.md)
+  - [INT-0004 KV-cache reuse](intents/INT-0004-kv-cache-reuse.md)
+  - [INT-0005 MCP tool servers](intents/INT-0005-mcp-tool-servers.md)
+  - [INT-0006 Skills and progressive disclosure](intents/INT-0006-skills-progressive-disclosure.md)
+- [Tasks](work/tasks.md)
+- [Completed tasks](work/completed-tasks.md)
+- [Sprint 0](sprints/s0/sprint-meta.md)

@@ -144,6 +144,7 @@ fn scripted_job(authority: RunAuthority, resources: &RunResources, delay_ms: u64
         client: ModelClient::scripted([ScriptStep {
             delay: Duration::from_millis(delay_ms),
             reply: ModelReply::Answer("synthetic candidate".into()),
+            usage: None,
         }]),
         resources: resources.clone(),
         display: None,

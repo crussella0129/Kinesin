@@ -264,7 +264,11 @@ async fn capture_stop(scenario: StopScenario) -> (Snapshot, usize) {
     } else {
         ModelReply::Answer("candidate retained through stop".into())
     };
-    let model = ModelClient::scripted([ScriptStep { delay, reply }]);
+    let model = ModelClient::scripted([ScriptStep {
+        delay,
+        reply,
+        usage: None,
+    }]);
     let cancel = CancellationToken::new();
     if matches!(scenario, StopScenario::BeforeStart) {
         cancel.cancel();

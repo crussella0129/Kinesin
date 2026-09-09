@@ -3,7 +3,7 @@
 
 use kinesin::config::{CaptureMode, Config};
 use kinesin::core::{ModelReply, ToolCall};
-use kinesin::model::ModelClient;
+use kinesin::model::{ModelClient, ScriptStep, Usage};
 use kinesin::policy::{RunAuthority, Submission, sha256};
 use kinesin::runner::{RunResources, admit, run_admitted};
 use kinesin::storage::{Command, Event, QueueLimits, Response, RunRecord, Storage, StorageClient};
@@ -838,4 +838,166 @@ retries=1
     assert_eq!(edit.data["dispatch"], "executed");
     assert_eq!(record.phase, "completed");
     assert_eq!(record.acceptance_status, "unchecked");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn model_finished_carries_tokens_when_reported() {
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(CONFIG);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Say hello.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    // A single call that reports its usage.
+    let client = ModelClient::scripted([ScriptStep {
+        delay: Duration::ZERO,
+        reply: ModelReply::Answer("done".into()),
+        usage: Some(Usage {
+            prompt_tokens: 40,
+            completion_tokens: 8,
+        }),
+    }]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+
+    // The call journals the tokens it reported into its model_finished event.
+    let finished: Vec<_> = events
+        .iter()
+        .filter(|event| event.kind == "model_finished")
+        .collect();
+    assert_eq!(finished.len(), 1);
+    assert_eq!(finished[0].data["prompt_tokens"], 40);
+    assert_eq!(finished[0].data["completion_tokens"], 8);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reported_usage_accumulates_into_terminal_counters() {
+    let fixture = Fixture::new(&[("project.txt", SOURCE)]);
+    let config = fixture.config(CONFIG);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Read project.txt.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    // Two calls, each reporting usage.
+    let client = ModelClient::scripted([
+        ScriptStep {
+            delay: Duration::ZERO,
+            reply: batch(vec![read("r1", "project.txt")]),
+            usage: Some(Usage {
+                prompt_tokens: 40,
+                completion_tokens: 8,
+            }),
+        },
+        ScriptStep {
+            delay: Duration::ZERO,
+            reply: ModelReply::Answer("done".into()),
+            usage: Some(Usage {
+                prompt_tokens: 55,
+                completion_tokens: 12,
+            }),
+        },
+    ]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+
+    // The terminal counters sum the tokens across both calls.
+    let counters = &events
+        .iter()
+        .find(|event| event.kind == "run_finished")
+        .unwrap()
+        .data["counters"];
+    assert_eq!(counters["prompt_tokens"], 95);
+    assert_eq!(counters["completion_tokens"], 20);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn absent_usage_omits_token_totals() {
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(CONFIG);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Say hello.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    // A bare reply reports no usage.
+    let client = ModelClient::scripted([ModelReply::Answer("hello".into()).into()]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+
+    let counters = &events
+        .iter()
+        .find(|event| event.kind == "run_finished")
+        .unwrap()
+        .data["counters"];
+    assert_eq!(counters["model_turns"], 1);
+    assert!(
+        counters.get("prompt_tokens").is_none(),
+        "unreported usage stays unknown, not zero"
+    );
+    assert!(counters.get("completion_tokens").is_none());
 }

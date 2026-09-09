@@ -5,6 +5,11 @@ use kinesin::core::{self, ModelReply};
 use kinesin::model::{
     ModelClient, ModelOptions, StreamDecoder, TextObserver, decode_reply, prepare,
 };
+
+/// The protocol tests assert on the decoded reply; usage is exercised separately.
+fn decoded(bytes: &[u8]) -> Result<kinesin::core::ModelReply, String> {
+    decode_reply(bytes).map(|outcome| outcome.reply)
+}
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -24,33 +29,33 @@ fn full_reply_validation_never_promotes_partial_calls() {
         "name":"read_file","arguments":"{\"path\":\"project.txt\"}"
     }});
     let tools = json!([call.clone()]);
-    let valid = decode_reply(&response(Value::Null, tools.clone(), "tool_calls")).unwrap();
+    let valid = decoded(&response(Value::Null, tools.clone(), "tool_calls")).unwrap();
     assert!(matches!(valid, ModelReply::ToolCalls {calls,..} if calls.len()==1));
     assert!(matches!(
-        decode_reply(&response(Value::Null, tools.clone(), "length")).unwrap(),
+        decoded(&response(Value::Null, tools.clone(), "length")).unwrap(),
         ModelReply::Incomplete(_)
     ));
-    assert!(decode_reply(&response(json!("done"), tools, "stop")).is_err());
+    assert!(decoded(&response(json!("done"), tools, "stop")).is_err());
     assert!(
-        decode_reply(&response(
+        decoded(&response(
             Value::Null,
             json!([call.clone(), call]),
             "tool_calls"
         ))
         .is_err()
     );
-    assert!(decode_reply(&response(json!(""), Value::Null, "stop")).is_err());
-    assert!(decode_reply(br#"{"choices":[],"choices":[]}"#).is_err());
-    assert!(decode_reply(&response(json!("Answer"), Value::Null, "mystery")).is_err());
+    assert!(decoded(&response(json!(""), Value::Null, "stop")).is_err());
+    assert!(decoded(br#"{"choices":[],"choices":[]}"#).is_err());
+    assert!(decoded(&response(json!("Answer"), Value::Null, "mystery")).is_err());
     let mut contradictory: Value =
         serde_json::from_slice(&response(json!("Answer"), Value::Null, "stop")).unwrap();
     contradictory["error"] = json!({"message":"failed"});
     assert_eq!(
-        decode_reply(&serde_json::to_vec(&contradictory).unwrap()).unwrap_err(),
+        decoded(&serde_json::to_vec(&contradictory).unwrap()).unwrap_err(),
         "provider_error"
     );
     assert_eq!(
-        decode_reply(&response(
+        decoded(&response(
             json!("Use read_file(project.txt)"),
             Value::Null,
             "stop"
@@ -166,7 +171,7 @@ async fn http_sends_exact_prepared_bytes_and_normalizes_the_reply() {
     let prepared = request(&origin);
     let client = ModelClient::http(&profile(origin), 1048576).unwrap();
     assert_eq!(
-        client.send(&prepared).await.unwrap(),
+        client.send(&prepared).await.unwrap().reply,
         ModelReply::Answer("observed".into())
     );
     assert_eq!(server.await.unwrap(), prepared.bytes());
@@ -249,7 +254,7 @@ fn text_stream(text: &str) -> String {
 fn parse_stream(bytes: &[u8]) -> Result<ModelReply, String> {
     let mut decoder = StreamDecoder::new(1048576)?;
     decoder.push(bytes)?;
-    decoder.finish()
+    decoder.finish().map(|outcome| outcome.reply)
 }
 
 fn tool(index: usize, id: &str, arguments: &str) -> Value {
@@ -317,7 +322,7 @@ fn actual_pinned_text_and_tool_streams_accept_every_byte_fragment() {
         for byte in bytes {
             decoder.push(std::slice::from_ref(byte)).unwrap();
         }
-        assert_eq!(decoder.finish().unwrap(), expected);
+        assert_eq!(decoder.finish().unwrap().reply, expected);
     }
 }
 
@@ -337,7 +342,10 @@ fn stream_framing_handles_unicode_multiline_data_comments_and_all_line_endings()
             let mut decoder = StreamDecoder::new(bytes.len()).unwrap();
             decoder.push(&bytes[..split]).unwrap();
             decoder.push(&bytes[split..]).unwrap();
-            assert_eq!(decoder.finish().unwrap(), ModelReply::Answer("雪🙂".into()));
+            assert_eq!(
+                decoder.finish().unwrap().reply,
+                ModelReply::Answer("雪🙂".into())
+            );
         }
     }
     // A BOM only has special meaning at the beginning of the stream. Later
@@ -659,7 +667,7 @@ async fn streaming_http_requires_correct_mime_completion_and_run_response_cap() 
     assert!(prepared.is_streaming());
     let client = ModelClient::http(&profile(origin), 1048576).unwrap();
     assert_eq!(
-        client.send(&prepared).await.unwrap(),
+        client.send(&prepared).await.unwrap().reply,
         ModelReply::Answer("雪🙂".into())
     );
     server.await.unwrap();
@@ -701,7 +709,7 @@ async fn text_is_visible_before_completion_but_tool_arguments_and_private_fields
     assert!(!send.is_finished());
     release.send(()).unwrap();
     assert!(
-        matches!(send.await.unwrap().unwrap(),ModelReply::ToolCalls{calls,..} if calls.len()==1)
+        matches!(send.await.unwrap().unwrap().reply,ModelReply::ToolCalls{calls,..} if calls.len()==1)
     );
     assert!(receiver.recv().await.is_none());
     assert!(!receiver.is_lagged());
@@ -716,7 +724,8 @@ async fn display_disconnects_on_lag_and_cannot_block_or_cancel_model_completion(
     let result = client
         .send_with_text(&request_options("scripted", true, 1048576), &mut observer)
         .await
-        .unwrap();
+        .unwrap()
+        .reply;
     assert_eq!(result, ModelReply::Answer(text));
     assert!(receiver.is_lagged());
     let mut messages = 0;
@@ -736,7 +745,8 @@ async fn display_disconnects_on_lag_and_cannot_block_or_cancel_model_completion(
         client
             .send_with_text(&request_options("scripted", true, 1048576), &mut observer)
             .await
-            .unwrap(),
+            .unwrap()
+            .reply,
         ModelReply::Answer("still completed".into())
     );
 }
