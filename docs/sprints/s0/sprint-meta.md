@@ -9,5 +9,5 @@
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
 - **Summary:** Record and surface per-run model token usage (INT-0001).
-- **Intents:** [INT-0001](../../intents/INT-0001-token-accounting.md) — planned
+- **Intents:** [INT-0001](../../intents/INT-0001-token-accounting.md) — realized
 - **Completion evidence:** (filled at Loop Phase)
