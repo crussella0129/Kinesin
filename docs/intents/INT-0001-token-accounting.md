@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0001
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s0/sprint-plans/build-plan.md#t-001-parse-and-carry-usage-out-of-koil)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -45,3 +45,4 @@ any streaming replay capture must be re-recorded or confirmed absent.
 - 2026-09-08: created as `proposed`.
 - 2026-09-08: `proposed → planned`; selected for sprint 0 and linked to T-001 in the build plan.
 - 2026-09-08: amended Consequences after research — no SQLite migration is needed (usage rides in schemaless event data); the only replay interaction is the streaming request fingerprint change.
+- 2026-09-08: `planned → active`; sprint 0 build began.

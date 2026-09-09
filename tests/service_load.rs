@@ -223,6 +223,7 @@ async fn scenario(rate: u32) -> Report {
     let model = ModelClient::scripted((0..OFFERED).map(|_| ScriptStep {
         delay: MODEL_DELAY,
         reply: ModelReply::Answer("synthetic candidate".into()),
+        usage: None,
     }));
     let shutdown = CancellationToken::new();
     let state = Arc::new(

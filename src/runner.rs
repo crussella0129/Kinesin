@@ -734,7 +734,7 @@ pub async fn run_admitted_with_text(
                     biased;
                     _=cancel.cancelled()=>ModelReply::Failure("cancelled_remote_outcome_unknown".into()),
                     reply=timeout_at(deadline,exchange)=>match reply {
-                        Ok(Ok(reply))=>reply,Ok(Err(reason))=>ModelReply::Failure(reason),
+                        Ok(Ok(outcome))=>outcome.reply,Ok(Err(reason))=>ModelReply::Failure(reason),
                         Err(_)=>ModelReply::Failure("run_deadline_remote_outcome_unknown".into()),
                     }
                 };
@@ -1086,6 +1086,7 @@ pub async fn run_scripted(
     let observation = client
         .send(&prepared)
         .await
+        .map(|outcome| outcome.reply)
         .unwrap_or_else(ModelReply::Failure);
     let effect = state
         .observe_model(observation)
@@ -1159,6 +1160,7 @@ mod tests {
         let client = ModelClient::scripted([ScriptStep {
             delay: Duration::from_millis(100),
             reply: ModelReply::Answer("late".into()),
+            usage: None,
         }]);
         let owner = tokio::spawn(async move {
             run_scripted("System".into(), "User".into(), &client, &options()).await

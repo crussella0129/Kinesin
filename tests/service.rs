@@ -272,6 +272,7 @@ fn final_steps(count: usize, delay: Duration) -> Vec<ScriptStep> {
         .map(|_| ScriptStep {
             delay,
             reply: ModelReply::Answer("candidate-private-marker".into()),
+            usage: None,
         })
         .collect()
 }
@@ -1067,6 +1068,7 @@ async fn live_subscription_observes_terminal_commit_and_completed_wrong_answer_s
         ScriptStep {
             delay: Duration::from_millis(75),
             reply: ModelReply::Answer("I considered the request.".into()),
+            usage: None,
         },
         ScriptStep {
             delay: Duration::ZERO,
@@ -1074,6 +1076,7 @@ async fn live_subscription_observes_terminal_commit_and_completed_wrong_answer_s
             reply: ModelReply::Answer(
                 json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]}).to_string(),
             ),
+            usage: None,
         },
     ];
     let harness = Harness::new(CONFIG, script).await;

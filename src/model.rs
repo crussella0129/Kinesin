@@ -16,6 +16,37 @@ use tokio::sync::mpsc;
 use crate::config::ModelConfig;
 use crate::core::{Message, ModelReply, Role};
 
+/// Model token usage as reported by the provider. A Koil-layer detail, kept off
+/// the pure-core `ModelReply`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Usage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+}
+
+/// A decoded reply paired with the provider's token usage, when it reported any.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModelOutcome {
+    pub reply: ModelReply,
+    pub usage: Option<Usage>,
+}
+
+#[derive(Deserialize)]
+struct WireUsage {
+    #[serde(default)]
+    prompt_tokens: u64,
+    #[serde(default)]
+    completion_tokens: u64,
+}
+impl From<WireUsage> for Usage {
+    fn from(wire: WireUsage) -> Self {
+        Self {
+            prompt_tokens: wire.prompt_tokens,
+            completion_tokens: wire.completion_tokens,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ModelOptions {
     pub origin: String,
@@ -188,6 +219,9 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
 pub struct ScriptStep {
     pub delay: Duration,
     pub reply: ModelReply,
+    /// The usage a scripted step reports, if any. A step built from a bare reply
+    /// reports none, exercising the honest-absence path.
+    pub usage: Option<Usage>,
 }
 
 impl From<ModelReply> for ScriptStep {
@@ -195,6 +229,7 @@ impl From<ModelReply> for ScriptStep {
         Self {
             delay: Duration::ZERO,
             reply,
+            usage: None,
         }
     }
 }
@@ -282,7 +317,7 @@ impl HttpClient {
         &self,
         request: &PreparedRequest,
         mut observer: Option<&mut TextObserver>,
-    ) -> Result<ModelReply, String> {
+    ) -> Result<ModelOutcome, String> {
         if request.origin.trim_end_matches('/') != self.origin {
             return Err("prepared_destination_mismatch".into());
         }
@@ -354,6 +389,8 @@ fn http_error(error: reqwest::Error) -> String {
 struct WireResponse {
     choices: Vec<WireChoice>,
     error: Option<Value>,
+    #[serde(default)]
+    usage: Option<WireUsage>,
 }
 #[derive(Deserialize)]
 struct WireChoice {
@@ -381,26 +418,30 @@ struct WireFunction {
     arguments: String,
 }
 
-pub fn decode_reply(bytes: &[u8]) -> Result<ModelReply, String> {
+pub fn decode_reply(bytes: &[u8]) -> Result<ModelOutcome, String> {
     let wire: WireResponse = serde_json::from_slice(bytes).map_err(|_| "invalid_provider_json")?;
     if wire.error.is_some() {
         return Err("provider_error".into());
     }
+    let usage = wire.usage.map(Usage::from);
     let [choice] =
         <[WireChoice; 1]>::try_from(wire.choices).map_err(|_| "protocol_choice_count")?;
     if choice.index != 0 || choice.message.role != "assistant" {
         return Err("protocol_choice_or_role".into());
     }
     if choice.finish_reason == "length" {
-        return Ok(ModelReply::Incomplete("generation_length".into()));
+        return Ok(ModelOutcome {
+            reply: ModelReply::Incomplete("generation_length".into()),
+            usage,
+        });
     }
-    match choice.finish_reason.as_str() {
+    let reply = match choice.finish_reason.as_str() {
         "stop" if choice.message.tool_calls.is_empty() => {
             let content = choice.message.content.ok_or("empty_response")?;
             if content.trim().is_empty() {
                 return Err("empty_response".into());
             }
-            Ok(ModelReply::Answer(content))
+            ModelReply::Answer(content)
         }
         "tool_calls" if !choice.message.tool_calls.is_empty() => {
             let mut ids = std::collections::HashSet::new();
@@ -426,13 +467,14 @@ pub fn decode_reply(bytes: &[u8]) -> Result<ModelReply, String> {
                     })
                 })
                 .collect::<Result<Vec<_>, String>>()?;
-            Ok(ModelReply::ToolCalls {
+            ModelReply::ToolCalls {
                 content: choice.message.content,
                 calls,
-            })
+            }
         }
-        _ => Err("protocol_finish_reason".into()),
-    }
+        _ => return Err("protocol_finish_reason".into()),
+    };
+    Ok(ModelOutcome { reply, usage })
 }
 
 impl ModelClient {
@@ -499,7 +541,7 @@ impl ModelClient {
         }
     }
 
-    pub async fn send(&self, request: &PreparedRequest) -> Result<ModelReply, String> {
+    pub async fn send(&self, request: &PreparedRequest) -> Result<ModelOutcome, String> {
         self.send_inner(request, None).await
     }
 
@@ -509,7 +551,7 @@ impl ModelClient {
         &self,
         request: &PreparedRequest,
         observer: &mut TextObserver,
-    ) -> Result<ModelReply, String> {
+    ) -> Result<ModelOutcome, String> {
         self.send_inner(request, Some(observer)).await
     }
 
@@ -517,7 +559,7 @@ impl ModelClient {
         &self,
         request: &PreparedRequest,
         observer: Option<&mut TextObserver>,
-    ) -> Result<ModelReply, String> {
+    ) -> Result<ModelOutcome, String> {
         match self {
             Self::Http(client) => client.send(request, observer).await,
             Self::Scripted(client) => {
@@ -541,7 +583,10 @@ impl ModelClient {
                 {
                     observer.emit(text);
                 }
-                Ok(step.reply)
+                Ok(ModelOutcome {
+                    reply: step.reply,
+                    usage: step.usage,
+                })
             }
         }
     }
@@ -778,7 +823,7 @@ impl StreamDecoder {
         }
         Ok(())
     }
-    pub fn finish(mut self) -> Result<ModelReply, String> {
+    pub fn finish(mut self) -> Result<ModelOutcome, String> {
         if let Some(problem) = self.failed {
             return Err(problem);
         }
@@ -796,7 +841,7 @@ impl StreamDecoder {
 #[derive(Deserialize)]
 struct StreamChunk {
     choices: Vec<StreamChoice>,
-    usage: Option<Value>,
+    usage: Option<WireUsage>,
     error: Option<Value>,
 }
 #[derive(Deserialize)]
@@ -839,7 +884,7 @@ struct StreamingReply {
     tools: BTreeMap<usize, PartialTool>,
     argument_bytes: usize,
     finish_reason: Option<String>,
-    usage_seen: bool,
+    usage: Option<Usage>,
     done: bool,
 }
 
@@ -860,13 +905,10 @@ impl StreamingReply {
             return Err("provider_error".into());
         }
         if chunk.choices.is_empty() {
-            if self.finish_reason.is_none()
-                || self.usage_seen
-                || !chunk.usage.as_ref().is_some_and(Value::is_object)
-            {
+            if self.finish_reason.is_none() || self.usage.is_some() || chunk.usage.is_none() {
                 return Err("protocol_stream_usage".into());
             }
-            self.usage_seen = true;
+            self.usage = chunk.usage.map(Usage::from);
             return Ok(());
         }
         if self.finish_reason.is_some() {
@@ -935,16 +977,20 @@ impl StreamingReply {
         }
         Ok(())
     }
-    fn finish(self) -> Result<ModelReply, String> {
+    fn finish(self) -> Result<ModelOutcome, String> {
         if !self.done {
             return Err("stream_incomplete".into());
         }
         if !self.role_seen {
             return Err("protocol_stream_missing_role".into());
         }
+        let usage = self.usage;
         let reason = self.finish_reason.ok_or("stream_incomplete")?;
         if reason == "length" {
-            return Ok(ModelReply::Incomplete("generation_length".into()));
+            return Ok(ModelOutcome {
+                reply: ModelReply::Incomplete("generation_length".into()),
+                usage,
+            });
         }
         let mut calls = Vec::new();
         let mut ids = std::collections::HashSet::new();
@@ -962,17 +1008,18 @@ impl StreamingReply {
                 arguments: partial.arguments,
             });
         }
-        match reason.as_str() {
+        let reply = match reason.as_str() {
             "stop" if calls.is_empty() && !self.content.trim().is_empty() => {
-                Ok(ModelReply::Answer(self.content))
+                ModelReply::Answer(self.content)
             }
-            "stop" if calls.is_empty() => Err("empty_response".into()),
-            "tool_calls" if !calls.is_empty() => Ok(ModelReply::ToolCalls {
+            "stop" if calls.is_empty() => return Err("empty_response".into()),
+            "tool_calls" if !calls.is_empty() => ModelReply::ToolCalls {
                 content: self.content_seen.then_some(self.content),
                 calls,
-            }),
-            _ => Err("protocol_finish_reason".into()),
-        }
+            },
+            _ => return Err("protocol_finish_reason".into()),
+        };
+        Ok(ModelOutcome { reply, usage })
     }
 }
 
@@ -1072,7 +1119,7 @@ mod tests {
         let prepared = prepare(state.messages(), &options()).unwrap();
         let client = ModelClient::scripted([ModelReply::Answer("Answer".into()).into()]);
         assert_eq!(
-            client.send(&prepared).await.unwrap(),
+            client.send(&prepared).await.unwrap().reply,
             ModelReply::Answer("Answer".into())
         );
         assert_eq!(
@@ -1112,9 +1159,61 @@ mod tests {
         let prepared = prepare(state.messages(), &options()).unwrap();
         let client = ModelClient::scripted([ModelReply::Answer("Answer".into()).into()]);
         assert_eq!(
-            client.send(&prepared).now_or_never(),
+            client
+                .send(&prepared)
+                .now_or_never()
+                .map(|r| r.map(|o| o.reply)),
             Some(Ok(ModelReply::Answer("Answer".into())))
         );
         assert_eq!(client.captured_requests().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn usage_captured_from_nonstream_response() {
+        let body = br#"{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"hi"}}],"usage":{"prompt_tokens":37,"completion_tokens":6,"total_tokens":43}}"#;
+        let outcome = decode_reply(body).unwrap();
+        assert_eq!(outcome.reply, ModelReply::Answer("hi".into()));
+        assert_eq!(
+            outcome.usage,
+            Some(Usage {
+                prompt_tokens: 37,
+                completion_tokens: 6
+            })
+        );
+    }
+
+    #[test]
+    fn usage_absent_when_response_omits_it() {
+        let body = br#"{"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"hi"}}]}"#;
+        let outcome = decode_reply(body).unwrap();
+        assert_eq!(outcome.reply, ModelReply::Answer("hi".into()));
+        assert_eq!(outcome.usage, None, "unreported usage is unknown, not zero");
+    }
+
+    #[test]
+    fn usage_captured_from_stream_usage_chunk() {
+        let mut stream = String::new();
+        stream.push_str(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":null}}]}\n\n",
+        );
+        stream.push_str("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n");
+        stream.push_str(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+        );
+        stream.push_str(
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":37,\"completion_tokens\":6}}\n\n",
+        );
+        stream.push_str("data: [DONE]\n\n");
+        let mut decoder = StreamDecoder::new(1_048_576).unwrap();
+        decoder.push(stream.as_bytes()).unwrap();
+        let outcome = decoder.finish().unwrap();
+        assert_eq!(outcome.reply, ModelReply::Answer("hi".into()));
+        assert_eq!(
+            outcome.usage,
+            Some(Usage {
+                prompt_tokens: 37,
+                completion_tokens: 6
+            })
+        );
     }
 }

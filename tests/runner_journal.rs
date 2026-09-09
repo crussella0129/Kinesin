@@ -457,6 +457,7 @@ async fn cancellation_during_a_model_wait_records_one_terminal_and_returns_its_p
         ScriptStep {
             delay: Duration::from_secs(2),
             reply: ModelReply::Answer("late answer".into()),
+            usage: None,
         },
         ModelReply::Answer("forbidden retry".into()).into(),
     ]);
@@ -548,6 +549,7 @@ async fn execution_deadline_allows_terminal_bookkeeping_but_no_extra_generation(
         ScriptStep {
             delay: Duration::from_secs(2),
             reply: ModelReply::Answer("too late".into()),
+            usage: None,
         },
         ModelReply::Answer("forbidden retry".into()).into(),
     ]);
