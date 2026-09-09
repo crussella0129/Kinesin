@@ -5,8 +5,8 @@
 - **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s0/sprint-plans/build-plan.md#t-001-parse-and-carry-usage-out-of-koil)
 - **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** none
+- **Code evidence:** T-001 `65c171c`, T-002 `6f144bc`, T-003 `069ad58`; inspect counters `c66a23d`
+- **Test evidence:** [Sprint 0 test report](../sprints/s0/sprint-tests/test-report.md) — all acceptance criteria verified (tested head `c66a23d`)
 - **Documentation evidence:** none
 
 ## Intent
@@ -46,3 +46,4 @@ any streaming replay capture must be re-recorded or confirmed absent.
 - 2026-09-08: `proposed → planned`; selected for sprint 0 and linked to T-001 in the build plan.
 - 2026-09-08: amended Consequences after research — no SQLite migration is needed (usage rides in schemaless event data); the only replay interaction is the streaming request fingerprint change.
 - 2026-09-08: `planned → active`; sprint 0 build began.
+- 2026-09-09: test phase verified all acceptance criteria; test report linked as Test evidence. The phase found `inspect` did not surface the terminal counters and fixed it (`c66a23d`) so the "inspect output includes token totals" criterion is met. Awaiting completion evidence before `realized`.
