@@ -141,6 +141,11 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
         "n":1,"temperature":options.temperature,"max_tokens":options.max_output_tokens,
         "stream":options.stream
     });
+    if options.stream {
+        // Ask for usage in the final stream chunk; without this llama-server does
+        // not report streamed token counts. Non-streaming replies always carry it.
+        request["stream_options"] = json!({"include_usage": true});
+    }
     if let Some(schema) = &options.constraint {
         // Constrained turn: never carries tools.
         request["response_format"] = json!({
@@ -1166,6 +1171,27 @@ mod tests {
             Some(Ok(ModelReply::Answer("Answer".into())))
         );
         assert_eq!(client.captured_requests().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn streaming_request_asks_for_usage() {
+        let (state, _) = core::initiate("Instructions".into(), "Question".into()).unwrap();
+        let mut settings = options();
+        settings.stream = true;
+        let wire: Value =
+            serde_json::from_slice(prepare(state.messages(), &settings).unwrap().bytes()).unwrap();
+        assert_eq!(wire["stream"], true);
+        assert_eq!(wire["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn nonstream_request_omits_stream_options() {
+        let (state, _) = core::initiate("Instructions".into(), "Question".into()).unwrap();
+        let settings = options();
+        assert!(!settings.stream);
+        let wire: Value =
+            serde_json::from_slice(prepare(state.messages(), &settings).unwrap().bytes()).unwrap();
+        assert!(wire.get("stream_options").is_none());
     }
 
     #[test]
