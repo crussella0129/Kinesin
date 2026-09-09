@@ -428,6 +428,11 @@ enum OutputLine {
         record: Box<RunRecord>,
         events: Vec<EventSummary>,
         events_complete: bool,
+        /// The terminal `run_finished` counters (model turns, tool calls, and
+        /// token totals when any call reported usage). The event summaries drop
+        /// event bodies, so these are lifted out for the reader.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        counters: Option<serde_json::Value>,
     },
     Exported {
         run_id: String,
@@ -776,6 +781,7 @@ async fn operator_action(command: CliCommand, store: &StorageClient) -> Result<O
         CliCommand::Inspect(command) => {
             let run = retained_run(store, command.run).await?;
             let mut summaries = Vec::new();
+            let mut counters = None;
             let mut after = None;
             let complete = loop {
                 let page = event_page(store, &run.run_id, after, 100).await?;
@@ -787,6 +793,11 @@ async fn operator_action(command: CliCommand, store: &StorageClient) -> Result<O
                         break;
                     }
                     after = Some(event.seq);
+                    // The terminal event carries the run's counters; lift them
+                    // out before the summary drops the event body.
+                    if event.kind == "run_finished" {
+                        counters = event.data.get("counters").cloned();
+                    }
                     summaries.push(EventSummary {
                         seq: event.seq,
                         kind: event.kind,
@@ -802,6 +813,7 @@ async fn operator_action(command: CliCommand, store: &StorageClient) -> Result<O
                 record: Box::new(run),
                 events: summaries,
                 events_complete: complete,
+                counters,
             })
         }
         CliCommand::Export(command) => {

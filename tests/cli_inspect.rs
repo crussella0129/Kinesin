@@ -5,7 +5,7 @@ use std::process::Output;
 
 use kinesin::config::{BoundedConfig, CaptureMode};
 use kinesin::core::{ModelReply, ToolCall};
-use kinesin::model::ModelClient;
+use kinesin::model::{ModelClient, ScriptStep, Usage};
 use kinesin::policy::Submission;
 use kinesin::runner::{RunResources, admit, run_admitted};
 use kinesin::storage::{Command, QueueLimits, Response, RunRecord, Storage, Store};
@@ -131,6 +131,61 @@ allow_replay = true
             result.unwrap()
         })
     }
+    /// Produce a completed local checked run whose every model call reports the
+    /// same token usage, so the terminal counters sum to a known total.
+    fn produce_reporting_usage(&self, per_call: Usage) -> RunRecord {
+        let config = BoundedConfig::load(&self.config()).unwrap();
+        let submission = Submission::Checked {
+            task: "practice-fields".into(),
+            model: "local".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        };
+        let authority = config.authorize_local(submission).unwrap();
+        let storage = Storage::start(self.db(), QueueLimits::default()).unwrap();
+        let store = storage.client();
+        let resources = RunResources::single(1, config.concurrency().clone())
+            .with_workspace("practice", &self.root.join("workspace"))
+            .unwrap();
+        let step = |reply: ModelReply| ScriptStep {
+            delay: std::time::Duration::ZERO,
+            reply,
+            usage: Some(per_call),
+        };
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            admit(&authority, &store, None).await.unwrap();
+            let client = ModelClient::scripted([
+                step(ModelReply::ToolCalls {
+                    content: None,
+                    calls: vec![ToolCall {
+                        id: "read-1".into(),
+                        name: "read_file".into(),
+                        arguments: "{\"path\":\"project.txt\"}".into(),
+                    }],
+                }),
+                step(ModelReply::Answer("I read the file.".into())),
+                step(ModelReply::Answer(
+                    json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]})
+                        .to_string(),
+                )),
+            ]);
+            let result = run_admitted(
+                authority,
+                client,
+                store,
+                resources,
+                CancellationToken::new(),
+                Instant::now(),
+            )
+            .await;
+            storage.shutdown().await.unwrap();
+            result.unwrap()
+        })
+    }
     fn cli(&self, args: impl IntoIterator<Item = OsString>) -> Output {
         let output = std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
             .current_dir(&self.root)
@@ -230,6 +285,54 @@ fn inspect_export_and_pure_replay_preserve_durable_acceptance_without_models() {
     assert_eq!(replayed["consistency"], "consistent");
     assert_eq!(replayed["acceptance_status"], "passed");
     assert_eq!(replayed["verification_replayed"], true);
+    fixture.no_model_calls();
+}
+
+#[test]
+fn inspect_surfaces_token_totals_when_reported() {
+    let fixture = Fixture::new();
+    // A checked run makes three model calls; each reports (13, 5).
+    let run = fixture.produce_reporting_usage(Usage {
+        prompt_tokens: 13,
+        completion_tokens: 5,
+    });
+    let mut args = fixture.command("inspect");
+    args.extend(["--run".into(), run.run_id.clone().into()]);
+    let inspected = successful(fixture.cli(args));
+    assert_eq!(inspected["kind"], "inspect");
+    assert_eq!(inspected["phase"], "completed");
+    // The acceptance criterion: inspect output shows the summed token totals.
+    let counters = &inspected["counters"];
+    assert_eq!(counters["prompt_tokens"], 39);
+    assert_eq!(counters["completion_tokens"], 15);
+    // The base counters remain, and the event summaries still drop bodies.
+    assert_eq!(counters["model_turns"], 3);
+    assert!(
+        inspected["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|event| event.get("data").is_none())
+    );
+    fixture.no_model_calls();
+}
+
+#[test]
+fn inspect_omits_token_totals_when_unreported() {
+    let fixture = Fixture::new();
+    // The default scripted producer reports no usage.
+    let run = fixture.produce(CaptureMode::Replay, None);
+    let mut args = fixture.command("inspect");
+    args.extend(["--run".into(), run.run_id.clone().into()]);
+    let inspected = successful(fixture.cli(args));
+    let counters = &inspected["counters"];
+    // Honest absence: base counters present, token totals omitted (not zero).
+    assert_eq!(counters["model_turns"], 3);
+    assert!(
+        counters.get("prompt_tokens").is_none(),
+        "unreported usage stays unknown, not zero"
+    );
+    assert!(counters.get("completion_tokens").is_none());
     fixture.no_model_calls();
 }
 
