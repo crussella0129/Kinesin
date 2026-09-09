@@ -19,4 +19,4 @@
 - **Intent:** [INT-0001](../intents/INT-0001-token-accounting.md)
 - **Completed:** 2026-09-09T01:01:57Z
 - **Files modified:** src/runner.rs, src/cli.rs, tests/runner_tools.rs
-- **Commit:** PENDING
+- **Commit:** `069ad585198c1dcd97ae37186e89354116caf604`
