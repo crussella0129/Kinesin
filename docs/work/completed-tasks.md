@@ -13,3 +13,10 @@
 - **Completed:** 2026-09-09T00:52:31Z
 - **Files modified:** src/model.rs, tests/fixtures/live/text-stream.request.json, tests/fixtures/live/tool-call-stream.request.json
 - **Commit:** `6f144bc44066572a50be9c12d7451264d9ecd030`
+
+## T-003 (sprint 0)
+- **Description:** journal per-call usage into each model_finished event and accumulate summed prompt/completion totals into the terminal counters, omitting token totals entirely when no call reported usage (honest absence, never zero)
+- **Intent:** [INT-0001](../intents/INT-0001-token-accounting.md)
+- **Completed:** 2026-09-09T01:01:57Z
+- **Files modified:** src/runner.rs, src/cli.rs, tests/runner_tools.rs
+- **Commit:** PENDING

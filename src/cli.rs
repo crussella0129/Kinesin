@@ -1570,8 +1570,9 @@ mod tests {
                     )
                 };
                 let reply =
-                    json!({"choices":[{"index":0,"finish_reason":reason,"message":message}]})
-                        .to_string();
+                    json!({"choices":[{"index":0,"finish_reason":reason,"message":message}],
+                    "usage":{"prompt_tokens":11,"completion_tokens":3,"total_tokens":14}})
+                    .to_string();
                 write!(&mut connection, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", reply.len(), reply).unwrap();
                 connection.flush().unwrap();
             }
@@ -1597,6 +1598,27 @@ mod tests {
         assert_eq!(records.len(), 6);
         assert!(records.iter().all(RunRecord::task_accepted));
         assert!(records.iter().all(|record| record.receipt.is_some()));
+        // End to end through real loopback HTTP and SQLite: the token usage the
+        // server reported is summed into each run's terminal counters. A checked
+        // run makes three model calls, so 3 * (11, 3).
+        let Response::Events(events) = store
+            .execute(Command::Events {
+                owner_id: "local".into(),
+                run_id: records[0].run_id.clone(),
+                after: None,
+                limit: 100,
+            })
+            .unwrap()
+        else {
+            panic!("event page")
+        };
+        let counters = &events
+            .iter()
+            .find(|event| event.kind == "run_finished")
+            .unwrap()
+            .data["counters"];
+        assert_eq!(counters["prompt_tokens"], 33);
+        assert_eq!(counters["completion_tokens"], 9);
         drop(store);
     }
 }

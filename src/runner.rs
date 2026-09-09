@@ -274,12 +274,26 @@ struct RunJournal {
     cancel: CancellationToken,
     model_turns: usize,
     tool_calls: usize,
+    prompt_tokens: u64,
+    completion_tokens: u64,
+    usage_reported: bool,
     journal_wait_ms: u64,
     capacity_stopped: bool,
     queue_stop: Option<QueueStop>,
 }
 
 impl RunJournal {
+    /// Per-run counters. Token totals appear only when at least one model call
+    /// reported usage, so an absent report stays unknown rather than zero.
+    fn counters(&self) -> Value {
+        let mut counters = json!({"model_turns": self.model_turns, "tool_calls": self.tool_calls});
+        if self.usage_reported {
+            counters["prompt_tokens"] = json!(self.prompt_tokens);
+            counters["completion_tokens"] = json!(self.completion_tokens);
+        }
+        counters
+    }
+
     fn stop(&mut self) {
         if self.grace.is_none() {
             self.grace = Some(Instant::now() + self.grace_duration);
@@ -422,7 +436,7 @@ impl RunJournal {
         });
         Command::Finish {owner_id:self.owner.clone(),run_id:self.run.clone(),
             event:self.event("run_finished",json!({"phase":outcome.phase.as_str(),"acceptance_status":outcome.acceptance.as_str(),"reason":outcome.reason,"candidate_sha256":digest,
-                "counters":{"model_turns":self.model_turns,"tool_calls":self.tool_calls},"journal_wait_before_terminal_ms":self.journal_wait_ms,
+                "counters":self.counters(),"journal_wait_before_terminal_ms":self.journal_wait_ms,
                 "control_terminal":control,"queue_stop":self.queue_stop})),
             terminal:Terminal {phase:outcome.phase.as_str().into(),reason:outcome.reason.clone(),
                 result,
@@ -564,6 +578,9 @@ pub async fn run_admitted_with_text(
         cancel: cancel.clone(),
         model_turns: 0,
         tool_calls: 0,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        usage_reported: false,
         journal_wait_ms: 0,
         capacity_stopped: false,
         queue_stop: None,
@@ -730,12 +747,13 @@ pub async fn run_admitted_with_text(
                         None => client.send(&prepared).await,
                     }
                 };
-                let observation = tokio::select! {
+                let (observation, usage) = tokio::select! {
                     biased;
-                    _=cancel.cancelled()=>ModelReply::Failure("cancelled_remote_outcome_unknown".into()),
+                    _=cancel.cancelled()=>(ModelReply::Failure("cancelled_remote_outcome_unknown".into()), None),
                     reply=timeout_at(deadline,exchange)=>match reply {
-                        Ok(Ok(outcome))=>outcome.reply,Ok(Err(reason))=>ModelReply::Failure(reason),
-                        Err(_)=>ModelReply::Failure("run_deadline_remote_outcome_unknown".into()),
+                        Ok(Ok(outcome))=>(outcome.reply, outcome.usage),
+                        Ok(Err(reason))=>(ModelReply::Failure(reason), None),
+                        Err(_)=>(ModelReply::Failure("run_deadline_remote_outcome_unknown".into()), None),
                     }
                 };
                 if journal.requested_stop().is_some() {
@@ -747,6 +765,16 @@ pub async fn run_admitted_with_text(
                 let mut metadata = json!({"effect_id":effect_id,"dispatch":"attempted","duration_ms":exchange_start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
                     "control_dispatch":dispatch_control,
                     "classification":match &observation {ModelReply::Answer(_)=>"answer",ModelReply::ToolCalls{..}=>"tool_calls",ModelReply::Incomplete(_)=>"incomplete",ModelReply::Failure(_)=>"failure"}});
+                if let Some(usage) = usage {
+                    metadata["prompt_tokens"] = json!(usage.prompt_tokens);
+                    metadata["completion_tokens"] = json!(usage.completion_tokens);
+                    journal.prompt_tokens =
+                        journal.prompt_tokens.saturating_add(usage.prompt_tokens);
+                    journal.completion_tokens = journal
+                        .completion_tokens
+                        .saturating_add(usage.completion_tokens);
+                    journal.usage_reported = true;
+                }
                 if authority.capture() == CaptureMode::Replay {
                     metadata["replay"] = observed_json(&observation);
                 }
