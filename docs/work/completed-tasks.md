@@ -47,4 +47,4 @@
 - **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
 - **Completed:** 2026-09-10T17:01:42Z
 - **Files modified:** src/runner.rs, src/model.rs, tests/runner_tools.rs
-- **Commit:** PENDING
+- **Commit:** `6f0f58eb507707dba4ad2e4cc449836910e5d8c9`
