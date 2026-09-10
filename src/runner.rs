@@ -10,7 +10,9 @@ use crate::storage::{
     self, Admission, Command, Event, PendingAck, Response, RunRecord, StorageClient, TaskIdentity,
     Terminal,
 };
-use crate::tools::{ToolResult, ToolStatus, TypedToolArgs, WorkspaceReader, WorkspaceWriter};
+use crate::tools::{
+    CommandRunner, ToolResult, ToolStatus, TypedToolArgs, WorkspaceReader, WorkspaceWriter,
+};
 use crate::verification::{self, AcceptanceReceipt, EvidenceInventory};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -29,6 +31,9 @@ pub struct RunResources {
     /// Present only for workspaces whose operator enabled a write tool, so a run
     /// without that grant has no writer to reach.
     writers: Arc<BTreeMap<String, Arc<WorkspaceWriter>>>,
+    /// Present only for workspaces whose operator granted `run_command` with an
+    /// allow-list, so a run without that grant has no command runner to reach.
+    command_runners: Arc<BTreeMap<String, Arc<CommandRunner>>>,
     dispatcher: Option<Arc<ModelDispatcher>>,
     pub concurrency: ConcurrencyConfig,
 }
@@ -42,6 +47,7 @@ impl RunResources {
             tools: Arc::new(Semaphore::new(concurrency.max_blocking_tools)),
             workspaces: Arc::new(BTreeMap::new()),
             writers: Arc::new(BTreeMap::new()),
+            command_runners: Arc::new(BTreeMap::new()),
             dispatcher: None,
             concurrency,
         }
@@ -60,6 +66,20 @@ impl RunResources {
         self = self.with_workspace(alias, root)?;
         Arc::make_mut(&mut self.writers)
             .insert(alias.into(), Arc::new(WorkspaceWriter::open(root)?));
+        Ok(self)
+    }
+
+    /// Trusted startup only. Grants the command tool for one workspace with its
+    /// allow-list, mirroring an operator who listed `run_command`.
+    pub fn with_command_workspace(
+        mut self,
+        alias: &str,
+        root: &Path,
+        allowed: Vec<String>,
+    ) -> Result<Self, String> {
+        self = self.with_workspace(alias, root)?;
+        Arc::make_mut(&mut self.command_runners)
+            .insert(alias.into(), Arc::new(CommandRunner::new(root, allowed)));
         Ok(self)
     }
 
@@ -92,6 +112,25 @@ impl RunResources {
                 })
                 .collect::<Result<BTreeMap<_, _>, String>>()?,
         );
+        // A command runner exists only for a workspace the operator granted
+        // run_command; config validation guarantees such a workspace has a
+        // non-empty allow-list.
+        let command_runners = Arc::new(
+            config
+                .workspaces()
+                .iter()
+                .filter(|workspace| workspace.tools.contains(&ToolName::RunCommand))
+                .map(|workspace| {
+                    (
+                        workspace.id.clone(),
+                        Arc::new(CommandRunner::new(
+                            &workspace.root,
+                            workspace.commands.clone(),
+                        )),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>(),
+        );
         // Aliases sharing an origin cannot multiply the backend's actual slots.
         let mut capacities = BTreeMap::<String, usize>::new();
         for model in config.models() {
@@ -120,6 +159,7 @@ impl RunResources {
                         tools: tools.clone(),
                         workspaces: workspaces.clone(),
                         writers: writers.clone(),
+                        command_runners: command_runners.clone(),
                         dispatcher: Some(dispatcher.clone()),
                         concurrency: concurrency.clone(),
                     },
@@ -878,6 +918,7 @@ pub async fn run_admitted_with_text(
                         "edit_file" => Some(ToolName::EditFile),
                         "delete_file" => Some(ToolName::DeleteFile),
                         "move_file" => Some(ToolName::MoveFile),
+                        "run_command" => Some(ToolName::RunCommand),
                         _ => None,
                     };
                     let args = TypedToolArgs::parse(&call.arguments);
@@ -939,75 +980,111 @@ pub async fn run_admitted_with_text(
                                 let maximum = authority.limits().max_tool_result_bytes;
                                 let evidence_id = name.mints_evidence().then(|| evidence.next_id());
                                 dispatched = true;
-                                let mut handle = tokio::task::spawn_blocking(move || {
-                                    // The actual blocking worker owns capacity until it exits.
+                                if name == ToolName::RunCommand {
+                                    // A command spawns a process, so it runs on the async
+                                    // path where it can be actively killed on timeout or
+                                    // cancellation — unlike a filesystem syscall, which the
+                                    // blocking worker below can only wait out. The runner
+                                    // exists solely for a workspace granted run_command.
                                     let _permit = permit;
-                                    if let Err((code, message)) = shape {
-                                        return ToolResult::failure(
-                                            ToolStatus::Denied,
-                                            code,
-                                            message,
-                                        );
-                                    }
-                                    if name.is_mutating() {
-                                        // A write reaches only the separate writer, which exists
-                                        // solely for a workspace the operator granted writes.
-                                        return match writer {
-                                            Some(writer) => writer.execute(name, &write_args),
+                                    match shape {
+                                        Err((code, message)) => {
+                                            ToolResult::failure(ToolStatus::Denied, code, message)
+                                        }
+                                        Ok(()) => match resources
+                                            .command_runners
+                                            .get(&authority.workspace().id)
+                                            .cloned()
+                                        {
                                             None => ToolResult::failure(
                                                 ToolStatus::Denied,
-                                                "write_not_authorized",
-                                                "This workspace does not grant writes.",
+                                                "command_not_authorized",
+                                                "This workspace does not grant commands.",
                                             ),
-                                        };
+                                            Some(command_runner) => {
+                                                let argv =
+                                                    write_args.command.clone().unwrap_or_default();
+                                                // The command self-limits to the remaining run
+                                                // budget; cancellation kills it either way.
+                                                let timeout = deadline
+                                                    .saturating_duration_since(Instant::now());
+                                                command_runner
+                                                    .execute(&argv, timeout, &cancel)
+                                                    .await
+                                            }
+                                        },
                                     }
-                                    reader.execute_with_query(
-                                        name,
-                                        &path,
-                                        query.as_deref(),
-                                        case_sensitive,
-                                        maximum,
-                                        evidence_id.as_deref(),
-                                    )
-                                });
-                                let completed = tokio::select! {
-                                    biased;
-                                    _=cancel.cancelled()=>None,
-                                    _=tokio::time::sleep_until(deadline)=>None,
-                                    result=&mut handle=>Some(result),
-                                };
-                                // Cancellation cannot cancel a running filesystem syscall. Retain
-                                // ownership and capacity through its actual completion.
-                                let completed = match completed {
-                                    Some(result) => result,
-                                    None => {
-                                        journal.stop();
-                                        match timeout_at(
-                                            journal.grace.ok_or("missing settlement grace")?,
-                                            &mut handle,
+                                } else {
+                                    let mut handle = tokio::task::spawn_blocking(move || {
+                                        // The actual blocking worker owns capacity until it exits.
+                                        let _permit = permit;
+                                        if let Err((code, message)) = shape {
+                                            return ToolResult::failure(
+                                                ToolStatus::Denied,
+                                                code,
+                                                message,
+                                            );
+                                        }
+                                        if name.is_mutating() {
+                                            // A write reaches only the separate writer, which exists
+                                            // solely for a workspace the operator granted writes.
+                                            return match writer {
+                                                Some(writer) => writer.execute(name, &write_args),
+                                                None => ToolResult::failure(
+                                                    ToolStatus::Denied,
+                                                    "write_not_authorized",
+                                                    "This workspace does not grant writes.",
+                                                ),
+                                            };
+                                        }
+                                        reader.execute_with_query(
+                                            name,
+                                            &path,
+                                            query.as_deref(),
+                                            case_sensitive,
+                                            maximum,
+                                            evidence_id.as_deref(),
                                         )
-                                        .await
-                                        {
-                                            Ok(result) => result,
-                                            Err(_) => {
-                                                eprintln!(
-                                                    "Run {} has unresolved tool settlement; retaining ownership",
-                                                    authority.run_id()
-                                                );
-                                                let result = handle.await;
-                                                journal.late_bookkeeping = true;
-                                                result
+                                    });
+                                    let completed = tokio::select! {
+                                        biased;
+                                        _=cancel.cancelled()=>None,
+                                        _=tokio::time::sleep_until(deadline)=>None,
+                                        result=&mut handle=>Some(result),
+                                    };
+                                    // Cancellation cannot cancel a running filesystem syscall. Retain
+                                    // ownership and capacity through its actual completion.
+                                    let completed = match completed {
+                                        Some(result) => result,
+                                        None => {
+                                            journal.stop();
+                                            match timeout_at(
+                                                journal.grace.ok_or("missing settlement grace")?,
+                                                &mut handle,
+                                            )
+                                            .await
+                                            {
+                                                Ok(result) => result,
+                                                Err(_) => {
+                                                    eprintln!(
+                                                        "Run {} has unresolved tool settlement; retaining ownership",
+                                                        authority.run_id()
+                                                    );
+                                                    let result = handle.await;
+                                                    journal.late_bookkeeping = true;
+                                                    result
+                                                }
                                             }
                                         }
-                                    }
-                                };
-                                completed.unwrap_or_else(|_| {
-                                    ToolResult::failure(
-                                        ToolStatus::Error,
-                                        "tool_worker_failed",
-                                        "Tool worker failed",
-                                    )
-                                })
+                                    };
+                                    completed.unwrap_or_else(|_| {
+                                        ToolResult::failure(
+                                            ToolStatus::Error,
+                                            "tool_worker_failed",
+                                            "Tool worker failed",
+                                        )
+                                    })
+                                }
                             } else {
                                 drop(permit);
                                 ToolResult::failure(

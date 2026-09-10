@@ -1,12 +1,17 @@
 //! Three bounded read operations behind a private filesystem capability.
 
 use std::io::{ErrorKind, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::{ExitStatus, Stdio};
+use std::time::Duration;
 
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
+use command_group::AsyncCommandGroup;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::io::AsyncReadExt;
+use tokio_util::sync::CancellationToken;
 
 use crate::config::{ToolName, validate_id, validate_relative_path};
 
@@ -23,6 +28,11 @@ pub const MAX_SEARCH_FILE_BYTES: usize = 65_536;
 /// Bytes a single write may place. Content arrives inside the tool arguments,
 /// so it is already under MAX_ARGUMENT_BYTES; this states the write's own bound.
 pub const MAX_WRITE_BYTES: usize = 32_768;
+/// Arguments a single `run_command` argv may carry, including the executable.
+/// The whole argv already rides under MAX_ARGUMENT_BYTES; this bounds the count.
+pub const MAX_COMMAND_ARGS: usize = 64;
+/// Bytes of combined stdout+stderr `run_command` captures before truncating.
+pub const MAX_COMMAND_OUTPUT_BYTES: usize = 32_768;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -90,7 +100,16 @@ impl ToolResult {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TypedToolArgs {
+    /// The workspace-relative resource path every file tool needs. `run_command`
+    /// is the one tool without a path (its cwd is the workspace root), so this is
+    /// defaulted and left empty for it; `shape_for` requires it for the rest.
+    #[serde(default)]
     pub path: String,
+    /// Present only for `run_command`: the argv vector to execute. A command is
+    /// never a shell string, so this is a list of arguments the OS receives
+    /// verbatim, with `argv[0]` the bare executable name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<Vec<String>>,
     /// Present only for `search_files`. Absent for the single-path tools, so an
     /// unexpected term on `read_file` still fails the typed contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -127,6 +146,7 @@ impl TypedToolArgs {
         let has_content = self.content.is_some();
         let has_edit = self.find.is_some() || self.replace.is_some();
         let has_to = self.to.is_some();
+        let has_command = self.command.is_some();
 
         let missing = match name {
             ToolName::SearchFiles if self.query.is_none() => Some((
@@ -143,10 +163,29 @@ impl TypedToolArgs {
             ToolName::MoveFile if self.to.is_none() => {
                 Some(("missing_destination", "move_file requires a destination."))
             }
+            ToolName::RunCommand if self.command.as_ref().is_none_or(|argv| argv.is_empty()) => {
+                Some(("missing_command", "run_command requires a non-empty argv."))
+            }
             _ => None,
         };
         if let Some(error) = missing {
             return Err(error);
+        }
+
+        // Every tool but run_command operates on a workspace path; run_command
+        // has none (its cwd is the workspace root) and must not carry one.
+        if name == ToolName::RunCommand {
+            if !self.path.is_empty() {
+                return Err(("unexpected_path", "run_command does not take a path."));
+            }
+        } else if self.path.is_empty() {
+            return Err(("missing_path", "This tool requires a workspace path."));
+        }
+        if has_command && name != ToolName::RunCommand {
+            return Err((
+                "unexpected_command",
+                "Only run_command accepts a command argv.",
+            ));
         }
 
         if has_query && name != ToolName::SearchFiles {
@@ -181,7 +220,19 @@ impl TypedToolArgs {
         }
         let mut args: Self =
             serde_json::from_str(raw).map_err(|_| "invalid tool arguments or fields")?;
-        args.path = normalized_path(&args.path)?;
+        // `run_command` is the one tool without a path; every other tool needs a
+        // normalized workspace path, and an absent one fails here exactly as
+        // before. The command argv is validated against the allow-list later,
+        // where the workspace grant is known.
+        if args.command.is_none() {
+            args.path = normalized_path(&args.path)?;
+        } else if args
+            .command
+            .as_ref()
+            .is_some_and(|argv| argv.len() > MAX_COMMAND_ARGS)
+        {
+            return Err("command exceeds its argument-count limit".into());
+        }
         if let Some(to) = &args.to {
             args.to = Some(normalized_path(to)?);
         }
@@ -236,6 +287,34 @@ pub fn normalized_path(path: &str) -> Result<String, String> {
         return Err("resource path uses unsupported Windows filename syntax".into());
     }
     Ok(path.to_owned())
+}
+
+/// Decide whether an argv may run in a workspace, without spawning anything.
+/// `argv[0]` must be a bare executable name (no path steers resolution outside
+/// PATH) that the operator listed for this workspace; the argv must be
+/// non-empty. Pure so the shape can be tested without a process.
+pub fn validate_command(
+    argv: &[String],
+    allowed: &[String],
+) -> Result<(), (&'static str, &'static str)> {
+    let Some(executable) = argv.first() else {
+        return Err(("empty_command", "run_command requires a non-empty argv."));
+    };
+    // A bare name only: `validate_id` forbids path separators, dots, and any
+    // other character, so nothing like `../x` or `/bin/sh` can name the binary.
+    if validate_id(executable).is_err() {
+        return Err((
+            "command_not_bare",
+            "The command must be a bare executable name.",
+        ));
+    }
+    if !allowed.iter().any(|name| name == executable) {
+        return Err((
+            "command_not_allowed",
+            "This command is not in the workspace allow-list.",
+        ));
+    }
+    Ok(())
 }
 
 pub struct WorkspaceReader {
@@ -325,12 +404,14 @@ impl WorkspaceReader {
                 case_sensitive,
                 limit,
             ),
-            // A read capability cannot write. The runner routes a write to the
-            // separate WorkspaceWriter; reaching here is a routing fault.
+            // A read capability cannot write or run. The runner routes a write to
+            // the separate WorkspaceWriter and a command to the CommandRunner;
+            // reaching here with either is a routing fault.
             ToolName::WriteFile
             | ToolName::EditFile
             | ToolName::DeleteFile
-            | ToolName::MoveFile => ToolResult::failure(
+            | ToolName::MoveFile
+            | ToolName::RunCommand => ToolResult::failure(
                 ToolStatus::Denied,
                 "not_a_write_capability",
                 "This capability only reads.",
@@ -904,6 +985,162 @@ impl WorkspaceWriter {
             .expect("fixed write result shape");
         result
     }
+}
+
+/// A command-execution capability, distinct from the file writer by construction:
+/// it spawns a process, the project's largest trust surface. One is built only for
+/// a workspace whose operator granted `run_command` with an allow-list, so a run
+/// that was never granted commands has no runner at all.
+pub struct CommandRunner {
+    root: PathBuf,
+    allowed: Vec<String>,
+}
+
+impl CommandRunner {
+    /// Trusted startup only: `root` is an operator-approved workspace directory
+    /// and `allowed` its validated command allow-list.
+    pub fn new(root: &Path, allowed: Vec<String>) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            allowed,
+        }
+    }
+
+    /// Run one allow-listed command as an argv vector — never a shell string, so
+    /// the OS receives the arguments verbatim. Output is bounded, the environment
+    /// is scrubbed, the cwd is the workspace root, and the whole process group is
+    /// killed on timeout or cancellation. Every outcome is defined.
+    pub async fn execute(
+        &self,
+        argv: &[String],
+        timeout: Duration,
+        cancel: &CancellationToken,
+    ) -> ToolResult {
+        // Defense in depth: the runner validates before dispatch, and so do we.
+        if let Err((code, message)) = validate_command(argv, &self.allowed) {
+            return ToolResult::failure(ToolStatus::Denied, code, message);
+        }
+        let mut command = tokio::process::Command::new(&argv[0]);
+        command
+            .args(&argv[1..])
+            .current_dir(&self.root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        // Scrub the environment: nothing the operator process holds reaches the
+        // child. Restore only what a process needs to resolve and start — PATH
+        // everywhere, plus the few variables a Windows child needs to run at all.
+        command.env_clear();
+        if let Some(path) = std::env::var_os("PATH") {
+            command.env("PATH", path);
+        }
+        #[cfg(windows)]
+        for key in ["SystemRoot", "SystemDrive", "PATHEXT", "TEMP", "TMP"] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        let mut child = match command.group_spawn() {
+            Ok(child) => child,
+            Err(_) => {
+                return ToolResult::failure(
+                    ToolStatus::Error,
+                    "spawn_failed",
+                    "The command could not be started.",
+                );
+            }
+        };
+        // Drain stdout and stderr concurrently so a chatty child never blocks on a
+        // full pipe, keeping only the first MAX_COMMAND_OUTPUT_BYTES of each.
+        let stdout = child.inner().stdout.take();
+        let stderr = child.inner().stderr.take();
+        let out = tokio::spawn(read_capped(stdout));
+        let err = tokio::spawn(read_capped(stderr));
+        let outcome = tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                let _ = child.kill().await;
+                Err("cancelled")
+            }
+            () = tokio::time::sleep(timeout) => {
+                let _ = child.kill().await;
+                Err("timed_out")
+            }
+            status = child.wait() => Ok(status),
+        };
+        // After a kill the pipes close, so the readers reach EOF; collect what they
+        // saw either way.
+        let (stdout_bytes, out_truncated) = out.await.unwrap_or_default();
+        let (stderr_bytes, err_truncated) = err.await.unwrap_or_default();
+        let truncated = out_truncated || err_truncated;
+        match outcome {
+            Ok(Ok(status)) => command_result(status, &stdout_bytes, &stderr_bytes, truncated),
+            Ok(Err(_)) => ToolResult::failure(
+                ToolStatus::Error,
+                "wait_failed",
+                "The command could not be awaited.",
+            ),
+            Err("timed_out") => ToolResult::failure(
+                ToolStatus::Error,
+                "timed_out",
+                "The command exceeded its time limit and was terminated.",
+            ),
+            Err(_) => ToolResult::failure(
+                ToolStatus::Error,
+                "cancelled",
+                "The command was cancelled and its process group terminated.",
+            ),
+        }
+    }
+}
+
+/// Read a child stream to EOF, retaining only the first MAX_COMMAND_OUTPUT_BYTES.
+/// Reading continues past the cap so the pipe drains and the child does not block;
+/// only the retained prefix is kept, and the boolean reports whether more existed.
+async fn read_capped<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
+    reader: Option<R>,
+) -> (Vec<u8>, bool) {
+    let mut kept = Vec::new();
+    let mut truncated = false;
+    if let Some(mut reader) = reader {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    if kept.len() < MAX_COMMAND_OUTPUT_BYTES {
+                        let room = MAX_COMMAND_OUTPUT_BYTES - kept.len();
+                        let take = room.min(n);
+                        kept.extend_from_slice(&buf[..take]);
+                        if take < n {
+                            truncated = true;
+                        }
+                    } else {
+                        truncated = true;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    }
+    (kept, truncated)
+}
+
+/// Shape a completed command's exit status and captured output into a result. A
+/// command that ran and exited — even non-zero — is a completed tool call (`Ok`);
+/// its exit code rides in the body for the model to read.
+fn command_result(status: ExitStatus, stdout: &[u8], stderr: &[u8], truncated: bool) -> ToolResult {
+    let mut result = ToolResult::success(None);
+    result.truncated = truncated;
+    result.body = serde_json::to_string(&json!({
+        "exit_code": status.code(),
+        "success": status.success(),
+        "stdout": String::from_utf8_lossy(stdout),
+        "stderr": String::from_utf8_lossy(stderr),
+        "truncated": truncated,
+    }))
+    .expect("fixed command result shape");
+    result
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -1552,6 +1789,47 @@ language=note
             "x".repeat(MAX_WRITE_BYTES + 1)
         );
         assert!(TypedToolArgs::parse(&huge).is_err());
+    }
+
+    #[test]
+    fn run_command_argv_accepted_when_allowlisted() {
+        let allow = vec!["cmd-fixture".to_string()];
+        let args = TypedToolArgs::parse(r#"{"command":["cmd-fixture","--print","hi"]}"#).unwrap();
+        // run_command takes no path and a non-empty argv.
+        assert!(args.shape_for(ToolName::RunCommand).is_ok());
+        let argv = args.command.as_ref().unwrap();
+        assert!(validate_command(argv, &allow).is_ok());
+        assert_eq!(argv, &["cmd-fixture", "--print", "hi"]);
+    }
+
+    #[test]
+    fn run_command_rejects_empty_or_unlisted_or_pathy_argv() {
+        let allow = vec!["cmd-fixture".to_string()];
+        // Empty argv is refused both at the shape check and the validator.
+        let empty = TypedToolArgs::parse(r#"{"command":[]}"#).unwrap();
+        assert!(empty.shape_for(ToolName::RunCommand).is_err());
+        assert!(validate_command(&[], &allow).is_err());
+        // A path-bearing or absolute executable is not a bare name.
+        assert!(validate_command(&["/bin/sh".to_string()], &allow).is_err());
+        assert!(validate_command(&["../x".to_string()], &allow).is_err());
+        assert!(validate_command(&["a/b".to_string()], &allow).is_err());
+        // A bare name that the operator did not list is refused.
+        assert!(validate_command(&["not-listed".to_string()], &allow).is_err());
+        // A path on run_command is refused by the shape check.
+        let pathy = TypedToolArgs::parse(r#"{"path":"a","command":["cmd-fixture"]}"#).unwrap();
+        assert!(pathy.shape_for(ToolName::RunCommand).is_err());
+    }
+
+    #[test]
+    fn command_field_is_disjoint_from_file_tools() {
+        // A command argv on a file tool is rejected.
+        let on_write =
+            TypedToolArgs::parse(r#"{"path":"a.txt","command":["cmd-fixture"]}"#).unwrap();
+        assert!(on_write.shape_for(ToolName::WriteFile).is_err());
+        // A file field (content) on run_command is rejected.
+        let on_command =
+            TypedToolArgs::parse(r#"{"content":"hi","command":["cmd-fixture"]}"#).unwrap();
+        assert!(on_command.shape_for(ToolName::RunCommand).is_err());
     }
 
     #[test]

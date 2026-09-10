@@ -93,6 +93,7 @@ pub enum ToolName {
     EditFile,
     DeleteFile,
     MoveFile,
+    RunCommand,
 }
 
 impl ToolName {
@@ -105,16 +106,18 @@ impl ToolName {
             Self::EditFile => "edit_file",
             Self::DeleteFile => "delete_file",
             Self::MoveFile => "move_file",
+            Self::RunCommand => "run_command",
         }
     }
 
     /// A tool that changes the workspace rather than only observing it. Mutating
     /// tools are barred from checked runs, because a run that could write the
-    /// value it later reads would defeat the acceptance contract.
+    /// value it later reads would defeat the acceptance contract. Running a
+    /// command spawns a process that can change the workspace, so it counts.
     pub fn is_mutating(self) -> bool {
         matches!(
             self,
-            Self::WriteFile | Self::EditFile | Self::DeleteFile | Self::MoveFile
+            Self::WriteFile | Self::EditFile | Self::DeleteFile | Self::MoveFile | Self::RunCommand
         )
     }
 
@@ -133,6 +136,11 @@ pub struct WorkspaceConfig {
     pub root: PathBuf,
     #[serde(default)]
     pub tools: Vec<ToolName>,
+    /// Bare executable names the `run_command` tool may launch in this workspace.
+    /// Empty unless the workspace grants `run_command`; a process is the largest
+    /// trust surface, so nothing runs that the operator did not name here.
+    #[serde(default)]
+    pub commands: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -432,6 +440,28 @@ impl Config {
             unique_tools(&workspace.tools)?;
             if !workspace.tools.is_empty() && config.limits.max_tool_result_bytes < 256 {
                 return Err("tools require a result envelope limit of at least 256 bytes".into());
+            }
+            // The command allow-list and the run_command grant must agree: a grant
+            // with nothing to run is useless, and an allow-list with no grant is a
+            // silent dead letter. Each entry is a bare executable name, so no path
+            // steers the launch outside PATH resolution.
+            let grants_run_command = workspace.tools.contains(&ToolName::RunCommand);
+            if grants_run_command && workspace.commands.is_empty() {
+                return Err(
+                    "a workspace granting run_command must list at least one command".into(),
+                );
+            }
+            if !workspace.commands.is_empty() && !grants_run_command {
+                return Err(
+                    "commands are listed for a workspace that does not grant run_command".into(),
+                );
+            }
+            let mut seen_commands = HashSet::new();
+            for command in &workspace.commands {
+                validate_id(command)?;
+                if !seen_commands.insert(command.as_str()) {
+                    return Err("duplicate command in the allow-list".into());
+                }
             }
         }
         for model in &mut config.models {
@@ -911,6 +941,74 @@ mod tests {
         assert!(!fixture.root.join("state").exists());
         assert_eq!(config.limits.max_model_turns, 12);
         assert_eq!(config.concurrency.journal_queue_bytes, 8_388_608);
+    }
+
+    #[test]
+    fn run_command_grant_requires_nonempty_allowlist() {
+        let fixture = Fixture::new();
+        let source = BASE.replace(
+            "tools = [\"read_file\"]",
+            "tools = [\"read_file\", \"run_command\"]\ncommands = [\"cmd-fixture\"]",
+        );
+        let config = fixture.parse(&source).unwrap();
+        assert_eq!(
+            config.workspace("practice").unwrap().commands,
+            vec!["cmd-fixture".to_string()]
+        );
+    }
+
+    #[test]
+    fn commands_without_grant_is_rejected() {
+        let fixture = Fixture::new();
+        // Grant with an empty allow-list: a command tool that can run nothing.
+        let granted_but_empty = BASE.replace(
+            "tools = [\"read_file\"]",
+            "tools = [\"read_file\", \"run_command\"]",
+        );
+        assert!(fixture.parse(&granted_but_empty).is_err());
+        // Allow-list without the grant: a dead letter nothing consults.
+        let listed_but_ungranted = BASE.replace(
+            "tools = [\"read_file\"]",
+            "tools = [\"read_file\"]\ncommands = [\"cmd-fixture\"]",
+        );
+        assert!(fixture.parse(&listed_but_ungranted).is_err());
+    }
+
+    #[test]
+    fn command_name_with_separator_is_rejected() {
+        let fixture = Fixture::new();
+        for name in ["../evil", "a/b", "bin\\\\sh", "with.dot"] {
+            let source = BASE.replace(
+                "tools = [\"read_file\"]",
+                &format!("tools = [\"read_file\", \"run_command\"]\ncommands = [\"{name}\"]"),
+            );
+            assert!(fixture.parse(&source).is_err(), "{name}");
+        }
+    }
+
+    #[test]
+    fn checked_workspace_cannot_grant_run_command() {
+        let fixture = Fixture::new();
+        // The checked task's workspace also grants the command tool.
+        let base = BASE.replace(
+            "tools = [\"read_file\"]",
+            "tools = [\"read_file\", \"run_command\"]\ncommands = [\"cmd-fixture\"]",
+        );
+        // Config parse alone accepts it; the bar lives in authorization.
+        let config = fixture.parse(&format!("{base}{TASK}")).unwrap();
+        let checked = crate::policy::authorize(
+            &config,
+            None,
+            crate::policy::Submission::Checked {
+                task: "practice-fields".into(),
+                model: "local".into(),
+                limits: None,
+                capture: None,
+            },
+        );
+        // Barred by construction: a run that could spawn a process to plant the
+        // value it later reads would defeat the acceptance contract.
+        assert!(checked.is_err());
     }
 
     #[test]
