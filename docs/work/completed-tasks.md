@@ -48,3 +48,10 @@
 - **Completed:** 2026-09-10T17:01:42Z
 - **Files modified:** src/runner.rs, src/model.rs, tests/runner_tools.rs
 - **Commit:** `6f0f58eb507707dba4ad2e4cc449836910e5d8c9`
+
+## T-005 (sprint 1)
+- **Description:** convert CI from a single windows-latest job to a `strategy.matrix.os` of `[windows-latest, ubuntu-latest]` (fail-fast disabled), keeping the pinned 1.96.0 toolchain (via rust-toolchain.toml), the fmt/clippy/`cargo test --locked` steps, and the 20-minute timeout, so the OS-specific process-tree cleanup and env scrubbing are exercised on both platforms. Verification is non-unit: the workflow content plus both OS jobs green at the checkpoint.
+- **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
+- **Completed:** 2026-09-10T17:03:34Z
+- **Files modified:** .github/workflows/ci.yml
+- **Commit:** PENDING
