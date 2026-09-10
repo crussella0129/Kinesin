@@ -317,6 +317,7 @@ struct RunJournal {
     prompt_tokens: u64,
     completion_tokens: u64,
     usage_reported: bool,
+    compactions: u64,
     journal_wait_ms: u64,
     capacity_stopped: bool,
     queue_stop: Option<QueueStop>,
@@ -330,6 +331,11 @@ impl RunJournal {
         if self.usage_reported {
             counters["prompt_tokens"] = json!(self.prompt_tokens);
             counters["completion_tokens"] = json!(self.completion_tokens);
+        }
+        // Present only when the run actually compacted, so an ordinary run's
+        // counters are unchanged and old replay captures never carry it.
+        if self.compactions > 0 {
+            counters["compactions"] = json!(self.compactions);
         }
         counters
     }
@@ -621,6 +627,7 @@ pub async fn run_admitted_with_text(
         prompt_tokens: 0,
         completion_tokens: 0,
         usage_reported: false,
+        compactions: 0,
         journal_wait_ms: 0,
         capacity_stopped: false,
         queue_stop: None,
@@ -686,9 +693,14 @@ pub async fn run_admitted_with_text(
                         .map_err(|e| e.to_string())?;
                     continue;
                 }
-                let history = serde_json::to_vec(&model::conversation_json(state.messages()))
-                    .map_err(|_| "history serialization")?;
-                if history.len() > authority.limits().max_history_bytes {
+                let compaction = authority.limits().compaction;
+                journal.compactions += model::compact_until_fits(
+                    &mut state,
+                    authority.limits().max_history_bytes,
+                    compaction.enabled,
+                    compaction.floor,
+                )? as u64;
+                if model::history_len(state.messages())? > authority.limits().max_history_bytes {
                     journal.stop();
                     effect = state
                         .stop(RunPhase::Stopped, "history_bytes_limit".into())
@@ -855,15 +867,20 @@ pub async fn run_admitted_with_text(
                 }
                 let mut next = state.clone();
                 let next_effect = next.observe_model(observation).map_err(|e| e.to_string())?;
-                let bytes = serde_json::to_vec(&model::conversation_json(next.messages()))
-                    .map_err(|_| "history serialization")?
-                    .len();
-                if bytes > authority.limits().max_history_bytes {
+                let compaction = authority.limits().compaction;
+                let dropped = model::compact_until_fits(
+                    &mut next,
+                    authority.limits().max_history_bytes,
+                    compaction.enabled,
+                    compaction.floor,
+                )? as u64;
+                if model::history_len(next.messages())? > authority.limits().max_history_bytes {
                     journal.stop();
                     effect = state
                         .stop(RunPhase::Stopped, "history_bytes_limit".into())
                         .map_err(|e| e.to_string())?;
                 } else {
+                    journal.compactions += dropped;
                     state = next;
                     effect = next_effect;
                 }
@@ -1144,7 +1161,15 @@ pub async fn run_admitted_with_text(
                     {
                         effect = next;
                     }
-                    if history_exceeds(&state, authority.limits().max_history_bytes)? {
+                    let compaction = authority.limits().compaction;
+                    journal.compactions += model::compact_until_fits(
+                        &mut state,
+                        authority.limits().max_history_bytes,
+                        compaction.enabled,
+                        compaction.floor,
+                    )? as u64;
+                    if model::history_len(state.messages())? > authority.limits().max_history_bytes
+                    {
                         journal.stop();
                         effect = state
                             .stop(RunPhase::Stopped, "history_bytes_limit".into())
@@ -1155,12 +1180,6 @@ pub async fn run_admitted_with_text(
             }
         }
     }
-}
-
-fn history_exceeds(state: &core::RunState, maximum: usize) -> Result<bool, String> {
-    serde_json::to_vec(&model::conversation_json(state.messages()))
-        .map(|bytes| bytes.len() > maximum)
-        .map_err(|_| "history serialization".into())
 }
 
 #[derive(Clone, Debug)]

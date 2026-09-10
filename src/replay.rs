@@ -584,6 +584,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     let proposed = next
                         .observe_model(observed)
                         .map_err(|_| error("replay_core_divergence", Some(finished.seq)))?;
+                    compact(&mut next, &frozen.limits)?;
                     if history_exceeds(&next, frozen.limits.max_history_bytes)? {
                         stop_state(&mut state, "history_bytes_limit")?
                     } else {
@@ -739,6 +740,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     {
                         effect = next;
                     }
+                    compact(&mut state, &frozen.limits)?;
                     if history_exceeds(&state, frozen.limits.max_history_bytes)? {
                         effect = stop_state(&mut state, "history_bytes_limit")?;
                     }
@@ -757,6 +759,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
     let terminal_control =
         control_log.observe(terminal, "control_terminal", events[index - 1].elapsed_ms)?;
     if effect == Effect::Model {
+        compact(&mut state, &frozen.limits)?;
         let reason = if state.counters().model_turns >= frozen.limits.max_model_turns as usize {
             Some("model_turn_limit".to_owned())
         } else if history_exceeds(&state, frozen.limits.max_history_bytes)? {
@@ -868,9 +871,12 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         "replay_receipt_divergence",
         Some(terminal.seq),
     )?;
+    // Only the deterministically recomputable counters are checked. Runner-only
+    // observability totals (token usage, compaction count) are recorded but not
+    // reproduced here, so they are not part of the divergence check.
     ensure(
-        terminal.data["counters"]
-            == json!({"model_turns":state.counters().model_turns,"tool_calls":state.counters().tool_calls}),
+        terminal.data["counters"]["model_turns"] == json!(state.counters().model_turns)
+            && terminal.data["counters"]["tool_calls"] == json!(state.counters().tool_calls),
         "replay_counter_divergence",
         Some(terminal.seq),
     )?;
@@ -888,6 +894,19 @@ fn history_exceeds(state: &core::RunState, limit: usize) -> Result<bool, ReplayE
     serde_json::to_vec(&model::conversation_json(state.messages()))
         .map(|bytes| bytes.len() > limit)
         .map_err(|_| error("replay_history_encoding", None))
+}
+
+/// Apply the same deterministic compaction the runner applied, so a run that
+/// compacted recomputes to the identical conversation and request fingerprints.
+fn compact(state: &mut core::RunState, limits: &crate::config::Limits) -> Result<(), ReplayError> {
+    model::compact_until_fits(
+        state,
+        limits.max_history_bytes,
+        limits.compaction.enabled,
+        limits.compaction.floor,
+    )
+    .map(|_| ())
+    .map_err(|_| error("replay_history_encoding", None))
 }
 fn stop_state(state: &mut core::RunState, reason: &str) -> Result<Effect, ReplayError> {
     state

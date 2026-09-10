@@ -62,3 +62,10 @@
 - **Completed:** 2026-09-10T22:50:12Z
 - **Files modified:** src/core.rs, src/config.rs
 - **Commit:** `bf8825e400b30c9016dc93ee51ef90b170fbb1f5`
+
+## T-002 (sprint 2)
+- **Description:** compact at the history limit instead of stopping. Added `model::history_len` and the shared deterministic `model::compact_until_fits`; replaced the three runner stop sites and the mirrored replay sites with a compaction loop; added a `compactions` counter to the terminal counters (surfaced by inspect) rather than a separate event (a new event would break replay's positional planned/finished pair-walk). Refined replay's counter-divergence check to compare only the deterministically recomputable `model_turns`/`tool_calls`, ignoring runner-only observability totals (tokens, compactions). model.rs was a necessary touch beyond the plan's runner/replay for the shared pure helpers.
+- **Intent:** [INT-0002](../intents/INT-0002-context-compaction.md)
+- **Completed:** 2026-09-10T23:22:16Z
+- **Files modified:** src/runner.rs, src/replay.rs, src/model.rs, tests/runner_tools.rs, tests/replay.rs
+- **Commit:** PENDING
