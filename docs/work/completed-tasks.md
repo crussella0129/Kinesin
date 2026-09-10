@@ -20,3 +20,10 @@
 - **Completed:** 2026-09-09T01:01:57Z
 - **Files modified:** src/runner.rs, src/cli.rs, tests/runner_tools.rs
 - **Commit:** `069ad585198c1dcd97ae37186e89354116caf604`
+
+## T-001 (sprint 1)
+- **Description:** add `ToolName::RunCommand` (mutating, mints no evidence) and a per-workspace `commands` allow-list, with validation that grant and allow-list agree and each entry is a bare name; the checked-run bar covers it for free via `is_mutating`. Also route the new variant to a denial in the read capability.
+- **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
+- **Completed:** 2026-09-10T16:26:05Z
+- **Files modified:** src/config.rs, src/tools.rs
+- **Commit:** PENDING

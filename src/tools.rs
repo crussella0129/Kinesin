@@ -325,12 +325,14 @@ impl WorkspaceReader {
                 case_sensitive,
                 limit,
             ),
-            // A read capability cannot write. The runner routes a write to the
-            // separate WorkspaceWriter; reaching here is a routing fault.
+            // A read capability cannot write or run. The runner routes a write to
+            // the separate WorkspaceWriter and a command to the CommandRunner;
+            // reaching here with either is a routing fault.
             ToolName::WriteFile
             | ToolName::EditFile
             | ToolName::DeleteFile
-            | ToolName::MoveFile => ToolResult::failure(
+            | ToolName::MoveFile
+            | ToolName::RunCommand => ToolResult::failure(
                 ToolStatus::Denied,
                 "not_a_write_capability",
                 "This capability only reads.",
