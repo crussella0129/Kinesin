@@ -5,8 +5,8 @@
 - **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s1/sprint-plans/build-plan.md#t-001-config-surface-allow-list-and-checked-run-bar-for-run_command)
 - **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** none
+- **Code evidence:** [T-001–T-005 commits](../work/completed-tasks.md) plus the run_command E2E
+- **Test evidence:** [Sprint 1 test report](../sprints/s1/sprint-tests/test-report.md) — all acceptance criteria verified (tested head `13ffdc3`)
 - **Documentation evidence:** none
 
 ## Intent
@@ -43,3 +43,4 @@ cleanup, and reconciliation of an effect that cannot be un-run.
 - 2026-09-08: created as `proposed`.
 - 2026-09-10: `proposed → planned`; selected for sprint 1 and linked to the build plan (T-001–T-005). Design: a distinct `CommandRunner` capability with full process-tree cleanup via `command-group`; cross-platform CI added to exercise it on Windows and Linux.
 - 2026-09-10: `planned → active`; sprint 1 build began.
+- 2026-09-10: test phase verified all acceptance criteria (18 named tests, 224 green) with an accepted `proceed-with-caveats` critique; test report linked as Test evidence. Awaiting completion evidence before `realized`.
