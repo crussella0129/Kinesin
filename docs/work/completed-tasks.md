@@ -26,4 +26,4 @@
 - **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
 - **Completed:** 2026-09-10T16:26:05Z
 - **Files modified:** src/config.rs, src/tools.rs
-- **Commit:** PENDING
+- **Commit:** `f5e1611970b7844db8a26c628965ce7a05624912`
