@@ -11,3 +11,4 @@
 - **Summary:** Add a bounded `run_command` tool (argv-only, allow-listed, timed, tree-killed) — the last member of the write surface (INT-0003).
 - **Intents:** [INT-0003](../../intents/INT-0003-shell-execution.md) — realized
 - **Completion evidence:** INT-0003 realized: bounded argv-only run_command with allow-list, scrubbed env, timeout and whole-tree kill (command-group), journalled effect; barred in checked runs; 224 tests green at 13ffdc3; CI extended to Windows+Linux
+- **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/3
