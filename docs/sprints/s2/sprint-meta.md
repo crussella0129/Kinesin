@@ -11,3 +11,4 @@
 - **Summary:** Continue past `max_history_bytes` by bounded, evidence-preserving drop-oldest compaction in the pure core, reproduced by replay (INT-0002).
 - **Intents:** [INT-0002](../../intents/INT-0002-context-compaction.md) — realized
 - **Completion evidence:** INT-0002 realized: bounded evidence-preserving drop-oldest compaction lets a run continue past max_history_bytes; pure and deterministic in core, reproduced by replay; 234 tests green at b22990b
+- **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/4
