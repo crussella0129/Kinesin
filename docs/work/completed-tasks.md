@@ -27,3 +27,10 @@
 - **Completed:** 2026-09-10T16:26:05Z
 - **Files modified:** src/config.rs, src/tools.rs
 - **Commit:** `f5e1611970b7844db8a26c628965ce7a05624912`
+
+## T-002 (sprint 1)
+- **Description:** add the argv `command` field to `TypedToolArgs`, make `path` disjoint (run_command has none), extend `shape_for` so run_command requires a non-empty argv and forbids file fields while the file tools forbid a command, and add the pure `validate_command` (bare allow-listed `argv[0]`, non-empty argv).
+- **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
+- **Completed:** 2026-09-10T16:34:06Z
+- **Files modified:** src/tools.rs
+- **Commit:** PENDING
