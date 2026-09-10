@@ -41,3 +41,10 @@
 - **Completed:** 2026-09-10T16:51:02Z
 - **Files modified:** src/tools.rs, src/bin/cmd-fixture.rs, tests/command_tool.rs, Cargo.toml, Cargo.lock
 - **Commit:** `88598bc5b399d869d36eec2edb643a7fafe96b53`
+
+## T-004 (sprint 1)
+- **Description:** wire run_command into the runtime — map the tool name, add a third dispatch route that runs the command on the async (killable) path beside the reader/writer, build a per-workspace `command_runners` map in `RunResources` (plus a `with_command_workspace` test builder), and add the `run_command` tool schema the model is offered. The effect rides the existing `tool_planned`/`tool_finished` events. Model schema (src/model.rs) was a necessary touch beyond the plan's stated src/runner.rs — without it the run stopped with "unsupported compiled tool".
+- **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
+- **Completed:** 2026-09-10T17:01:42Z
+- **Files modified:** src/runner.rs, src/model.rs, tests/runner_tools.rs
+- **Commit:** PENDING

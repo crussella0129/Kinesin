@@ -197,6 +197,12 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
                     },
                     "required":["path","to"],"additionalProperties":false
                 })),
+                "run_command" => ("Run one allow-listed command in the workspace as an argv vector, never a shell string. Provide command as a list whose first element is the bare executable name and the rest its arguments; each element is passed to the process verbatim, so no shell parses it. It runs in the workspace root with a scrubbed environment, its output is bounded and may be truncated, and it reports the exit code. It cites no evidence and does not retry.", json!({
+                    "type":"object","properties":{
+                        "command":{"type":"array","items":{"type":"string"},"description":"The argv vector: the bare executable name, then its arguments. No shell parses it."}
+                    },
+                    "required":["command"],"additionalProperties":false
+                })),
                 _ => return Err("unsupported compiled tool".to_owned()),
             };
             Ok(json!({"type":"function","function":{

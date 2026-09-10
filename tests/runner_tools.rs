@@ -105,6 +105,36 @@ fn call(id: &str, name: &str, arguments: &str) -> ToolCall {
 fn read(id: &str, path: &str) -> ToolCall {
     call(id, "read_file", &json!({"path": path}).to_string())
 }
+fn run_cmd(id: &str, argv: &[&str]) -> ToolCall {
+    call(id, "run_command", &json!({ "command": argv }).to_string())
+}
+/// Put the `cmd-fixture` binary's directory on PATH so its bare allow-listed name
+/// resolves, exactly once for this integration-test process.
+fn ensure_fixture_on_path() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let dir = PathBuf::from(env!("CARGO_BIN_EXE_cmd-fixture"))
+            .parent()
+            .expect("fixture dir")
+            .to_path_buf();
+        let mut paths = vec![dir];
+        if let Some(existing) = std::env::var_os("PATH") {
+            paths.extend(std::env::split_paths(&existing));
+        }
+        let joined = std::env::join_paths(paths).expect("join PATH");
+        unsafe {
+            std::env::set_var("PATH", joined);
+        }
+    });
+}
+/// The CONFIG workspace, extended to grant `run_command` with a one-entry allow-list.
+fn command_config() -> String {
+    CONFIG.replace(
+        "tools = [\"read_file\"]",
+        "tools = [\"read_file\", \"run_command\"]\ncommands = [\"cmd-fixture\"]",
+    )
+}
 fn batch(calls: Vec<ToolCall>) -> ModelReply {
     ModelReply::ToolCalls {
         content: None,
@@ -1000,4 +1030,159 @@ async fn absent_usage_omits_token_totals() {
         "unreported usage stays unknown, not zero"
     );
     assert!(counters.get("completion_tokens").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn command_effect_is_journalled() {
+    ensure_fixture_on_path();
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(&command_config());
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Run the fixture.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    let client = ModelClient::scripted([
+        batch(vec![run_cmd("c1", &["cmd-fixture", "--print", "hi"])]).into(),
+        ModelReply::Answer("done".into()).into(),
+    ]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_command_workspace(
+            "practice",
+            &fixture.root.join("workspace"),
+            vec!["cmd-fixture".into()],
+        )
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+
+    let finished = events
+        .iter()
+        .find(|event| event.kind == "tool_finished" && event.data["tool"] == "run_command")
+        .expect("the command is journalled");
+    assert_eq!(finished.data["dispatch"], "executed");
+    assert_eq!(finished.data["classification"], "ok");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_command_denied_without_grant() {
+    ensure_fixture_on_path();
+    let fixture = Fixture::new(&[]);
+    // The default CONFIG workspace does not grant run_command.
+    let config = fixture.config(CONFIG);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Try to run a command.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    let client = ModelClient::scripted([
+        batch(vec![run_cmd("c1", &["cmd-fixture", "--print", "hi"])]).into(),
+        ModelReply::Answer("done".into()).into(),
+    ]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+
+    let finished = events
+        .iter()
+        .find(|event| event.kind == "tool_finished" && event.data["tool"] == "run_command")
+        .expect("the denied command is journalled");
+    assert_eq!(finished.data["dispatch"], "denied");
+    assert_eq!(finished.data["classification"], "denied");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn command_cancelled_midrun_is_killed() {
+    ensure_fixture_on_path();
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(&command_config());
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Run a long command.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    // A command that would sleep far past both the cancel and the run deadline.
+    let client = ModelClient::scripted([
+        batch(vec![run_cmd("c1", &["cmd-fixture", "--sleep-ms", "60000"])]).into(),
+        ModelReply::Answer("done".into()).into(),
+    ]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_command_workspace(
+            "practice",
+            &fixture.root.join("workspace"),
+            vec!["cmd-fixture".into()],
+        )
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    let cancel = CancellationToken::new();
+    let canceller = cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        canceller.cancel();
+    });
+    // Cancellation kills the command's group, so the run settles well before the
+    // command's 60s sleep or the 10s run deadline would elapse.
+    let settled = timeout(
+        Duration::from_secs(8),
+        run_admitted(
+            authority.clone(),
+            client,
+            store.clone(),
+            resources,
+            cancel,
+            Instant::now(),
+        ),
+    )
+    .await;
+    storage.shutdown().await.unwrap();
+    assert!(
+        settled.is_ok(),
+        "cancellation did not kill the command; the run hung"
+    );
+    settled.unwrap().expect("run settles");
 }
