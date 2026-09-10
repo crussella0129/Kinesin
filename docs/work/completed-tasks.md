@@ -40,4 +40,4 @@
 - **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
 - **Completed:** 2026-09-10T16:51:02Z
 - **Files modified:** src/tools.rs, src/bin/cmd-fixture.rs, tests/command_tool.rs, Cargo.toml, Cargo.lock
-- **Commit:** PENDING
+- **Commit:** `88598bc5b399d869d36eec2edb643a7fafe96b53`
