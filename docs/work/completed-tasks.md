@@ -68,4 +68,4 @@
 - **Intent:** [INT-0002](../intents/INT-0002-context-compaction.md)
 - **Completed:** 2026-09-10T23:22:16Z
 - **Files modified:** src/runner.rs, src/replay.rs, src/model.rs, tests/runner_tools.rs, tests/replay.rs
-- **Commit:** PENDING
+- **Commit:** `e095fd22ca9caba63b9b9e2ff68d1c422825af0f`
