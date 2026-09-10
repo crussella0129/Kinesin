@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0002
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s2/sprint-plans/build-plan.md#t-001-pure-drop-oldest-compaction-in-core-and-the-compaction-policy)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -44,3 +44,4 @@ and the checked-run evidence contract; a summary strategy adds a model call.
 ## Transition history
 - 2026-09-08: created as `proposed`.
 - 2026-09-10: `proposed → planned`; selected for sprint 2 and linked to the build plan (T-001, T-002). Strategy: pure deterministic drop-oldest compaction in core (evidence- and group-preserving), invoked identically by the runner and replay so fingerprints reproduce; a summary strategy is deferred.
+- 2026-09-10: `planned → active`; sprint 2 build began.

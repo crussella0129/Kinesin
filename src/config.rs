@@ -189,6 +189,10 @@ pub struct Limits {
     pub max_response_bytes: usize,
     pub max_tool_result_bytes: usize,
     pub max_output_tokens: u32,
+    /// When the conversation reaches `max_history_bytes`, this policy decides
+    /// whether the run compacts and continues or stops as before.
+    #[serde(default)]
+    pub compaction: Compaction,
 }
 
 impl Default for Limits {
@@ -203,7 +207,37 @@ impl Default for Limits {
             max_response_bytes: 1_048_576,
             max_tool_result_bytes: 8_192,
             max_output_tokens: 512,
+            compaction: Compaction::default(),
         }
+    }
+}
+
+/// Bounded, evidence-preserving history compaction. When `enabled`, a run at
+/// `max_history_bytes` drops its oldest compactable units instead of stopping,
+/// always keeping the system message, the initial turn, the most-recent `floor`
+/// messages, and any evidence-bearing group.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct Compaction {
+    pub enabled: bool,
+    pub floor: usize,
+}
+
+impl Default for Compaction {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            floor: 6,
+        }
+    }
+}
+
+impl Compaction {
+    fn validate(&self) -> Result<(), String> {
+        if self.floor == 0 || self.floor > 1_024 {
+            return Err("compaction floor must be from 1 to 1024".into());
+        }
+        Ok(())
     }
 }
 
@@ -227,6 +261,7 @@ impl Limits {
                 "max_response_bytes cannot exceed the 1 MiB retained-candidate ceiling".into(),
             );
         }
+        self.compaction.validate()?;
         Ok(())
     }
 }
@@ -941,6 +976,29 @@ mod tests {
         assert!(!fixture.root.join("state").exists());
         assert_eq!(config.limits.max_model_turns, 12);
         assert_eq!(config.concurrency.journal_queue_bytes, 8_388_608);
+    }
+
+    #[test]
+    fn compaction_policy_validates_floor() {
+        let fixture = Fixture::new();
+        // Default (no [limits.compaction]): enabled, floor 6.
+        let config = fixture.parse(BASE).unwrap();
+        assert!(config.limits().compaction.enabled);
+        assert_eq!(config.limits().compaction.floor, 6);
+        // A positive floor parses and is retained.
+        let ok = format!("{BASE}[limits.compaction]\nenabled = true\nfloor = 3\n");
+        assert_eq!(fixture.parse(&ok).unwrap().limits().compaction.floor, 3);
+        // A zero or oversized floor is rejected.
+        assert!(
+            fixture
+                .parse(&format!("{BASE}[limits.compaction]\nfloor = 0\n"))
+                .is_err()
+        );
+        assert!(
+            fixture
+                .parse(&format!("{BASE}[limits.compaction]\nfloor = 100000\n"))
+                .is_err()
+        );
     }
 
     #[test]

@@ -55,3 +55,10 @@
 - **Completed:** 2026-09-10T17:03:34Z
 - **Files modified:** .github/workflows/ci.yml
 - **Commit:** `1d072b623f1c5ba15869a94119bf68b98ab21f0d`
+
+## T-001 (sprint 2)
+- **Description:** add the pure `RunState::drop_oldest_compactable(floor)` to core — removes the oldest complete tool-call/result group or plain turn, preserving the system message, the initial user turn(s), the most-recent `floor` messages, and any evidence-bearing group (detected by a top-level `evidence_id` in the recorded tool result), with whole-group integrity. Add the `Compaction { enabled, floor }` config policy (default enabled, floor 6) with floor validation.
+- **Intent:** [INT-0002](../intents/INT-0002-context-compaction.md)
+- **Completed:** 2026-09-10T22:50:12Z
+- **Files modified:** src/core.rs, src/config.rs
+- **Commit:** PENDING
