@@ -34,3 +34,10 @@
 - **Completed:** 2026-09-10T16:34:06Z
 - **Files modified:** src/tools.rs
 - **Commit:** `3c200b84caa02ff24c3aebe6ec6851f45ead2c05`
+
+## T-003 (sprint 1)
+- **Description:** add the `CommandRunner` capability — argv-only spawn via `command-group` (Unix process group / Windows Job Object), cwd = workspace root, scrubbed environment (PATH everywhere plus a minimal Windows set), stdout+stderr drained and capped at `MAX_COMMAND_OUTPUT_BYTES`, timeout/cancel that kills the whole group, and defined outcomes (non-zero exit is Ok, missing exe / timeout are Error). Adds the cross-platform `cmd-fixture` test binary.
+- **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
+- **Completed:** 2026-09-10T16:51:02Z
+- **Files modified:** src/tools.rs, src/bin/cmd-fixture.rs, tests/command_tool.rs, Cargo.toml, Cargo.lock
+- **Commit:** PENDING

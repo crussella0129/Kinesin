@@ -1,12 +1,17 @@
 //! Three bounded read operations behind a private filesystem capability.
 
 use std::io::{ErrorKind, Read};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::{ExitStatus, Stdio};
+use std::time::Duration;
 
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
+use command_group::AsyncCommandGroup;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::io::AsyncReadExt;
+use tokio_util::sync::CancellationToken;
 
 use crate::config::{ToolName, validate_id, validate_relative_path};
 
@@ -980,6 +985,162 @@ impl WorkspaceWriter {
             .expect("fixed write result shape");
         result
     }
+}
+
+/// A command-execution capability, distinct from the file writer by construction:
+/// it spawns a process, the project's largest trust surface. One is built only for
+/// a workspace whose operator granted `run_command` with an allow-list, so a run
+/// that was never granted commands has no runner at all.
+pub struct CommandRunner {
+    root: PathBuf,
+    allowed: Vec<String>,
+}
+
+impl CommandRunner {
+    /// Trusted startup only: `root` is an operator-approved workspace directory
+    /// and `allowed` its validated command allow-list.
+    pub fn new(root: &Path, allowed: Vec<String>) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            allowed,
+        }
+    }
+
+    /// Run one allow-listed command as an argv vector — never a shell string, so
+    /// the OS receives the arguments verbatim. Output is bounded, the environment
+    /// is scrubbed, the cwd is the workspace root, and the whole process group is
+    /// killed on timeout or cancellation. Every outcome is defined.
+    pub async fn execute(
+        &self,
+        argv: &[String],
+        timeout: Duration,
+        cancel: &CancellationToken,
+    ) -> ToolResult {
+        // Defense in depth: the runner validates before dispatch, and so do we.
+        if let Err((code, message)) = validate_command(argv, &self.allowed) {
+            return ToolResult::failure(ToolStatus::Denied, code, message);
+        }
+        let mut command = tokio::process::Command::new(&argv[0]);
+        command
+            .args(&argv[1..])
+            .current_dir(&self.root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        // Scrub the environment: nothing the operator process holds reaches the
+        // child. Restore only what a process needs to resolve and start — PATH
+        // everywhere, plus the few variables a Windows child needs to run at all.
+        command.env_clear();
+        if let Some(path) = std::env::var_os("PATH") {
+            command.env("PATH", path);
+        }
+        #[cfg(windows)]
+        for key in ["SystemRoot", "SystemDrive", "PATHEXT", "TEMP", "TMP"] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        let mut child = match command.group_spawn() {
+            Ok(child) => child,
+            Err(_) => {
+                return ToolResult::failure(
+                    ToolStatus::Error,
+                    "spawn_failed",
+                    "The command could not be started.",
+                );
+            }
+        };
+        // Drain stdout and stderr concurrently so a chatty child never blocks on a
+        // full pipe, keeping only the first MAX_COMMAND_OUTPUT_BYTES of each.
+        let stdout = child.inner().stdout.take();
+        let stderr = child.inner().stderr.take();
+        let out = tokio::spawn(read_capped(stdout));
+        let err = tokio::spawn(read_capped(stderr));
+        let outcome = tokio::select! {
+            biased;
+            () = cancel.cancelled() => {
+                let _ = child.kill().await;
+                Err("cancelled")
+            }
+            () = tokio::time::sleep(timeout) => {
+                let _ = child.kill().await;
+                Err("timed_out")
+            }
+            status = child.wait() => Ok(status),
+        };
+        // After a kill the pipes close, so the readers reach EOF; collect what they
+        // saw either way.
+        let (stdout_bytes, out_truncated) = out.await.unwrap_or_default();
+        let (stderr_bytes, err_truncated) = err.await.unwrap_or_default();
+        let truncated = out_truncated || err_truncated;
+        match outcome {
+            Ok(Ok(status)) => command_result(status, &stdout_bytes, &stderr_bytes, truncated),
+            Ok(Err(_)) => ToolResult::failure(
+                ToolStatus::Error,
+                "wait_failed",
+                "The command could not be awaited.",
+            ),
+            Err("timed_out") => ToolResult::failure(
+                ToolStatus::Error,
+                "timed_out",
+                "The command exceeded its time limit and was terminated.",
+            ),
+            Err(_) => ToolResult::failure(
+                ToolStatus::Error,
+                "cancelled",
+                "The command was cancelled and its process group terminated.",
+            ),
+        }
+    }
+}
+
+/// Read a child stream to EOF, retaining only the first MAX_COMMAND_OUTPUT_BYTES.
+/// Reading continues past the cap so the pipe drains and the child does not block;
+/// only the retained prefix is kept, and the boolean reports whether more existed.
+async fn read_capped<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
+    reader: Option<R>,
+) -> (Vec<u8>, bool) {
+    let mut kept = Vec::new();
+    let mut truncated = false;
+    if let Some(mut reader) = reader {
+        let mut buf = [0u8; 4096];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    if kept.len() < MAX_COMMAND_OUTPUT_BYTES {
+                        let room = MAX_COMMAND_OUTPUT_BYTES - kept.len();
+                        let take = room.min(n);
+                        kept.extend_from_slice(&buf[..take]);
+                        if take < n {
+                            truncated = true;
+                        }
+                    } else {
+                        truncated = true;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    }
+    (kept, truncated)
+}
+
+/// Shape a completed command's exit status and captured output into a result. A
+/// command that ran and exited — even non-zero — is a completed tool call (`Ok`);
+/// its exit code rides in the body for the model to read.
+fn command_result(status: ExitStatus, stdout: &[u8], stderr: &[u8], truncated: bool) -> ToolResult {
+    let mut result = ToolResult::success(None);
+    result.truncated = truncated;
+    result.body = serde_json::to_string(&json!({
+        "exit_code": status.code(),
+        "success": status.success(),
+        "stdout": String::from_utf8_lossy(stdout),
+        "stderr": String::from_utf8_lossy(stderr),
+        "truncated": truncated,
+    }))
+    .expect("fixed command result shape");
+    result
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
