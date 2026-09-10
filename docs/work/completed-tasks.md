@@ -54,4 +54,4 @@
 - **Intent:** [INT-0003](../intents/INT-0003-shell-execution.md)
 - **Completed:** 2026-09-10T17:03:34Z
 - **Files modified:** .github/workflows/ci.yml
-- **Commit:** PENDING
+- **Commit:** `1d072b623f1c5ba15869a94119bf68b98ab21f0d`
