@@ -2,8 +2,8 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0003
-- **State:** proposed
-- **Work evidence:** none
+- **State:** planned
+- **Work evidence:** [T-001 build plan](../sprints/s1/sprint-plans/build-plan.md#t-001-config-surface-allow-list-and-checked-run-bar-for-run_command)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -41,3 +41,4 @@ cleanup, and reconciliation of an effect that cannot be un-run.
 
 ## Transition history
 - 2026-09-08: created as `proposed`.
+- 2026-09-10: `proposed → planned`; selected for sprint 1 and linked to the build plan (T-001–T-005). Design: a distinct `CommandRunner` capability with full process-tree cleanup via `command-group`; cross-platform CI added to exercise it on Windows and Linux.
