@@ -9,5 +9,5 @@
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
 - **Summary:** Add a bounded `run_command` tool (argv-only, allow-listed, timed, tree-killed) — the last member of the write surface (INT-0003).
-- **Intents:** [INT-0003](../../intents/INT-0003-shell-execution.md) — planned
+- **Intents:** [INT-0003](../../intents/INT-0003-shell-execution.md) — realized
 - **Completion evidence:** (filled at Loop Phase)

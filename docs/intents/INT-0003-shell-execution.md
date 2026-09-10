@@ -2,9 +2,9 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0003
-- **State:** active
+- **State:** realized
 - **Work evidence:** [T-001 build plan](../sprints/s1/sprint-plans/build-plan.md#t-001-config-surface-allow-list-and-checked-run-bar-for-run_command)
-- **Completion evidence:** none
+- **Completion evidence:** [T-001–T-005 completion log](../work/completed-tasks.md)
 - **Code evidence:** [T-001–T-005 commits](../work/completed-tasks.md) plus the run_command E2E
 - **Test evidence:** [Sprint 1 test report](../sprints/s1/sprint-tests/test-report.md) — all acceptance criteria verified (tested head `13ffdc3`)
 - **Documentation evidence:** none
@@ -43,4 +43,5 @@ cleanup, and reconciliation of an effect that cannot be un-run.
 - 2026-09-08: created as `proposed`.
 - 2026-09-10: `proposed → planned`; selected for sprint 1 and linked to the build plan (T-001–T-005). Design: a distinct `CommandRunner` capability with full process-tree cleanup via `command-group`; cross-platform CI added to exercise it on Windows and Linux.
 - 2026-09-10: `planned → active`; sprint 1 build began.
-- 2026-09-10: test phase verified all acceptance criteria (18 named tests, 224 green) with an accepted `proceed-with-caveats` critique; test report linked as Test evidence. Awaiting completion evidence before `realized`.
+- 2026-09-10: test phase verified all acceptance criteria (18 named tests, 224 green) with an accepted `proceed-with-caveats` critique; test report linked as Test evidence.
+- 2026-09-10: `active → realized`; sprint 1 closed with completion, code, and test evidence attached. Follow-ups noted (dedicated per-command timeout; per-event command detail in inspect) as future intents, not gaps.
