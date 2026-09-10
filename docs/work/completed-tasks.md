@@ -61,4 +61,4 @@
 - **Intent:** [INT-0002](../intents/INT-0002-context-compaction.md)
 - **Completed:** 2026-09-10T22:50:12Z
 - **Files modified:** src/core.rs, src/config.rs
-- **Commit:** PENDING
+- **Commit:** `bf8825e400b30c9016dc93ee51ef90b170fbb1f5`
