@@ -139,3 +139,10 @@
 - **Completed:** 2026-09-11T20:51:38Z
 - **Files modified:** src/tools.rs
 - **Commit:** `e9fb97b2e3e4be8008dbff8a8fe8e3f3da38f489`
+
+## T-003 (sprint 7)
+- **Description:** Linux sandbox enforcement tests (`tests/sandbox_linux.rs`, `#![cfg(target_os="linux")]`) driving the real `cmd-fixture` through `CommandRunner`: `sandbox_denies_out_of_workspace_read` (Landlock denies a read of a file beside the workspace under /tmp → `READ_DENIED`/exit 21), `sandbox_denies_network_socket` (seccomp denies UDP socket creation → `SOCKET_DENIED`/exit 22), `sandbox_allows_in_workspace_work` (in-workspace read → `READ_OK`), and `sandbox_is_mandatory` (a command is either enforced-Ok or refused with `sandbox_unavailable`, never unconfined). Each enforcement test skips with a note on a kernel that cannot enforce (mandatory-refuse). Added `--read-file`/`--open-socket` probe directives to `cmd-fixture`. All 4 pass in WSL with real enforcement; full suite green on WSL + Windows; the ubuntu CI `check` job is the authoritative Landlock run.
+- **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
+- **Completed:** 2026-09-11T20:52:14Z
+- **Files modified:** tests/sandbox_linux.rs, src/bin/cmd-fixture.rs
+- **Commit:** PENDING
