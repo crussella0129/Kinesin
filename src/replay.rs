@@ -18,9 +18,13 @@ use crate::verification::{self, AssessmentContext, EvidenceInventory};
 pub const MAX_REPLAY_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_REPLAY_EVENTS: usize = 256;
 
-/// Bump the applicable version whenever its recorded semantics change.
+/// Bump the applicable version whenever its recorded semantics change. This
+/// guards admission: a capture stamped with a different set is refused up front
+/// (`replay_versions_unsupported`) rather than failing deep in replay. `adapter`
+/// is at 2 since INT-0004 added `cache_prompt` to the prepared request, changing
+/// the recorded request bytes a pre-upgrade capture cannot reproduce.
 pub fn versions() -> Value {
-    json!({"capture":2,"core":1,"adapter":1,"tools":1,"checker":1,
+    json!({"capture":2,"core":1,"adapter":2,"tools":1,"checker":1,
         "source_parser":1,"output_contract":1})
 }
 

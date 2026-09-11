@@ -1406,19 +1406,21 @@ async fn prepared_request_of_each_turn_extends_the_previous() {
     for pair in requests.windows(2) {
         let earlier: Value = serde_json::from_slice(&pair[0]).unwrap();
         let later: Value = serde_json::from_slice(&pair[1]).unwrap();
-        let earlier = earlier["messages"].as_array().unwrap();
-        let later = later["messages"].as_array().unwrap();
-        assert!(later.len() > earlier.len(), "the conversation grew");
+        let earlier_messages = earlier["messages"].as_array().unwrap();
+        let later_messages = later["messages"].as_array().unwrap();
+        assert!(
+            later_messages.len() > earlier_messages.len(),
+            "the conversation grew"
+        );
         assert_eq!(
-            &later[..earlier.len()],
-            earlier.as_slice(),
+            &later_messages[..earlier_messages.len()],
+            earlier_messages.as_slice(),
             "each turn's messages are a prefix of the next"
         );
-        // Every request also carries the cache-reuse flag.
-        assert_eq!(
-            serde_json::from_slice::<Value>(&pair[0]).unwrap()["cache_prompt"],
-            true
-        );
+        // Every request carries the cache-reuse flag; check both ends so the
+        // final request is covered too (windows(2) never puts it in pair[0]).
+        assert_eq!(earlier["cache_prompt"], true);
+        assert_eq!(later["cache_prompt"], true);
     }
 }
 
