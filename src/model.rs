@@ -137,27 +137,31 @@ pub fn history_len(messages: &[Message]) -> Result<usize, String> {
 }
 
 /// Drop the oldest compactable units until the conversation fits
-/// `max_history_bytes`, or nothing more is droppable; returns how many units were
-/// dropped. When `enabled` is false it drops nothing. Deterministic and free of
+/// `max_history_bytes`, or nothing more is droppable. Returns how many units were
+/// dropped and whether the conversation now fits. When `enabled` is false it
+/// drops nothing and reports whether it already fits. Deterministic and free of
 /// I/O or journaling, so the runner and replay compact identically and a
-/// compacted run reproduces on replay.
+/// compacted run reproduces on replay. The `fits` result lets the caller decide
+/// without re-serializing the conversation.
 pub fn compact_until_fits(
     state: &mut crate::core::RunState,
     max_history_bytes: usize,
     enabled: bool,
     floor: usize,
-) -> Result<usize, String> {
+) -> Result<(usize, bool), String> {
     if !enabled {
-        return Ok(0);
+        return Ok((0, history_len(state.messages())? <= max_history_bytes));
     }
     let mut dropped = 0;
-    while history_len(state.messages())? > max_history_bytes {
+    loop {
+        if history_len(state.messages())? <= max_history_bytes {
+            return Ok((dropped, true));
+        }
         if !state.drop_oldest_compactable(floor) {
-            break;
+            return Ok((dropped, false));
         }
         dropped += 1;
     }
-    Ok(dropped)
 }
 
 pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedRequest, String> {

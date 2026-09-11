@@ -1213,7 +1213,7 @@ async fn run_continues_past_history_limit_by_compacting() {
                 "tools = [\"read_file\"]",
                 "tools = [\"read_file\", \"list_files\"]"
             )
-            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 2600")
+            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 6000")
     );
     let config = fixture.config(&source);
     let authority = config
@@ -1228,7 +1228,7 @@ async fn run_continues_past_history_limit_by_compacting() {
         .unwrap();
     let storage = fixture.storage().await;
     let store = storage.client();
-    let bulky = "x".repeat(700);
+    let bulky = "x".repeat(2000);
     // Distinct paths so the repeat detector does not stop the run first.
     let client = ModelClient::scripted([
         toolcalls(&bulky, "l1", "list_files", r#"{"path":"."}"#).into(),
@@ -1283,7 +1283,7 @@ async fn compaction_stops_when_nothing_droppable() {
     let store = storage.client();
     // One bulky read turn overflows the budget before it can execute.
     let client = ModelClient::scripted([toolcalls(
-        &"x".repeat(900),
+        &"x".repeat(2000),
         "r1",
         "read_file",
         r#"{"path":"project.txt"}"#,
@@ -1328,12 +1328,12 @@ async fn checked_run_evidence_survives_compaction() {
             )
             .replace("max_model_turns = 6", "max_model_turns = 12")
             .replace("max_tool_calls = 8", "max_tool_calls = 16")
-            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 2600")
+            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 6000")
     );
     // Three bulky non-evidence list turns (distinct paths) precede the evidence
     // read; compaction drops the old list groups while the read result is
     // preserved, so the candidate can still cite it and the run passes.
-    let bulky = "x".repeat(700);
+    let bulky = "x".repeat(2000);
     let case = run_case(
         &source,
         &[("project.txt", SOURCE)],

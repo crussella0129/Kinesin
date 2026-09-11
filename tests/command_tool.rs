@@ -56,6 +56,9 @@ fn body(result: &kinesin::tools::ToolResult) -> Value {
     serde_json::from_str(&result.body).expect("command result body is JSON")
 }
 
+/// A generous output budget for tests that are not exercising truncation.
+const WIDE: usize = MAX_COMMAND_OUTPUT_BYTES;
+
 #[tokio::test]
 async fn command_runs_and_captures_bounded_output() {
     let root = workspace();
@@ -65,6 +68,7 @@ async fn command_runs_and_captures_bounded_output() {
             &argv(&["cmd-fixture", "--print", "hello world"]),
             Duration::from_secs(10),
             &CancellationToken::new(),
+            WIDE,
         )
         .await;
     assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
@@ -86,6 +90,7 @@ async fn command_runs_with_scrubbed_env_and_workspace_cwd() {
             &argv(&["cmd-fixture", "--print-cwd"]),
             Duration::from_secs(10),
             &CancellationToken::new(),
+            WIDE,
         )
         .await;
     assert_eq!(cwd.status, ToolStatus::Ok, "{:?}", cwd.error);
@@ -97,6 +102,7 @@ async fn command_runs_with_scrubbed_env_and_workspace_cwd() {
             &argv(&["cmd-fixture", "--print-env", "KINESIN_TEST_SECRET"]),
             Duration::from_secs(10),
             &CancellationToken::new(),
+            WIDE,
         )
         .await;
     assert_eq!(body(&env)["stdout"], "");
@@ -113,6 +119,7 @@ async fn command_output_truncated_at_cap() {
             &argv(&["cmd-fixture", "--emit-stdout", &over.to_string()]),
             Duration::from_secs(10),
             &CancellationToken::new(),
+            WIDE,
         )
         .await;
     assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
@@ -127,6 +134,35 @@ async fn command_output_truncated_at_cap() {
 }
 
 #[tokio::test]
+async fn command_output_bounded_by_configured_budget() {
+    let root = workspace();
+    let runner = runner(&root, &["cmd-fixture"]);
+    // Both streams emit far more than a small configured budget.
+    let result = runner
+        .execute(
+            &argv(&[
+                "cmd-fixture",
+                "--emit-stdout",
+                "4000",
+                "--emit-stderr",
+                "4000",
+            ]),
+            Duration::from_secs(10),
+            &CancellationToken::new(),
+            512,
+        )
+        .await;
+    assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+    assert!(result.truncated);
+    let body = body(&result);
+    let out = body["stdout"].as_str().unwrap().len();
+    let err = body["stderr"].as_str().unwrap().len();
+    // The combined capture honors the configured budget, not a per-stream cap.
+    assert!(out + err <= 512, "combined {out}+{err} exceeds the budget");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
 async fn command_nonzero_exit_reported() {
     let root = workspace();
     let runner = runner(&root, &["cmd-fixture"]);
@@ -135,6 +171,7 @@ async fn command_nonzero_exit_reported() {
             &argv(&["cmd-fixture", "--exit", "7"]),
             Duration::from_secs(10),
             &CancellationToken::new(),
+            WIDE,
         )
         .await;
     // A command that ran and failed is a completed tool call, not an internal error.
@@ -155,6 +192,7 @@ async fn command_missing_executable_errors() {
             &argv(&["ghost-binary"]),
             Duration::from_secs(10),
             &CancellationToken::new(),
+            WIDE,
         )
         .await;
     assert_eq!(result.status, ToolStatus::Error);
@@ -180,6 +218,7 @@ async fn command_timeout_kills_process_tree() {
             ]),
             Duration::from_millis(700),
             &CancellationToken::new(),
+            WIDE,
         )
         .await;
     assert_eq!(result.status, ToolStatus::Error);
@@ -206,6 +245,7 @@ async fn run_command_passes_argv_without_shell_interpretation() {
             &argv(&["cmd-fixture", "--print", literal]),
             Duration::from_secs(10),
             &CancellationToken::new(),
+            WIDE,
         )
         .await;
     assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);

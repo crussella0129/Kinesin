@@ -808,7 +808,7 @@ async fn replay_reproduces_a_compacted_run() {
         "{}\n[limits.compaction]\nfloor = 2\n",
         CONFIG
             .replace("max_model_turns = 3", "max_model_turns = 8")
-            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 2600")
+            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 6000")
     );
     let config = Config::parse(&source, &fixture.root.join("kinesin.toml")).unwrap();
     let authority = config
@@ -832,7 +832,7 @@ async fn replay_reproduces_a_compacted_run() {
     let resources = RunResources::single(1, config.concurrency().clone())
         .with_workspace("practice", &fixture.root.join("workspace"))
         .unwrap();
-    let bulky = "x".repeat(700);
+    let bulky = "x".repeat(2000);
     let listing = |id: &str, path: &str| {
         ScriptStep::from(ModelReply::ToolCalls {
             content: Some(bulky.clone()),

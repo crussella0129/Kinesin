@@ -1015,6 +1015,7 @@ impl CommandRunner {
         argv: &[String],
         timeout: Duration,
         cancel: &CancellationToken,
+        max_output: usize,
     ) -> ToolResult {
         // Defense in depth: the runner validates before dispatch, and so do we.
         if let Err((code, message)) = validate_command(argv, &self.allowed) {
@@ -1050,12 +1051,15 @@ impl CommandRunner {
                 );
             }
         };
-        // Drain stdout and stderr concurrently so a chatty child never blocks on a
-        // full pipe, keeping only the first MAX_COMMAND_OUTPUT_BYTES of each.
+        // The captured output is bounded by the operator's tool-result budget, the
+        // same limit every other tool honors, under a hard ceiling. Each stream is
+        // drained (so a chatty child never blocks on a full pipe) but retains at
+        // most `cap` bytes; the combined result is then held to `cap` as well.
+        let cap = max_output.min(MAX_COMMAND_OUTPUT_BYTES);
         let stdout = child.inner().stdout.take();
         let stderr = child.inner().stderr.take();
-        let out = tokio::spawn(read_capped(stdout));
-        let err = tokio::spawn(read_capped(stderr));
+        let out = tokio::spawn(read_capped(stdout, cap));
+        let err = tokio::spawn(read_capped(stderr, cap));
         let outcome = tokio::select! {
             biased;
             () = cancel.cancelled() => {
@@ -1069,10 +1073,12 @@ impl CommandRunner {
             status = child.wait() => Ok(status),
         };
         // After a kill the pipes close, so the readers reach EOF; collect what they
-        // saw either way.
-        let (stdout_bytes, out_truncated) = out.await.unwrap_or_default();
-        let (stderr_bytes, err_truncated) = err.await.unwrap_or_default();
-        let truncated = out_truncated || err_truncated;
+        // saw, bounded so a descendant that keeps a pipe open cannot hang the run.
+        let (raw_stdout, out_truncated) = join_reader(out).await;
+        let (raw_stderr, err_truncated) = join_reader(err).await;
+        let (stdout_bytes, stderr_bytes, combined_truncated) =
+            combine_capped(raw_stdout, raw_stderr, cap);
+        let truncated = out_truncated || err_truncated || combined_truncated;
         match outcome {
             Ok(Ok(status)) => command_result(status, &stdout_bytes, &stderr_bytes, truncated),
             Ok(Err(_)) => ToolResult::failure(
@@ -1094,11 +1100,15 @@ impl CommandRunner {
     }
 }
 
-/// Read a child stream to EOF, retaining only the first MAX_COMMAND_OUTPUT_BYTES.
-/// Reading continues past the cap so the pipe drains and the child does not block;
-/// only the retained prefix is kept, and the boolean reports whether more existed.
+/// Grace for the reader tasks to finish after the child is awaited or killed.
+const COMMAND_READER_GRACE: Duration = Duration::from_secs(5);
+
+/// Read a child stream to EOF, retaining only the first `cap` bytes. Reading
+/// continues past the cap so the pipe drains and the child does not block; only
+/// the retained prefix is kept, and the boolean reports whether more existed.
 async fn read_capped<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
     reader: Option<R>,
+    cap: usize,
 ) -> (Vec<u8>, bool) {
     let mut kept = Vec::new();
     let mut truncated = false;
@@ -1108,8 +1118,8 @@ async fn read_capped<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
             match reader.read(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => {
-                    if kept.len() < MAX_COMMAND_OUTPUT_BYTES {
-                        let room = MAX_COMMAND_OUTPUT_BYTES - kept.len();
+                    if kept.len() < cap {
+                        let room = cap - kept.len();
                         let take = room.min(n);
                         kept.extend_from_slice(&buf[..take]);
                         if take < n {
@@ -1124,6 +1134,32 @@ async fn read_capped<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
         }
     }
     (kept, truncated)
+}
+
+/// Await a reader task under a bounded grace, aborting it if a lingering
+/// descendant keeps the pipe open so the command can never hang the run.
+async fn join_reader(mut handle: tokio::task::JoinHandle<(Vec<u8>, bool)>) -> (Vec<u8>, bool) {
+    match tokio::time::timeout(COMMAND_READER_GRACE, &mut handle).await {
+        Ok(Ok(value)) => value,
+        _ => {
+            handle.abort();
+            (Vec::new(), true)
+        }
+    }
+}
+
+/// Hold the combined stdout+stderr to `cap` bytes: stdout keeps up to `cap`, and
+/// stderr keeps whatever budget remains. Returns the trimmed streams and whether
+/// the combined trim dropped anything.
+fn combine_capped(stdout: Vec<u8>, stderr: Vec<u8>, cap: usize) -> (Vec<u8>, Vec<u8>, bool) {
+    let out_keep = stdout.len().min(cap);
+    let err_keep = stderr.len().min(cap - out_keep);
+    let trimmed = out_keep < stdout.len() || err_keep < stderr.len();
+    (
+        stdout[..out_keep].to_vec(),
+        stderr[..err_keep].to_vec(),
+        trimmed,
+    )
 }
 
 /// Shape a completed command's exit status and captured output into a result. A

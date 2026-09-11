@@ -693,14 +693,7 @@ pub async fn run_admitted_with_text(
                         .map_err(|e| e.to_string())?;
                     continue;
                 }
-                let compaction = authority.limits().compaction;
-                journal.compactions += model::compact_until_fits(
-                    &mut state,
-                    authority.limits().max_history_bytes,
-                    compaction.enabled,
-                    compaction.floor,
-                )? as u64;
-                if model::history_len(state.messages())? > authority.limits().max_history_bytes {
+                if !compact_state(&mut state, &mut journal, authority.limits())? {
                     journal.stop();
                     effect = state
                         .stop(RunPhase::Stopped, "history_bytes_limit".into())
@@ -868,19 +861,20 @@ pub async fn run_admitted_with_text(
                 let mut next = state.clone();
                 let next_effect = next.observe_model(observation).map_err(|e| e.to_string())?;
                 let compaction = authority.limits().compaction;
-                let dropped = model::compact_until_fits(
+                let (dropped, fits) = model::compact_until_fits(
                     &mut next,
                     authority.limits().max_history_bytes,
                     compaction.enabled,
                     compaction.floor,
-                )? as u64;
-                if model::history_len(next.messages())? > authority.limits().max_history_bytes {
+                )?;
+                if !fits {
                     journal.stop();
                     effect = state
                         .stop(RunPhase::Stopped, "history_bytes_limit".into())
                         .map_err(|e| e.to_string())?;
                 } else {
-                    journal.compactions += dropped;
+                    // Only count drops that persist: an unfit `next` is discarded.
+                    journal.compactions += dropped as u64;
                     state = next;
                     effect = next_effect;
                 }
@@ -1022,11 +1016,18 @@ pub async fn run_admitted_with_text(
                                                 let argv =
                                                     write_args.command.clone().unwrap_or_default();
                                                 // The command self-limits to the remaining run
-                                                // budget; cancellation kills it either way.
+                                                // budget; cancellation kills it either way. Its
+                                                // captured output is bounded by the same
+                                                // tool-result budget every other tool honors.
                                                 let timeout = deadline
                                                     .saturating_duration_since(Instant::now());
                                                 command_runner
-                                                    .execute(&argv, timeout, &cancel)
+                                                    .execute(
+                                                        &argv,
+                                                        timeout,
+                                                        &cancel,
+                                                        authority.limits().max_tool_result_bytes,
+                                                    )
                                                     .await
                                             }
                                         },
@@ -1161,15 +1162,7 @@ pub async fn run_admitted_with_text(
                     {
                         effect = next;
                     }
-                    let compaction = authority.limits().compaction;
-                    journal.compactions += model::compact_until_fits(
-                        &mut state,
-                        authority.limits().max_history_bytes,
-                        compaction.enabled,
-                        compaction.floor,
-                    )? as u64;
-                    if model::history_len(state.messages())? > authority.limits().max_history_bytes
-                    {
+                    if !compact_state(&mut state, &mut journal, authority.limits())? {
                         journal.stop();
                         effect = state
                             .stop(RunPhase::Stopped, "history_bytes_limit".into())
@@ -1180,6 +1173,26 @@ pub async fn run_admitted_with_text(
             }
         }
     }
+}
+
+/// Compact `state` to fit the history budget, recording any drops in the journal.
+/// Returns whether the conversation now fits; the caller stops the run when it
+/// does not. Used at the sites that operate on the live state (before a request
+/// and after a tool observation); the post-model site works on a clone and counts
+/// drops itself, since an unfit clone is discarded.
+fn compact_state(
+    state: &mut core::RunState,
+    journal: &mut RunJournal,
+    limits: &crate::config::Limits,
+) -> Result<bool, String> {
+    let (dropped, fits) = model::compact_until_fits(
+        state,
+        limits.max_history_bytes,
+        limits.compaction.enabled,
+        limits.compaction.floor,
+    )?;
+    journal.compactions += dropped as u64;
+    Ok(fits)
 }
 
 #[derive(Clone, Debug)]

@@ -778,7 +778,7 @@ path = "state/kinesin.sqlite"
 [limits]
 max_model_turns = 8
 max_run_s = 20
-max_history_bytes = 2600
+max_history_bytes = 6000
 [limits.compaction]
 floor = 2
 [[workspaces]]
@@ -839,7 +839,7 @@ temperature = 0.0
             // Three bulky, distinct list_files turns, then a final answer.
             let n = provider_exchange.fetch_add(1, Ordering::SeqCst);
             let message = if n < 3 {
-                let bulky = "x".repeat(700);
+                let bulky = "x".repeat(2000);
                 let path = ["\".\"", "\"one\"", "\"two\""][n];
                 json!({"role":"assistant","content":bulky,"tool_calls":[{
                 "id":format!("l{n}"),"type":"function","function":{

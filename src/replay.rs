@@ -871,12 +871,24 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         "replay_receipt_divergence",
         Some(terminal.seq),
     )?;
-    // Only the deterministically recomputable counters are checked. Runner-only
+    // The deterministically recomputable counters must match. Runner-only
     // observability totals (token usage, compaction count) are recorded but not
-    // reproduced here, so they are not part of the divergence check.
+    // reproduced here, so they are exempt from the value check — but every key
+    // present must still be one this replay knows about, so a future counter
+    // added without teaching replay how to treat it fails rather than slips by.
+    let counters = &terminal.data["counters"];
+    let known_counter = |key: &str| {
+        matches!(
+            key,
+            "model_turns" | "tool_calls" | "prompt_tokens" | "completion_tokens" | "compactions"
+        )
+    };
     ensure(
-        terminal.data["counters"]["model_turns"] == json!(state.counters().model_turns)
-            && terminal.data["counters"]["tool_calls"] == json!(state.counters().tool_calls),
+        counters["model_turns"] == json!(state.counters().model_turns)
+            && counters["tool_calls"] == json!(state.counters().tool_calls)
+            && counters
+                .as_object()
+                .is_some_and(|map| map.keys().all(|key| known_counter(key))),
         "replay_counter_divergence",
         Some(terminal.seq),
     )?;
