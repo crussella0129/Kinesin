@@ -31,8 +31,10 @@ supply-chain, OWASP LLM/Agentic, CISA/NSA memory-safety, NIST agent controls).
 - **C-001 (accepted):** "gap-complete" is bounded by the review's thoroughness;
   anchored to the codebase's deferral docs + the SotA survey + OWASP/NIST/CISA,
   and the roadmap is a living document revised as gaps surface.
-- **C-002 (deferred):** only `check-book` is CI-gated; the SUMMARY/roadmap/cross-ref
-  checks verify a one-time doc state and were run by hand (commands recorded).
+- **C-002 (deferred):** none of these checks is CI-gated — the repo's CI is
+  `cargo fmt`/`clippy`/`test` only and does not validate the Book. `check-book.sh`
+  is the Sprint Loops bundle phase validator; it and the SUMMARY/roadmap/cross-ref
+  checks were run locally this sprint (commands recorded verbatim for local re-run).
 - **C-003 (rejected):** the workstream intents are `proposed` backlog, not
   delivered hardening — the roadmap says so plainly; nothing claims otherwise.
 

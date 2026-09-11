@@ -14,17 +14,23 @@ Produce an explicit, maintained security-assurance package: a threat model that
 maps Kinesin's design and boundaries onto OWASP LLM Top-10 (2025) and OWASP
 Agentic Top-10 (2026) and the NIST AI-agent controls (just-in-time privilege,
 policy-based authorization, task scoping, human-approval gates, dev/test/prod
-separation); a CISA/NSA-aligned **memory-safety statement** that documents the
-`unsafe` FFI surface (windows-sys, libc) and why the project meets the memory-safe
-roadmap expectation; and a **standing red-team / prompt-injection corpus** wired
-into CI, tied to security.md's release-evidence matrix. Non-goals: a formal
+separation); an explicit treatment of the **service transport-authentication /
+identity boundary** — bearer-over-loopback today, with mTLS / mutual identity
+named as the hardening required before any non-loopback (shared-service) exposure;
+a CISA/NSA-aligned **memory-safety statement** that documents the `unsafe` FFI
+surface (windows-sys, libc) and why the project meets the memory-safe roadmap
+expectation; and a **standing red-team / prompt-injection corpus** wired into CI,
+tied to security.md's release-evidence matrix. Non-goals: a formal
 certification or audit sign-off; proving model behavior is safe (prompt-injection
 evals measure the model, authorization tests prove the gate — both are recorded,
 neither substitutes for the other).
 
 ## Acceptance criteria
 - A `docs/threat-model.md` maps each OWASP LLM/Agentic risk and each NIST control
-  to a specific Kinesin mechanism, gap, or accepted residual risk.
+  to a specific Kinesin mechanism, gap, or accepted residual risk — including the
+  service transport-authentication/identity boundary (bearer-over-loopback as the
+  current control; mTLS/mutual-identity as the residual-risk mitigation gated
+  before non-loopback exposure).
 - A memory-safety statement enumerates every `unsafe` block / FFI dependency, its
   justification, and its containment, satisfying the CISA/NSA memory-safe-roadmap
   expectation.
@@ -53,3 +59,4 @@ controls to move from "gap" to "mechanism."
 
 ## Transition history
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme B — supply-chain & assurance).
+- 2026-09-11: scope refined (still `proposed`) to explicitly own the service transport-authentication/identity boundary (bearer-over-loopback → mTLS for non-loopback exposure), closing the "no mTLS/identity beyond bearer" research-report gap flagged in ultrareview of the sprint 5 checkpoint.

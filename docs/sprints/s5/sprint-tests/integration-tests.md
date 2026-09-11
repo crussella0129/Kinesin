@@ -19,7 +19,7 @@ Documentation deliverable, so verification is structural/coverage, executed with
 ## `roadmap_maps_every_gap` — gap → intent trace
 Every gap named in the [research report](../sprint-research/research-report.md)
 maps to a tracked intent in [roadmap.md](../../../roadmap.md):
-- command sandboxing → INT-0012; supply-chain gate → INT-0013; tamper-evidence → INT-0014; threat-model/OWASP/NIST/CISA + memory-safety → INT-0015; observability/latency-overhead → INT-0016; approval gates/JIT privilege → INT-0017; parallel orchestration/subagents → INT-0018; concurrency safety → INT-0010; MCP → INT-0005; skills → INT-0006; managed supervision → INT-0007; overlay transport → INT-0009.
+- command sandboxing → INT-0012; supply-chain gate → INT-0013; tamper-evidence → INT-0014; threat-model/OWASP/NIST/CISA + memory-safety + **service transport-auth/identity (mTLS beyond bearer) + env (dev/test/prod) separation** → INT-0015; observability/latency-overhead → INT-0016; approval gates/JIT privilege → INT-0017; parallel orchestration/subagents → INT-0018; concurrency safety → INT-0010; MCP → INT-0005; skills → INT-0006; managed supervision → INT-0007; overlay transport → INT-0009.
 - Parking-lot items (memory, programmatic tool results, ACP/A2A, Postgres/queue, vector retrieval) are explicitly listed as deferred-without-a-chapter, not silently dropped.
 
 ## Confirmation

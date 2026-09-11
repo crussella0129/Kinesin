@@ -32,7 +32,7 @@ oversight / just-in-time privilege; and SotA scaling (MCP, skills, subagents).
 
 ### B. Supply-chain & assurance
 - [INT-0013](intents/INT-0013-supply-chain-security.md) — supply-chain security & signed releases (cargo-deny/audit/auditable/vet, SBOM, cosign). **proposed**
-- [INT-0015](intents/INT-0015-threat-model-assurance.md) — threat model & security assurance (OWASP/NIST/CISA mapping, memory-safety statement, red-team corpus). **proposed**
+- [INT-0015](intents/INT-0015-threat-model-assurance.md) — threat model & security assurance (OWASP/NIST/CISA mapping, memory-safety statement, red-team corpus, service transport-auth/identity boundary incl. mTLS-beyond-bearer). **proposed**
 
 ### C. Operability / production
 - [INT-0016](intents/INT-0016-observability.md) — observability (OpenTelemetry traces + metrics, no prompts; measures runtime overhead). **proposed**
