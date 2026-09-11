@@ -125,3 +125,10 @@
 - **Completed:** 2026-09-11T19:17:08Z
 - **Files modified:** .github/workflows/ci.yml
 - **Commit:** `550a3a55d861cb0283d73963b0a948cc208db36d`
+
+## T-001 (sprint 7)
+- **Description:** added `landlock` 0.4.7 + `seccompiler` 0.5.0 (and transitive `enumflags2`) under `[target.'cfg(target_os="linux")'.dependencies]` so they compile only on Linux and leave Windows/macos builds untouched. The INT-0013 supply-chain gate stays green with the new deps: `cargo deny check` all-ok (their MIT/Apache licenses were already allowed — no deny.toml edit) and `cargo audit` clean (225 deps). `cargo check` confirms the Windows build is unaffected (cfg-gated deps not pulled).
+- **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
+- **Completed:** 2026-09-11T20:33:54Z
+- **Files modified:** Cargo.toml, Cargo.lock
+- **Commit:** PENDING

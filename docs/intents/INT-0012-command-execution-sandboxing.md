@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0012
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-002 build plan](../sprints/s7/sprint-plans/build-plan.md#t-002-apply-landlock--seccomp-to-the-child-srctoolsrs)
 - **Completion evidence:** none
 - **Code evidence:** none
