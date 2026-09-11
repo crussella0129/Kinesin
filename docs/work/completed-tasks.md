@@ -152,4 +152,4 @@
 - **Intent:** [INT-0015](../intents/INT-0015-threat-model-assurance.md)
 - **Completed:** 2026-09-11T22:01:43Z
 - **Files modified:** docs/threat-model.md, docs/SUMMARY.md
-- **Commit:** PENDING
+- **Commit:** `5b4c631b679fa98d6ed63b88c149ec1c62789401`
