@@ -56,6 +56,8 @@ pub struct ModelOptions {
     pub max_request_bytes: usize,
     pub max_response_bytes: usize,
     pub stream: bool,
+    /// Ask llama.cpp to reuse the cached KV prefix for this request.
+    pub cache_prompt: bool,
     pub tools: Vec<String>,
     /// A JSON Schema for the whole reply. Mutually exclusive with `tools`: the
     /// server installs its own grammar for tool calls from the chat template,
@@ -181,6 +183,11 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
         // Ask for usage in the final stream chunk; without this llama-server does
         // not report streamed token counts. Non-streaming replies always carry it.
         request["stream_options"] = json!({"include_usage": true});
+    }
+    if options.cache_prompt {
+        // Reuse the server's cached KV prefix instead of re-evaluating it. The
+        // server reuses only a byte-identical prefix, so this never changes output.
+        request["cache_prompt"] = json!(true);
     }
     if let Some(schema) = &options.constraint {
         // Constrained turn: never carries tools.
@@ -1103,6 +1110,7 @@ mod tests {
             max_request_bytes: 131_072,
             max_response_bytes: 65_536,
             stream: false,
+            cache_prompt: true,
             tools,
             constraint,
         }
@@ -1144,6 +1152,20 @@ mod tests {
         assert!(plain.get("tools").is_none() && plain.get("response_format").is_none());
     }
 
+    #[test]
+    fn cache_prompt_present_when_enabled() {
+        let request = body(&base(Vec::new(), None));
+        assert_eq!(request["cache_prompt"], true);
+    }
+
+    #[test]
+    fn cache_prompt_absent_when_disabled() {
+        let mut options = base(Vec::new(), None);
+        options.cache_prompt = false;
+        let request = body(&options);
+        assert!(request.get("cache_prompt").is_none());
+    }
+
     use crate::core;
 
     pub(crate) fn options() -> ModelOptions {
@@ -1155,6 +1177,7 @@ mod tests {
             max_request_bytes: 131072,
             max_response_bytes: 1048576,
             stream: false,
+            cache_prompt: true,
             tools: Vec::new(),
             constraint: None,
         }

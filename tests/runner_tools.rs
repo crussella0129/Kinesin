@@ -1355,3 +1355,173 @@ async fn checked_run_evidence_survives_compaction() {
         "the checked run compacted at least once: {counters}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prepared_request_of_each_turn_extends_the_previous() {
+    // The property the server's prefix reuse relies on: within a run the
+    // conversation only grows by appending, so each prepared request's message
+    // list is a prefix of the next turn's.
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(&CONFIG.replace(
+        "tools = [\"read_file\"]",
+        "tools = [\"read_file\", \"list_files\"]",
+    ));
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "List the workspace.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    let client = ModelClient::scripted([
+        batch(vec![call("l1", "list_files", r#"{"path":"."}"#)]).into(),
+        batch(vec![call("l2", "list_files", r#"{"path":"one"}"#)]).into(),
+        ModelReply::Answer("done".into()).into(),
+    ]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client.clone(),
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    storage.shutdown().await.unwrap();
+    let requests = client.captured_requests().unwrap();
+    assert!(
+        requests.len() >= 2,
+        "a multi-turn run makes several requests"
+    );
+    for pair in requests.windows(2) {
+        let earlier: Value = serde_json::from_slice(&pair[0]).unwrap();
+        let later: Value = serde_json::from_slice(&pair[1]).unwrap();
+        let earlier_messages = earlier["messages"].as_array().unwrap();
+        let later_messages = later["messages"].as_array().unwrap();
+        assert!(
+            later_messages.len() > earlier_messages.len(),
+            "the conversation grew"
+        );
+        assert_eq!(
+            &later_messages[..earlier_messages.len()],
+            earlier_messages.as_slice(),
+            "each turn's messages are a prefix of the next"
+        );
+        // Every request carries the cache-reuse flag; check both ends so the
+        // final request is covered too (windows(2) never puts it in pair[0]).
+        assert_eq!(earlier["cache_prompt"], true);
+        assert_eq!(later["cache_prompt"], true);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cache_prompt_does_not_change_run_outcome() {
+    // cache_prompt is an additive, transparent flag: the same scripted run yields
+    // the identical candidate and acceptance whether it is on or off.
+    async fn run_with(cache_prompt: bool) -> RunRecord {
+        let fixture = Fixture::new(&[("project.txt", SOURCE)]);
+        let source = if cache_prompt {
+            CONFIG.to_string()
+        } else {
+            CONFIG.replace(
+                "temperature = 0.0",
+                "temperature = 0.0\ncache_prompt = false",
+            )
+        };
+        let config = fixture.config(&source);
+        let authority = checked(&config);
+        let storage = fixture.storage().await;
+        let store = storage.client();
+        let client = ModelClient::scripted([
+            batch(vec![read("r1", "project.txt")]).into(),
+            ModelReply::Answer(prose()).into(),
+            ModelReply::Answer(candidate("Rust", "e0")).into(),
+        ]);
+        let resources = RunResources::single(1, config.concurrency().clone())
+            .with_workspace("practice", &fixture.root.join("workspace"))
+            .unwrap();
+        admit(&authority, &store, None).await.unwrap();
+        let record = run_admitted(
+            authority,
+            client,
+            store.clone(),
+            resources,
+            CancellationToken::new(),
+            Instant::now(),
+        )
+        .await
+        .expect("run settles");
+        storage.shutdown().await.unwrap();
+        record
+    }
+    let on = run_with(true).await;
+    let off = run_with(false).await;
+    assert_eq!(on.acceptance_status, "passed");
+    assert_eq!(on.acceptance_status, off.acceptance_status);
+    assert_eq!(
+        on.result.as_ref().map(|r| &r["candidate"]),
+        off.result.as_ref().map(|r| &r["candidate"])
+    );
+}
+
+/// INT-0008 (T-002): a run attaches to a private/overlay backend through the same
+/// code path as loopback. The prepared requests are byte-identical because the
+/// backend address never enters the request body — location transparency. The
+/// overlay config also parsing at all is the T-001 win (`run_case` unwraps the
+/// parse, so a rejected origin would fail here).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn uniform_attach_prepares_identically_across_local_and_overlay_backends() {
+    let replies = || {
+        vec![
+            batch(vec![read("provider-call", "project.txt")]),
+            ModelReply::Answer(prose()),
+            ModelReply::Answer(format!(" {}\n", candidate("Rust", "e0"))),
+        ]
+    };
+    // 100.100.20.30 is in Tailscale's CGNAT range, reached over plain HTTP just
+    // like the loopback default.
+    let overlay = CONFIG.replace("http://127.0.0.1:8080", "http://100.100.20.30:8080");
+    let local = run_case(CONFIG, &[("project.txt", SOURCE)], replies()).await;
+    let remote = run_case(&overlay, &[("project.txt", SOURCE)], replies()).await;
+    assert_eq!(local.requests.len(), 3);
+    assert_eq!(
+        local.requests, remote.requests,
+        "prepared requests must be identical modulo the backend address"
+    );
+    // Both settle the same acceptance — the address changes nothing a run does.
+    assert_eq!(
+        local.record.acceptance_status,
+        remote.record.acceptance_status
+    );
+}
+
+/// INT-0008 (T-002): an unreachable backend fails readiness with a defined
+/// outcome and no hang.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unreachable_backend_reports_not_ready() {
+    // Bind then drop to obtain a port nothing listens on.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let text = CONFIG.replace("http://127.0.0.1:8080", &format!("http://127.0.0.1:{port}"));
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(&text);
+    let profile = config.model("local").expect("model profile");
+    let client = ModelClient::http(profile, config.limits().max_response_bytes).unwrap();
+    let ready = timeout(Duration::from_secs(5), client.ready(profile))
+        .await
+        .expect("readiness must not hang");
+    assert!(!ready, "a closed port must report not-ready");
+}

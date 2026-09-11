@@ -78,6 +78,7 @@ fn profile(origin: String) -> ModelConfig {
         connect_timeout_s: 1,
         read_timeout_s: 1,
         model_queue_timeout_s: 1,
+        cache_prompt: true,
     }
 }
 
@@ -97,6 +98,7 @@ fn request_options(origin: &str, stream: bool, limit: usize) -> kinesin::model::
             max_request_bytes: 131072,
             max_response_bytes: limit,
             stream,
+            cache_prompt: true,
             tools: Vec::new(),
             constraint: None,
         },

@@ -330,6 +330,45 @@ connection direction. Do not broaden listener binding merely to work around an
 unexplained connection failure.
 [Microsoft WSL networking](https://learn.microsoft.com/en-us/windows/wsl/networking)
 
+## Add a machine (uniform local and remote backends)
+
+Attaching to a `llama-server` on another host is the same operation as attaching
+to localhost: only the model `base_url` changes. The address-privacy policy
+(`src/config.rs`, `validate_origin`) decides what is admissible:
+
+- **Loopback** (`http://127.0.0.1:8080`) and **private/overlay** addresses —
+  RFC1918 (`10/8`, `172.16/12`, `192.168/16`), the Tailscale CGNAT range
+  `100.64.0.0/10`, and IPv6 unique-local `fc00::/7` — are accepted over plain
+  **HTTP**, because the local host or the overlay already confines and encrypts
+  the traffic.
+- A **public** address is rejected unless the operator sets
+  `allow_public_endpoints = true` at the config root, and even then only over
+  **HTTPS**. Plaintext never crosses the open internet.
+
+Recommended fabric — **Tailscale** (adopt now; a bespoke pure-Rust overlay,
+"Koil", is a later and separate effort):
+
+1. `tailscale up` on both the orchestration host and the GPU host, signed in
+   with the same identity.
+2. On the GPU host, run the pinned `llama-server` bound to its tailnet address
+   (or `0.0.0.0`) — see [model preflight](model-preflight.md) for the launch
+   command.
+3. On the orchestration host, point a model profile at the GPU host's `100.x`
+   tailnet IP:
+
+   ```toml
+   [[models]]
+   id = "remote-gpu"
+   base_url = "http://100.100.20.30:8080"   # tailnet address; plain HTTP is fine
+   model_id = "kinesin-qwen25-coder-7b"
+   context_size = 4096
+   verified_slots = 1
+   ```
+
+Adding a third machine is another `[[models]]` entry — no code change. Use the
+numeric tailnet address for HTTP; a MagicDNS hostname would require HTTPS today,
+since a name cannot be proven to resolve onto the overlay at config time.
+
 These instructions describe intended integration work. No server was launched,
 model downloaded, compatibility fixture captured, or throughput measured during
 this documentation review.

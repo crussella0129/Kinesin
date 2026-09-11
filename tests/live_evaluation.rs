@@ -449,3 +449,126 @@ async fn pinned_live_explicit_action_diagnostics() {
 async fn pinned_live_general_operator_diagnostics() {
     run_cards(true, 4, general_instruction_cards()).await;
 }
+
+/// The headline INT-0004 measurement (live, manual): two requests sharing a
+/// prefix, both with `cache_prompt`. The second is a prefix-extension of the
+/// first, so llama.cpp should reuse the cached prefix and evaluate far fewer
+/// prompt tokens than the full prompt — the prompt-eval reduction the intent
+/// targets. Records the workload and the evaluated/total token counts. Run
+/// manually against the pinned server; not a CI gate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "KV-cache benchmark; requires the pinned local model profile on 127.0.0.1:8080"]
+async fn kv_cache_reuse_reduces_prompt_eval_time() {
+    let url = "http://127.0.0.1:8080/v1/chat/completions";
+    let client = reqwest::Client::new();
+    async fn ask(client: &reqwest::Client, url: &str, messages: Value) -> Value {
+        let body = json!({
+            "model": "pinned", "messages": messages, "max_tokens": 16,
+            "temperature": 0.0, "cache_prompt": true
+        });
+        let text = client
+            .post(url)
+            .header("content-type", "application/json")
+            .body(serde_json::to_string(&body).unwrap())
+            .send()
+            .await
+            .expect("pinned server reachable")
+            .text()
+            .await
+            .expect("response body");
+        serde_json::from_str(&text).expect("response is JSON")
+    }
+
+    let system = "You are a terse assistant.";
+    let first = ask(
+        &client,
+        url,
+        json!([
+            {"role": "system", "content": system},
+            {"role": "user", "content": "Say the numbers one through ten as words."}
+        ]),
+    )
+    .await;
+    let reply = first["choices"][0]["message"]["content"].clone();
+    // Extend the first exchange: its whole message list is the shared prefix.
+    let second = ask(
+        &client,
+        url,
+        json!([
+            {"role": "system", "content": system},
+            {"role": "user", "content": "Say the numbers one through ten as words."},
+            {"role": "assistant", "content": reply},
+            {"role": "user", "content": "Now say them backwards."}
+        ]),
+    )
+    .await;
+
+    let evaluated = second["timings"]["prompt_n"]
+        .as_u64()
+        .expect("server reports timings.prompt_n (run the pinned llama.cpp build)");
+    let total = second["usage"]["prompt_tokens"]
+        .as_u64()
+        .expect("response reports usage.prompt_tokens");
+    eprintln!(
+        "KV-cache reuse: second request evaluated {evaluated} of {total} prompt tokens; prompt_ms={}",
+        second["timings"]["prompt_ms"]
+    );
+    assert!(
+        evaluated < total,
+        "the shared prefix should be reused: evaluated {evaluated} of {total} prompt tokens"
+    );
+}
+
+/// INT-0008 (T-002) headline (live, manual): the same pinned `llama-server`,
+/// reached over the host's real non-loopback address (LAN or tailnet), answers
+/// identically to the loopback baseline — proving "attach to another machine"
+/// is the same operation as "attach to localhost." That a Kinesin config admits
+/// the non-loopback (private/overlay) address is covered by the config unit
+/// tests (`origin_accepts_private_and_overlay_http`); this records reachability
+/// and answer-equivalence over that address. Run manually; not a CI gate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the pinned local model reachable at both 127.0.0.1:8080 and the host's LAN/tailnet address"]
+async fn attach_to_non_loopback_backend() {
+    // Discover the host's primary non-loopback IPv4 without sending anything.
+    let probe = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    probe.connect("8.8.8.8:80").unwrap();
+    let ip = probe.local_addr().unwrap().ip();
+    assert!(
+        !ip.is_loopback(),
+        "no non-loopback interface available to test"
+    );
+    let remote = format!("http://{ip}:8080");
+
+    let client = reqwest::Client::new();
+    async fn ask(client: &reqwest::Client, base: &str) -> String {
+        let body = json!({
+            "model": "pinned",
+            "messages": [{"role": "user", "content": "Reply with exactly one word: ready"}],
+            "max_tokens": 8, "temperature": 0.0
+        });
+        let text = client
+            .post(format!("{base}/v1/chat/completions"))
+            .header("content-type", "application/json")
+            .body(serde_json::to_string(&body).unwrap())
+            .send()
+            .await
+            .expect("server reachable at this address")
+            .text()
+            .await
+            .expect("response body");
+        let value: Value = serde_json::from_str(&text).expect("response is JSON");
+        value["choices"][0]["message"]["content"]
+            .as_str()
+            .expect("content string")
+            .trim()
+            .to_string()
+    }
+
+    let baseline = ask(&client, "http://127.0.0.1:8080").await;
+    let over_lan = ask(&client, &remote).await;
+    eprintln!("attach: loopback={baseline:?}  non-loopback({remote})={over_lan:?}");
+    assert_eq!(
+        baseline, over_lan,
+        "the same server via loopback and its non-loopback address must answer identically"
+    );
+}

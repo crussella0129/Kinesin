@@ -69,3 +69,31 @@
 - **Completed:** 2026-09-10T23:22:16Z
 - **Files modified:** src/runner.rs, src/replay.rs, src/model.rs, tests/runner_tools.rs, tests/replay.rs
 - **Commit:** `e095fd22ca9caba63b9b9e2ff68d1c422825af0f`
+
+## T-001 (sprint 3)
+- **Description:** emit llama.cpp `cache_prompt` in `prepare` (config-toggled via a new `ModelConfig.cache_prompt`, default on), threaded through `ModelOptions` and the runner/replay `options` builders; the flag is stored in the frozen config so replay recomputes the identical request. The static `tests/fixtures/live/*.request.json` files were left as dated provider captures (no offline test loads them — only the `.sse` responses are `include_bytes!`'d); current cache_prompt behavior is unit-tested instead.
+- **Intent:** [INT-0004](../intents/INT-0004-kv-cache-reuse.md)
+- **Completed:** 2026-09-11T05:12:14Z
+- **Files modified:** src/model.rs, src/config.rs, src/runner.rs, src/replay.rs, tests/model_protocol.rs
+- **Commit:** `56706885bd560d1c50a0745ddc6d190e6a61211d`
+
+## T-002 (sprint 3)
+- **Description:** offline reuse invariants + the live measurement harness. `prepared_request_of_each_turn_extends_the_previous` proves each turn's messages are a prefix of the next (the property the server's reuse relies on) and carry `cache_prompt`; `cache_prompt_does_not_change_run_outcome` shows the flag is transparent (identical candidate/acceptance on vs off); `replay_reproduces_a_cache_prompt_run` shows a cache_prompt capture replays consistent. The headline reduction is an `#[ignore]`d live benchmark (`kv_cache_reuse_reduces_prompt_eval_time`) that sends a prefix-extended pair and asserts the second evaluates fewer prompt tokens than its full prompt. The prefix-extension test landed in runner_tools.rs (its scripted `captured_requests` harness) rather than model_protocol.rs.
+- **Intent:** [INT-0004](../intents/INT-0004-kv-cache-reuse.md)
+- **Completed:** 2026-09-11T05:18:07Z
+- **Files modified:** tests/runner_tools.rs, tests/replay.rs, tests/live_evaluation.rs
+- **Commit:** `8be0e845b1c9fd9ff4bbb527e20349b1542ce929`
+
+## T-001 (sprint 4)
+- **Description:** address-privacy policy for model origins. Reworked `validate_origin` into explicit host classification (`origin_reach`: loopback, RFC1918, CGNAT `100.64.0.0/10`, and IPv6 ULA `fc00::/7` are private/overlay; a non-`localhost` domain or public IP is public) plus policy: private/overlay accepts http or https; a public host is rejected unless the new root `allow_public_endpoints` (serde default false) is set, and even then only over https. This lets a plain-HTTP overlay endpoint (e.g. a Tailscale `100.x` address) be configured exactly like localhost while public plaintext is still refused. CGNAT range implemented by hand (std helper unstable on 1.96.0).
+- **Intent:** [INT-0008](../intents/INT-0008-remote-model-over-overlay.md)
+- **Completed:** 2026-09-11T14:10:25Z
+- **Files modified:** src/config.rs
+- **Commit:** `32ab6d5aa3d86f7834a5aae3d24e580353630c7a`
+
+## T-002 (sprint 4)
+- **Description:** uniform-attach proof + "add a machine" runbook. `uniform_attach_prepares_identically_across_local_and_overlay_backends` runs the same scripted checked run against a loopback and a CGNAT-overlay `base_url` and asserts byte-identical prepared requests and identical acceptance (the address never enters the request body; the overlay config parsing at all is the T-001 win). `unreachable_backend_reports_not_ready` points a real HTTP client at a bound-then-dropped port and asserts `ready()` returns false within a bounded timeout (no hang). `attach_to_non_loopback_backend` (`#[ignore]`d, live) discovers the host's non-loopback IPv4 and asserts the pinned server answers identically over loopback and that address. Added the Tailscale "add a machine" runbook to docs/integration.md.
+- **Intent:** [INT-0008](../intents/INT-0008-remote-model-over-overlay.md)
+- **Completed:** 2026-09-11T14:16:05Z
+- **Files modified:** tests/runner_tools.rs, tests/live_evaluation.rs, docs/integration.md
+- **Commit:** `b2b19b401d6a6c2d0952ff3f544802326311eeb2`
