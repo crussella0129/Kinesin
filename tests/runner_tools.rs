@@ -1471,3 +1471,55 @@ async fn cache_prompt_does_not_change_run_outcome() {
         off.result.as_ref().map(|r| &r["candidate"])
     );
 }
+
+/// INT-0008 (T-002): a run attaches to a private/overlay backend through the same
+/// code path as loopback. The prepared requests are byte-identical because the
+/// backend address never enters the request body — location transparency. The
+/// overlay config also parsing at all is the T-001 win (`run_case` unwraps the
+/// parse, so a rejected origin would fail here).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn uniform_attach_prepares_identically_across_local_and_overlay_backends() {
+    let replies = || {
+        vec![
+            batch(vec![read("provider-call", "project.txt")]),
+            ModelReply::Answer(prose()),
+            ModelReply::Answer(format!(" {}\n", candidate("Rust", "e0"))),
+        ]
+    };
+    // 100.100.20.30 is in Tailscale's CGNAT range, reached over plain HTTP just
+    // like the loopback default.
+    let overlay = CONFIG.replace("http://127.0.0.1:8080", "http://100.100.20.30:8080");
+    let local = run_case(CONFIG, &[("project.txt", SOURCE)], replies()).await;
+    let remote = run_case(&overlay, &[("project.txt", SOURCE)], replies()).await;
+    assert_eq!(local.requests.len(), 3);
+    assert_eq!(
+        local.requests, remote.requests,
+        "prepared requests must be identical modulo the backend address"
+    );
+    // Both settle the same acceptance — the address changes nothing a run does.
+    assert_eq!(
+        local.record.acceptance_status,
+        remote.record.acceptance_status
+    );
+}
+
+/// INT-0008 (T-002): an unreachable backend fails readiness with a defined
+/// outcome and no hang.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unreachable_backend_reports_not_ready() {
+    // Bind then drop to obtain a port nothing listens on.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let text = CONFIG.replace("http://127.0.0.1:8080", &format!("http://127.0.0.1:{port}"));
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(&text);
+    let profile = config.model("local").expect("model profile");
+    let client = ModelClient::http(profile, config.limits().max_response_bytes).unwrap();
+    let ready = timeout(Duration::from_secs(5), client.ready(profile))
+        .await
+        .expect("readiness must not hang");
+    assert!(!ready, "a closed port must report not-ready");
+}

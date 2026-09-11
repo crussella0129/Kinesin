@@ -90,3 +90,10 @@
 - **Completed:** 2026-09-11T14:10:25Z
 - **Files modified:** src/config.rs
 - **Commit:** `32ab6d5aa3d86f7834a5aae3d24e580353630c7a`
+
+## T-002 (sprint 4)
+- **Description:** uniform-attach proof + "add a machine" runbook. `uniform_attach_prepares_identically_across_local_and_overlay_backends` runs the same scripted checked run against a loopback and a CGNAT-overlay `base_url` and asserts byte-identical prepared requests and identical acceptance (the address never enters the request body; the overlay config parsing at all is the T-001 win). `unreachable_backend_reports_not_ready` points a real HTTP client at a bound-then-dropped port and asserts `ready()` returns false within a bounded timeout (no hang). `attach_to_non_loopback_backend` (`#[ignore]`d, live) discovers the host's non-loopback IPv4 and asserts the pinned server answers identically over loopback and that address. Added the Tailscale "add a machine" runbook to docs/integration.md.
+- **Intent:** [INT-0008](../intents/INT-0008-remote-model-over-overlay.md)
+- **Completed:** 2026-09-11T14:16:05Z
+- **Files modified:** tests/runner_tools.rs, tests/live_evaluation.rs, docs/integration.md
+- **Commit:** PENDING

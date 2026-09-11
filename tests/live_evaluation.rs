@@ -518,3 +518,57 @@ async fn kv_cache_reuse_reduces_prompt_eval_time() {
         "the shared prefix should be reused: evaluated {evaluated} of {total} prompt tokens"
     );
 }
+
+/// INT-0008 (T-002) headline (live, manual): the same pinned `llama-server`,
+/// reached over the host's real non-loopback address (LAN or tailnet), answers
+/// identically to the loopback baseline — proving "attach to another machine"
+/// is the same operation as "attach to localhost." That a Kinesin config admits
+/// the non-loopback (private/overlay) address is covered by the config unit
+/// tests (`origin_accepts_private_and_overlay_http`); this records reachability
+/// and answer-equivalence over that address. Run manually; not a CI gate.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the pinned local model reachable at both 127.0.0.1:8080 and the host's LAN/tailnet address"]
+async fn attach_to_non_loopback_backend() {
+    // Discover the host's primary non-loopback IPv4 without sending anything.
+    let probe = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+    probe.connect("8.8.8.8:80").unwrap();
+    let ip = probe.local_addr().unwrap().ip();
+    assert!(
+        !ip.is_loopback(),
+        "no non-loopback interface available to test"
+    );
+    let remote = format!("http://{ip}:8080");
+
+    let client = reqwest::Client::new();
+    async fn ask(client: &reqwest::Client, base: &str) -> String {
+        let body = json!({
+            "model": "pinned",
+            "messages": [{"role": "user", "content": "Reply with exactly one word: ready"}],
+            "max_tokens": 8, "temperature": 0.0
+        });
+        let text = client
+            .post(format!("{base}/v1/chat/completions"))
+            .header("content-type", "application/json")
+            .body(serde_json::to_string(&body).unwrap())
+            .send()
+            .await
+            .expect("server reachable at this address")
+            .text()
+            .await
+            .expect("response body");
+        let value: Value = serde_json::from_str(&text).expect("response is JSON");
+        value["choices"][0]["message"]["content"]
+            .as_str()
+            .expect("content string")
+            .trim()
+            .to_string()
+    }
+
+    let baseline = ask(&client, "http://127.0.0.1:8080").await;
+    let over_lan = ask(&client, &remote).await;
+    eprintln!("attach: loopback={baseline:?}  non-loopback({remote})={over_lan:?}");
+    assert_eq!(
+        baseline, over_lan,
+        "the same server via loopback and its non-loopback address must answer identically"
+    );
+}
