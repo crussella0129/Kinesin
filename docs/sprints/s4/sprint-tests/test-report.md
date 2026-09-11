@@ -16,14 +16,14 @@
 | Secure by default | `allow_public_defaults_false` | unit (CI) |
 | Replay contract holds identically | prepared bytes identical modulo origin (`uniform_attach…`) | integration (CI) |
 | Unreachable backend → defined outcome | `unreachable_backend_reports_not_ready` | integration (CI) |
-| Attach over a real non-loopback address (measured/observed) | `attach_to_non_loopback_backend` (`#[ignore]`d, live) | e2e (live/manual) |
+| Attach over a real non-loopback address (measured/observed) | `attach_to_non_loopback_backend` **run** 2026-09-11: identical answer over `127.0.0.1:8080` and LAN `192.168.86.20:8080` | e2e (live, executed) |
 
 ## Named tests (present at the tested head)
 **Unit (`cargo test --lib config::`)** — `origin_accepts_loopback_http`, `origin_accepts_private_and_overlay_http`, `origin_rejects_public_without_optin`, `origin_accepts_public_https_with_optin`, `origin_rejects_public_http_with_optin`, `allow_public_defaults_false` — all ok.
 
 **Integration (`runner_tools`)** — `uniform_attach_prepares_identically_across_local_and_overlay_backends`, `unreachable_backend_reports_not_ready` — all ok.
 
-**E2E (live, `#[ignore]`d, `live_evaluation`)** — `attach_to_non_loopback_backend` — present, compiles, listed by `--ignored --list`; not a CI gate.
+**E2E (live, `#[ignore]`d, `live_evaluation`)** — `attach_to_non_loopback_backend` — **run** against the pinned b6500 server bound to `0.0.0.0`: identical answer (`"ready"`) via loopback and the host LAN IP `192.168.86.20:8080`. Not a CI gate; executed manually this session.
 
 ## Caveats carried forward (from the critic)
 - **C-001 (accepted, layered):** the uniform-attach test uses a scripted client, so it proves address-independence of request preparation and overlay admissibility, not real-server behavior — the latter is the `#[ignore]`d live attach.

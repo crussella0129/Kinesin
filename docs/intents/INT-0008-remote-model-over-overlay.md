@@ -2,11 +2,11 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0008
-- **State:** active
+- **State:** realized
 - **Work evidence:** [T-001 build plan](../sprints/s4/sprint-plans/build-plan.md#t-001-address-privacy-policy-for-model-origins)
-- **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** [sprint 4 test report](../sprints/s4/sprint-tests/test-report.md)
+- **Completion evidence:** [T-001–T-002 completion log](../work/completed-tasks.md)
+- **Code evidence:** [T-001 `32ab6d5`, T-002 `b2b19b4`](../work/completed-tasks.md) — address-privacy policy + uniform-attach proof and runbook
+- **Test evidence:** [sprint 4 test report](../sprints/s4/sprint-tests/test-report.md) — all acceptance criteria verified; live non-loopback attach executed (tested head `a8de180`)
 - **Documentation evidence:** none
 
 ## Intent
@@ -77,3 +77,4 @@ for the cross-machine case. Research may recommend folding in INT-0007
   HTTP, reject public by default (opt-in public requires HTTPS), keep the
   encrypted fabric out-of-band (adopt Tailscale now; Koil deferred to INT-0009).
 - 2026-09-11: `planned → active`; sprint 4 build began (T-001).
+- 2026-09-11: `active → realized`; sprint 4 delivered the uniform seam — a broadened origin policy that admits loopback and private/overlay (`RFC1918`, CGNAT `100.64.0.0/10`, IPv6 ULA `fc00::/7`) addresses over HTTP while rejecting public plaintext (and public HTTPS unless `allow_public_endpoints` is set). A run over an overlay `base_url` prepares byte-identical requests to a loopback run, and the live attach was **executed**: the same pinned server answered identically over `127.0.0.1:8080` and the host's RFC1918 LAN address `192.168.86.20:8080`. Encrypted transport stays out-of-band (Tailscale runbook in docs/integration.md); building Koil (INT-0009) and managed local supervision (INT-0007) remain deferred, and multi-backend routing/MagicDNS-hostname support are future work, not gaps.

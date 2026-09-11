@@ -8,7 +8,7 @@
 ## Live attach (`tests/live_evaluation.rs`, `#[ignore]`d)
 | Test | EARS clause (T-002) | Result |
 |------|---------------------|--------|
-| `attach_to_non_loopback_backend` | WHEN the live attach test runs against a `llama-server` at the host's real non-loopback address THEN it completes over that address and returns the loopback baseline's answer | present; compiles and lists (`--ignored --list`); not a CI gate |
+| `attach_to_non_loopback_backend` | WHEN the live attach test runs against a `llama-server` at the host's real non-loopback address THEN it completes over that address and returns the loopback baseline's answer | **ok** — run 2026-09-11 against the pinned b6500 server bound to `0.0.0.0`; identical answer (`"ready"`) via `127.0.0.1:8080` and the host LAN IP `192.168.86.20:8080` |
 
 The test discovers the host's primary non-loopback IPv4 (via a UDP socket's
 local address, sending nothing), asks the pinned server the same fixed prompt at
@@ -27,5 +27,10 @@ confirmation of the headline.
 
 ## Confirmation
 ```
-attach_to_non_loopback_backend: test   (from --ignored --list)
+attach: loopback="ready"  non-loopback(http://192.168.86.20:8080)="ready"
+test attach_to_non_loopback_backend ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out
 ```
+Machine: NVIDIA RTX 2080 Ti, Windows 11; server bound to `0.0.0.0` so the same
+process is reachable over loopback and the RFC1918 LAN address `192.168.86.20`.
+

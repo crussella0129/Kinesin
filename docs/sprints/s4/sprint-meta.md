@@ -9,5 +9,5 @@
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
 - **Summary:** Make attaching to a remote llama-server as easy as localhost — a uniform backend seam with an address-privacy policy (private/overlay HTTP allowed, public rejected by default), encrypted fabric out-of-band (Tailscale now, Koil later) (INT-0008).
-- **Intents:** [INT-0008](../../intents/INT-0008-remote-model-over-overlay.md) — planned
+- **Intents:** [INT-0008](../../intents/INT-0008-remote-model-over-overlay.md) — realized
 - **Completion evidence:** (filled at Loop Phase)

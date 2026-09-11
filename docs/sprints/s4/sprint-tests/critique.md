@@ -18,11 +18,11 @@ plans and INT-0008.
 - **Why it matters:** between dropping the listener and `ready()` connecting, another process could theoretically claim that ephemeral port.
 - **Suggested response:** defer-with-rationale. The window is microseconds on loopback and any squatter would have to speak the readiness protocol to flip the assertion — effectively impossible; the 5 s timeout bounds the failure to a `false`, never a hang. This is the standard "closed port" idiom the repo already uses for transport tests.
 
-### C-003: the live attach test depends on an external server and a network interface
+### C-003: the live attach test depends on an external server and a network interface — RESOLVED (executed)
 - **Where:** `e2e-tests.md` / `attach_to_non_loopback_backend`.
 - **Failure mode:** e2e-cop-out (screened, not upheld).
-- **Why it matters:** the test asserts a non-loopback interface exists and a server answers at it.
-- **Suggested response:** defer-with-rationale. It is `#[ignore]`d and manual, exactly the INT-0004 pattern; the CI-verifiable code path is covered offline. Marked `possible`, named, and compiled — not skipped.
+- **Why it mattered:** the headline "attach over a non-loopback address" cannot run in CI.
+- **Resolution:** the test was **run** on 2026-09-11 against the pinned b6500 server bound to `0.0.0.0`; the same process answered identically (`"ready"`) via `127.0.0.1:8080` and the host's RFC1918 LAN address `192.168.86.20:8080`. Executed, not merely deferred; it remains outside CI because it needs a live server and a non-loopback interface, but that is a property of the metric, not an unverified claim.
 
 ## Screen of the remaining failure modes
 - **Intent/EARS trace gap:** none — every INT-0008 acceptance criterion maps through the test-plan traceability table to a named executed test (or the named live test for the measured-attach criterion).
