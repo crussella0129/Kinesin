@@ -75,4 +75,4 @@
 - **Intent:** [INT-0004](../intents/INT-0004-kv-cache-reuse.md)
 - **Completed:** 2026-09-11T05:12:14Z
 - **Files modified:** src/model.rs, src/config.rs, src/runner.rs, src/replay.rs, tests/model_protocol.rs
-- **Commit:** PENDING
+- **Commit:** `56706885bd560d1c50a0745ddc6d190e6a61211d`
