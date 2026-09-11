@@ -9,6 +9,8 @@
 - **Test evidence:** none
 - **Documentation evidence:** none
 
+> **Roadmap:** theme D (SotA capability) — see [the roadmap](../roadmap.md) (INT-0011). Behind Tailscale (INT-0008 done).
+
 ## Intent
 Build **Koil**: a pure-Rust, "tailscale-like" encrypted overlay — WireGuard
 data plane via a userspace implementation (GotaTun/boringtun lineage) plus a

@@ -9,6 +9,8 @@
 - **Test evidence:** none
 - **Documentation evidence:** none
 
+> **Roadmap:** theme D (SotA capability) — see [the roadmap](../roadmap.md) (INT-0011). Executes under the INT-0012 sandbox.
+
 ## Intent
 Reach external tool servers through the Model Context Protocol, adapting them
 into the same authority, allow-list, and resource gates the compiled tools use.

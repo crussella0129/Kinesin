@@ -104,3 +104,10 @@
 - **Completed:** 2026-09-11T16:59:42Z
 - **Files modified:** docs/intents/INT-0012-command-execution-sandboxing.md, docs/intents/INT-0013-supply-chain-security.md, docs/intents/INT-0014-tamper-evident-journal.md, docs/intents/INT-0015-threat-model-assurance.md, docs/intents/INT-0016-observability.md, docs/intents/INT-0017-approval-gates-jit-privilege.md, docs/intents/INT-0018-subagents-parallel-orchestration.md, docs/SUMMARY.md
 - **Commit:** `b18c7acb5286e6265106a9686fde0bd423a14b45`
+
+## T-002 (sprint 5)
+- **Description:** wrote `docs/roadmap.md` — the four-theme (A security hardening, B supply-chain & assurance, C operability, D SotA capability) prioritized roadmap with a current-state summary, recommended sequencing (INT-0013 → 0012 → 0015 → 0005/0006 → 0016/0017/0014/0010 → 0007/0009/0018), a SotA/standards mapping table, and a parking-lot (memory, programmatic tool results, ACP/A2A, Postgres/queue, vector retrieval). Added a one-line roadmap cross-reference to each existing proposed intent (INT-0005/0006/0007/0009/0010) and linked the roadmap from SUMMARY. Every research-report gap maps to a tracked intent.
+- **Intent:** [INT-0011](../intents/INT-0011-production-readiness-roadmap.md)
+- **Completed:** 2026-09-11T17:01:46Z
+- **Files modified:** docs/roadmap.md, docs/intents/INT-0005-mcp-tool-servers.md, docs/intents/INT-0006-skills-progressive-disclosure.md, docs/intents/INT-0007-managed-model-process.md, docs/intents/INT-0009-koil-overlay-transport.md, docs/intents/INT-0010-cross-agent-write-coordination.md
+- **Commit:** PENDING

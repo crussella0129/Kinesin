@@ -9,6 +9,8 @@
 - **Test evidence:** none
 - **Documentation evidence:** none
 
+> **Roadmap:** theme A (security hardening) — see [the roadmap](../roadmap.md) (INT-0011).
+
 ## Intent
 Prevent concurrent agents from racing or overwriting each other when they work
 on the same machine and/or in the same repository at the same time. Introduce a
