@@ -2,8 +2,8 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0008
-- **State:** proposed
-- **Work evidence:** none
+- **State:** planned
+- **Work evidence:** [T-001 build plan](../sprints/s4/sprint-plans/build-plan.md#t-001-address-privacy-policy-for-model-origins)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -71,3 +71,8 @@ for the cross-machine case. Research may recommend folding in INT-0007
 - 2026-09-11: scope refined to a uniform local/remote secure transport seam
   (location transparency; mechanism left open) and selected as the Sprint 4
   objective, research-first.
+- 2026-09-11: `proposed → planned`; linked to the sprint 4 build plan (T-001
+  address-privacy policy, T-002 uniform-attach proof + runbook). Approach:
+  broaden the origin policy to accept loopback + private/overlay addresses over
+  HTTP, reject public by default (opt-in public requires HTTPS), keep the
+  encrypted fabric out-of-band (adopt Tailscale now; Koil deferred to INT-0009).
