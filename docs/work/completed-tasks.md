@@ -97,3 +97,10 @@
 - **Completed:** 2026-09-11T14:16:05Z
 - **Files modified:** tests/runner_tools.rs, tests/live_evaluation.rs, docs/integration.md
 - **Commit:** `b2b19b401d6a6c2d0952ff3f544802326311eeb2`
+
+## T-001 (sprint 5)
+- **Description:** authored the seven workstream intent chapters for the roadmap — INT-0012 command-execution sandboxing (Landlock+seccomp / AppContainer+Job Object, mandatory-isolation mode), INT-0013 supply-chain security & signed releases (cargo-deny/audit/auditable/vet, SBOM, cosign), INT-0014 tamper-evident audit journal (hash-chain + signed receipts), INT-0015 threat model & security assurance (OWASP/NIST/CISA mapping + memory-safety statement + red-team corpus), INT-0016 observability (OpenTelemetry, no prompts), INT-0017 human-approval gates & JIT privilege, INT-0018 subagents & bounded parallel orchestration. Each is a well-formed v2 chapter; all `proposed` (INT-0018 lowest priority). Added SUMMARY navigation for each. check-book validates 18 chapters.
+- **Intent:** [INT-0011](../intents/INT-0011-production-readiness-roadmap.md)
+- **Completed:** 2026-09-11T16:59:42Z
+- **Files modified:** docs/intents/INT-0012-command-execution-sandboxing.md, docs/intents/INT-0013-supply-chain-security.md, docs/intents/INT-0014-tamper-evident-journal.md, docs/intents/INT-0015-threat-model-assurance.md, docs/intents/INT-0016-observability.md, docs/intents/INT-0017-approval-gates-jit-privilege.md, docs/intents/INT-0018-subagents-parallel-orchestration.md, docs/SUMMARY.md
+- **Commit:** PENDING

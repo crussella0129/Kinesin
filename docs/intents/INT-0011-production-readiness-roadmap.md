@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0011
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s5/sprint-plans/build-plan.md#t-001-author-the-seven-workstream-intent-chapters)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -58,3 +58,4 @@ in place after realization.
 ## Transition history
 - 2026-09-11: created as `proposed`; sprint 5 (roadmap review) selected it as the objective.
 - 2026-09-11: `proposed → planned`; linked to the sprint 5 build plan (T-001 author INT-0012..0018, T-002 write docs/roadmap.md + cross-reference existing intents).
+- 2026-09-11: `planned → active`; sprint 5 build began (T-001).
