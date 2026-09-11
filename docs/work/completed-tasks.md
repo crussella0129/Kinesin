@@ -103,4 +103,4 @@
 - **Intent:** [INT-0011](../intents/INT-0011-production-readiness-roadmap.md)
 - **Completed:** 2026-09-11T16:59:42Z
 - **Files modified:** docs/intents/INT-0012-command-execution-sandboxing.md, docs/intents/INT-0013-supply-chain-security.md, docs/intents/INT-0014-tamper-evident-journal.md, docs/intents/INT-0015-threat-model-assurance.md, docs/intents/INT-0016-observability.md, docs/intents/INT-0017-approval-gates-jit-privilege.md, docs/intents/INT-0018-subagents-parallel-orchestration.md, docs/SUMMARY.md
-- **Commit:** PENDING
+- **Commit:** `b18c7acb5286e6265106a9686fde0bd423a14b45`
