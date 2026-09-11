@@ -2,11 +2,11 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0012
-- **State:** active
+- **State:** realized
 - **Work evidence:** [T-002 build plan](../sprints/s7/sprint-plans/build-plan.md#t-002-apply-landlock--seccomp-to-the-child-srctoolsrs)
-- **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** [sprint 7 test report](../sprints/s7/sprint-tests/test-report.md)
+- **Completion evidence:** [T-001–T-003 completion log](../work/completed-tasks.md)
+- **Code evidence:** [T-001 `3c58c9c` (deps), T-002 `e9fb97b` (sandbox), T-003 `94e3855` (tests+fixture)](../work/completed-tasks.md)
+- **Test evidence:** [sprint 7 test report](../sprints/s7/sprint-tests/test-report.md) — enforced on WSL 6.6 and the ubuntu CI `check` job (tested head `94e3855`)
 - **Documentation evidence:** none
 
 ## Intent
@@ -58,3 +58,5 @@ and any future code tool. Windows parity lives in INT-0019.
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme A — security hardening); hardens [INT-0003] and gates future code/MCP execution.
 - 2026-09-11: re-scoped to the **Linux tier** (Landlock+seccomp) and selected for sprint 7; Windows AppContainer/LPAC split to the new follow-on **INT-0019**. Title changed to name the Linux mechanism. Mandatory secure-by-default (refuse-if-unavailable); a configurable best-effort mode is deferred.
 - 2026-09-11: `proposed → planned`; linked to the sprint 7 build plan (T-001 Linux deps + gate, T-002 CommandRunner Landlock+seccomp via pre_exec, T-003 Linux enforcement tests).
+- 2026-09-11: `planned → active`; sprint 7 build began.
+- 2026-09-11: `active → realized`; the mandatory Linux sandbox ships in `CommandRunner` — Landlock confines the child to the workspace (system prefixes + the command binary read-execute) and seccomp denies network syscalls, applied in a `pre_exec` closure, refusing (`sandbox_unavailable`) rather than running unconfined if the kernel can't enforce. Proven with real enforcement on WSL 6.6 and the ubuntu CI `check` job (out-of-workspace read denied, socket denied, in-workspace ok, mandatory holds); the 8 existing command_tool tests pass under the sandbox; cfg(linux)-gated (Windows unchanged, its CI job green); the supply-chain gate stays green with the new deps. Windows parity is INT-0019.

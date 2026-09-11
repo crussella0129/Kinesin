@@ -25,7 +25,7 @@ oversight / just-in-time privilege; and SotA scaling (MCP, skills, subagents).
 ## Themes and intents
 
 ### A. Security hardening (NSA-grade)
-- [INT-0012](intents/INT-0012-command-execution-sandboxing.md) — command sandboxing, **Linux tier** (Landlock + seccomp, mandatory). **planned** (sprint 7).
+- [INT-0012](intents/INT-0012-command-execution-sandboxing.md) — command sandboxing, **Linux tier** (Landlock + seccomp, mandatory). **realized** (sprint 7).
 - [INT-0019](intents/INT-0019-windows-command-sandboxing.md) — command sandboxing, **Windows tier** (AppContainer/LPAC + Job Object). **proposed** (split from INT-0012).
 - [INT-0014](intents/INT-0014-tamper-evident-journal.md) — tamper-evident audit journal (hash-chain + signed receipts). **proposed**
 - [INT-0017](intents/INT-0017-approval-gates-jit-privilege.md) — human-approval gates & just-in-time privilege. **proposed**
