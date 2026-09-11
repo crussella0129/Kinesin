@@ -159,4 +159,4 @@
 - **Intent:** [INT-0015](../intents/INT-0015-threat-model-assurance.md)
 - **Completed:** 2026-09-11T22:03:43Z
 - **Files modified:** tests/redteam.rs
-- **Commit:** PENDING
+- **Commit:** `14fc67a8a2f87adecc498e27d0acf18b286c19e0`
