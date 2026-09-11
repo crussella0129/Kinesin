@@ -8,7 +8,6 @@
 - **Code evidence:** [T-002 `5b4c631` (tests/redteam.rs)](../work/completed-tasks.md)
 - **Test evidence:** [sprint 8 test report](../sprints/s8/sprint-tests/test-report.md) — corpus green on both CI OSes (tested head `8ea2219`)
 - **Documentation evidence:** [the threat model](../threat-model.md)
-- **Documentation evidence:** none
 
 ## Intent
 Produce an explicit, maintained security-assurance package: a threat model that
