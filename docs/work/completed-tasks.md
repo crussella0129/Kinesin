@@ -146,3 +146,17 @@
 - **Completed:** 2026-09-11T20:52:14Z
 - **Files modified:** tests/sandbox_linux.rs, src/bin/cmd-fixture.rs
 - **Commit:** `1d0dc92209d7e829b16965ef7727f6afed517252`
+
+## T-001 (sprint 8)
+- **Description:** authored `docs/threat-model.md` — the standards-mapped security-assurance package: an OWASP LLM Top-10 (2025) + Agentic Top-10 (2026) table mapping each risk to a mechanism / gap (owning intent) / accepted residual risk; a NIST AI-agent controls table (policy-based authz, task scoping, JIT-privilege gap→INT-0017, approval-gates gap→INT-0017, dev/test/prod residual, transport-auth mechanism+mTLS residual boundary); a CISA/NSA memory-safety statement enumerating every unsafe/FFI site (private_state.rs Windows security APIs + libc::geteuid, storage.rs CreateDirectoryW, signal.rs SetConsoleCtrlHandler, tools.rs Linux sandbox pre_exec) with the "no unsafe in the pure core" posture; and a red-team-corpus → release-evidence-matrix table naming the executed test(s) per row. Versioned (v1, owner, cadence). Linked from SUMMARY.
+- **Intent:** [INT-0015](../intents/INT-0015-threat-model-assurance.md)
+- **Completed:** 2026-09-11T22:01:43Z
+- **Files modified:** docs/threat-model.md, docs/SUMMARY.md
+- **Commit:** `5b4c631b679fa98d6ed63b88c149ec1c62789401`
+
+## T-002 (sprint 8)
+- **Description:** added `tests/redteam.rs`, the labeled consolidating red-team corpus: `redteam_denies_unauthorized` (a command not on the workspace allow-list is denied at the policy gate before any spawn — a forbidden effect cannot pass) and `redteam_treats_content_as_data` (a command argument crafted as an injected instruction with shell metacharacters is delivered verbatim as one argv element and echoed literally — argv-only, never a shell — creating no `owned.txt` side effect; tolerant of the mandatory-sandbox refuse path on a non-Landlock kernel). Both green on Windows and WSL; referenced by the docs/threat-model.md corpus→matrix map rather than duplicating the broader adversarial/auth/sandbox suites.
+- **Intent:** [INT-0015](../intents/INT-0015-threat-model-assurance.md)
+- **Completed:** 2026-09-11T22:03:43Z
+- **Files modified:** tests/redteam.rs
+- **Commit:** `14fc67a8a2f87adecc498e27d0acf18b286c19e0`
