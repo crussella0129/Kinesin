@@ -111,3 +111,10 @@
 - **Completed:** 2026-09-11T17:01:46Z
 - **Files modified:** docs/roadmap.md, docs/intents/INT-0005-mcp-tool-servers.md, docs/intents/INT-0006-skills-progressive-disclosure.md, docs/intents/INT-0007-managed-model-process.md, docs/intents/INT-0009-koil-overlay-transport.md, docs/intents/INT-0010-cross-agent-write-coordination.md
 - **Commit:** `f80a0321ae91732bba3577518d41afcb3da6fef8`
+
+## T-001 (sprint 6)
+- **Description:** authored `deny.toml` (cargo-deny v2 schema, deny-by-default) validated green against the current 221-crate tree via `cargo deny check` (advisories/bans/licenses/sources all ok) and `cargo audit` (0 vulnerabilities). License allow-list is tightened to the licenses actually present per `cargo deny list` (MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, BSD-3-Clause, ISC, Unicode-3.0, Zlib, CC0-1.0, CDLA-Permissive-2.0 for webpki-root-certs); multi-licensed copyleft/other identifiers (LGPL/Unlicense/BSL/MIT-0) are intentionally not allowed since those crates satisfy via their MIT/Apache option. `sources` allows crates.io only; `bans` denies wildcards, warns on duplicates. Added `publish = false` to Cargo.toml and `private.ignore = true` so the crate's own missing-license field is skipped. Note: the locked plan's `cargo audit --locked` was a misnomer — cargo-audit reads Cargo.lock by default and has no `--locked` flag; T-002 uses plain `cargo audit`.
+- **Intent:** [INT-0013](../intents/INT-0013-supply-chain-security.md)
+- **Completed:** 2026-09-11T19:15:56Z
+- **Files modified:** deny.toml, Cargo.toml
+- **Commit:** PENDING

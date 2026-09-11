@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0013
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s6/sprint-plans/build-plan.md#t-001-author-denytoml-supply-chain-policy)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -55,3 +55,4 @@ maintenance when a release pipeline is built.
 ## Transition history
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme B — supply-chain & assurance); recommended as an early, standalone sprint.
 - 2026-09-11: `proposed → planned`; selected for sprint 6 and linked to the build plan (T-001 deny.toml policy, T-002 CI supply-chain gate). Re-scoped to the CI **dependency gate** (a distinct, deliverable-now outcome): release-artifact integrity (SBOM, cargo-auditable, cosign signing, reproducible builds) was split out to the roadmap parking-lot because it needs a release pipeline that does not exist yet; cargo-vet remains a documented decision (cargo-deny is the baseline). Title changed from "Supply-chain security & signed releases" to "Supply-chain dependency gate" to match.
+- 2026-09-11: `planned → active`; sprint 6 build began (T-001).
