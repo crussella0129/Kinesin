@@ -6,7 +6,7 @@
 - **Work evidence:** [T-001 build plan](../sprints/s6/sprint-plans/build-plan.md#t-001-author-denytoml-supply-chain-policy)
 - **Completion evidence:** none
 - **Code evidence:** none
-- **Test evidence:** none
+- **Test evidence:** [sprint 6 test report](../sprints/s6/sprint-tests/test-report.md)
 - **Documentation evidence:** none
 
 ## Intent
