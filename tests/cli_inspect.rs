@@ -507,7 +507,6 @@ fn single_streamed_run_displays_provisional_text_before_durable_completion() {
     let mut child = ChildGuard(
         std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
             .args([
-                OsString::from("run"),
                 "--config".into(),
                 fixture.config().into_os_string(),
                 "--workspace".into(),
@@ -671,7 +670,6 @@ temperature = 0.0
     let run = std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
         .current_dir(&root)
         .args([
-            OsString::from("run"),
             "--config".into(),
             root.join("kinesin.toml").into_os_string(),
             "--workspace".into(),
@@ -862,7 +860,6 @@ temperature = 0.0
     let run = std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
         .current_dir(&root)
         .args([
-            OsString::from("run"),
             "--config".into(),
             root.join("kinesin.toml").into_os_string(),
             "--workspace".into(),
