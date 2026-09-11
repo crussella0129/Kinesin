@@ -138,4 +138,4 @@
 - **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
 - **Completed:** 2026-09-11T20:51:38Z
 - **Files modified:** src/tools.rs
-- **Commit:** PENDING
+- **Commit:** `e9fb97b2e3e4be8008dbff8a8fe8e3f3da38f489`
