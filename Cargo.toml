@@ -3,6 +3,8 @@ name = "kinesin"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
+# The reference implementation is not published to crates.io.
+publish = false
 
 # Do not inherit an unrelated ancestor manifest.
 [workspace]
