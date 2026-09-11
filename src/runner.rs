@@ -317,6 +317,7 @@ struct RunJournal {
     prompt_tokens: u64,
     completion_tokens: u64,
     usage_reported: bool,
+    compactions: u64,
     journal_wait_ms: u64,
     capacity_stopped: bool,
     queue_stop: Option<QueueStop>,
@@ -330,6 +331,11 @@ impl RunJournal {
         if self.usage_reported {
             counters["prompt_tokens"] = json!(self.prompt_tokens);
             counters["completion_tokens"] = json!(self.completion_tokens);
+        }
+        // Present only when the run actually compacted, so an ordinary run's
+        // counters are unchanged and old replay captures never carry it.
+        if self.compactions > 0 {
+            counters["compactions"] = json!(self.compactions);
         }
         counters
     }
@@ -621,6 +627,7 @@ pub async fn run_admitted_with_text(
         prompt_tokens: 0,
         completion_tokens: 0,
         usage_reported: false,
+        compactions: 0,
         journal_wait_ms: 0,
         capacity_stopped: false,
         queue_stop: None,
@@ -686,9 +693,7 @@ pub async fn run_admitted_with_text(
                         .map_err(|e| e.to_string())?;
                     continue;
                 }
-                let history = serde_json::to_vec(&model::conversation_json(state.messages()))
-                    .map_err(|_| "history serialization")?;
-                if history.len() > authority.limits().max_history_bytes {
+                if !compact_state(&mut state, &mut journal, authority.limits())? {
                     journal.stop();
                     effect = state
                         .stop(RunPhase::Stopped, "history_bytes_limit".into())
@@ -855,15 +860,21 @@ pub async fn run_admitted_with_text(
                 }
                 let mut next = state.clone();
                 let next_effect = next.observe_model(observation).map_err(|e| e.to_string())?;
-                let bytes = serde_json::to_vec(&model::conversation_json(next.messages()))
-                    .map_err(|_| "history serialization")?
-                    .len();
-                if bytes > authority.limits().max_history_bytes {
+                let compaction = authority.limits().compaction;
+                let (dropped, fits) = model::compact_until_fits(
+                    &mut next,
+                    authority.limits().max_history_bytes,
+                    compaction.enabled,
+                    compaction.floor,
+                )?;
+                if !fits {
                     journal.stop();
                     effect = state
                         .stop(RunPhase::Stopped, "history_bytes_limit".into())
                         .map_err(|e| e.to_string())?;
                 } else {
+                    // Only count drops that persist: an unfit `next` is discarded.
+                    journal.compactions += dropped as u64;
                     state = next;
                     effect = next_effect;
                 }
@@ -1005,11 +1016,18 @@ pub async fn run_admitted_with_text(
                                                 let argv =
                                                     write_args.command.clone().unwrap_or_default();
                                                 // The command self-limits to the remaining run
-                                                // budget; cancellation kills it either way.
+                                                // budget; cancellation kills it either way. Its
+                                                // captured output is bounded by the same
+                                                // tool-result budget every other tool honors.
                                                 let timeout = deadline
                                                     .saturating_duration_since(Instant::now());
                                                 command_runner
-                                                    .execute(&argv, timeout, &cancel)
+                                                    .execute(
+                                                        &argv,
+                                                        timeout,
+                                                        &cancel,
+                                                        authority.limits().max_tool_result_bytes,
+                                                    )
                                                     .await
                                             }
                                         },
@@ -1144,7 +1162,7 @@ pub async fn run_admitted_with_text(
                     {
                         effect = next;
                     }
-                    if history_exceeds(&state, authority.limits().max_history_bytes)? {
+                    if !compact_state(&mut state, &mut journal, authority.limits())? {
                         journal.stop();
                         effect = state
                             .stop(RunPhase::Stopped, "history_bytes_limit".into())
@@ -1157,10 +1175,24 @@ pub async fn run_admitted_with_text(
     }
 }
 
-fn history_exceeds(state: &core::RunState, maximum: usize) -> Result<bool, String> {
-    serde_json::to_vec(&model::conversation_json(state.messages()))
-        .map(|bytes| bytes.len() > maximum)
-        .map_err(|_| "history serialization".into())
+/// Compact `state` to fit the history budget, recording any drops in the journal.
+/// Returns whether the conversation now fits; the caller stops the run when it
+/// does not. Used at the sites that operate on the live state (before a request
+/// and after a tool observation); the post-model site works on a clone and counts
+/// drops itself, since an unfit clone is discarded.
+fn compact_state(
+    state: &mut core::RunState,
+    journal: &mut RunJournal,
+    limits: &crate::config::Limits,
+) -> Result<bool, String> {
+    let (dropped, fits) = model::compact_until_fits(
+        state,
+        limits.max_history_bytes,
+        limits.compaction.enabled,
+        limits.compaction.floor,
+    )?;
+    journal.compactions += dropped as u64;
+    Ok(fits)
 }
 
 #[derive(Clone, Debug)]

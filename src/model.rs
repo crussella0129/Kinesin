@@ -128,6 +128,42 @@ pub fn conversation_json(messages: &[Message]) -> Vec<Value> {
         .collect()
 }
 
+/// The serialized byte length of the conversation — the value the runner and
+/// replay compare to `max_history_bytes`.
+pub fn history_len(messages: &[Message]) -> Result<usize, String> {
+    serde_json::to_vec(&conversation_json(messages))
+        .map(|bytes| bytes.len())
+        .map_err(|_| "history serialization".into())
+}
+
+/// Drop the oldest compactable units until the conversation fits
+/// `max_history_bytes`, or nothing more is droppable. Returns how many units were
+/// dropped and whether the conversation now fits. When `enabled` is false it
+/// drops nothing and reports whether it already fits. Deterministic and free of
+/// I/O or journaling, so the runner and replay compact identically and a
+/// compacted run reproduces on replay. The `fits` result lets the caller decide
+/// without re-serializing the conversation.
+pub fn compact_until_fits(
+    state: &mut crate::core::RunState,
+    max_history_bytes: usize,
+    enabled: bool,
+    floor: usize,
+) -> Result<(usize, bool), String> {
+    if !enabled {
+        return Ok((0, history_len(state.messages())? <= max_history_bytes));
+    }
+    let mut dropped = 0;
+    loop {
+        if history_len(state.messages())? <= max_history_bytes {
+            return Ok((dropped, true));
+        }
+        if !state.drop_oldest_compactable(floor) {
+            return Ok((dropped, false));
+        }
+        dropped += 1;
+    }
+}
+
 pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedRequest, String> {
     if messages.is_empty()
         || options.max_output_tokens == 0

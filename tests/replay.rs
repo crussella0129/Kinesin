@@ -797,3 +797,94 @@ async fn imported_snapshots_are_versioned_and_bounded_before_replay() {
     captured.events = vec![captured.events[0].clone(); MAX_REPLAY_EVENTS + 1];
     assert_eq!(replay_code(&captured), "replay_event_limit");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn replay_reproduces_a_compacted_run() {
+    // A freeform run with a tiny history budget that compacts mid-run. Replay
+    // must apply the identical deterministic drops, so the recomputed request
+    // fingerprints match the recorded ones and the capture replays consistent.
+    let fixture = Fixture::new();
+    let source = format!(
+        "{}\n[limits.compaction]\nfloor = 2\n",
+        CONFIG
+            .replace("max_model_turns = 3", "max_model_turns = 8")
+            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 6000")
+    );
+    let config = Config::parse(&source, &fixture.root.join("kinesin.toml")).unwrap();
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "List repeatedly".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let owner = authority.owner().to_owned();
+    let run_id = authority.run_id().to_owned();
+    let path = fixture.root.join("state/kinesin.sqlite");
+    let storage = tokio::task::spawn_blocking(move || Storage::start(path, QueueLimits::default()))
+        .await
+        .unwrap()
+        .unwrap();
+    let store = storage.client();
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    let bulky = "x".repeat(2000);
+    let listing = |id: &str, path: &str| {
+        ScriptStep::from(ModelReply::ToolCalls {
+            content: Some(bulky.clone()),
+            calls: vec![ToolCall {
+                id: id.into(),
+                name: "list_files".into(),
+                arguments: format!(r#"{{"path":"{path}"}}"#),
+            }],
+        })
+    };
+    let model = ModelClient::scripted([
+        listing("l1", "."),
+        listing("l2", "one"),
+        listing("l3", "two"),
+        ModelReply::Answer("done".into()).into(),
+    ]);
+    admit(&authority, &store, None).await.unwrap();
+    let run = run_admitted(
+        authority,
+        model,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let Response::Events(events) = store
+        .execute(
+            Command::Events {
+                owner_id: owner,
+                run_id,
+                after: None,
+                limit: 100,
+            },
+            Instant::now() + Duration::from_secs(2),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("event page");
+    };
+    storage.shutdown().await.unwrap();
+    // The run actually compacted.
+    let counters = &events
+        .iter()
+        .find(|event| event.kind == "run_finished")
+        .unwrap()
+        .data["counters"];
+    assert!(counters["compactions"].as_u64().unwrap_or(0) >= 1);
+    // Replay reproduces the compacted conversation and its request fingerprints.
+    let report = replay(&run, &events).expect("replay is consistent");
+    assert_eq!(report.consistency, "consistent");
+    assert_eq!(report.phase, "completed");
+}

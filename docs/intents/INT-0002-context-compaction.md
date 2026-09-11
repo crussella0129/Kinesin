@@ -2,11 +2,11 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0002
-- **State:** proposed
-- **Work evidence:** none
-- **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** none
+- **State:** realized
+- **Work evidence:** [T-001 build plan](../sprints/s2/sprint-plans/build-plan.md#t-001-pure-drop-oldest-compaction-in-core-and-the-compaction-policy)
+- **Completion evidence:** [T-001, T-002 completion log](../work/completed-tasks.md)
+- **Code evidence:** [T-001–T-002 commits](../work/completed-tasks.md) plus the compaction E2E
+- **Test evidence:** [Sprint 2 test report](../sprints/s2/sprint-tests/test-report.md) — all acceptance criteria verified (tested head `b22990b`)
 - **Documentation evidence:** none
 
 ## Intent
@@ -43,3 +43,7 @@ and the checked-run evidence contract; a summary strategy adds a model call.
 
 ## Transition history
 - 2026-09-08: created as `proposed`.
+- 2026-09-10: `proposed → planned`; selected for sprint 2 and linked to the build plan (T-001, T-002). Strategy: pure deterministic drop-oldest compaction in core (evidence- and group-preserving), invoked identically by the runner and replay so fingerprints reproduce; a summary strategy is deferred.
+- 2026-09-10: `planned → active`; sprint 2 build began.
+- 2026-09-10: test phase verified all acceptance criteria (10 named tests, 234 green) with an accepted `proceed-with-caveats` critique; test report linked as Test evidence. Observability is a terminal `compactions` counter (surfaced by inspect) rather than a journalled event, to keep replay's positional event walk intact.
+- 2026-09-10: `active → realized`; sprint 2 closed with completion, code, and test evidence attached. A summary-of-older-turns strategy remains a possible future intent (see Alternatives).

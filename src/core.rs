@@ -261,6 +261,61 @@ impl RunState {
         &self.messages
     }
 
+    /// Drop the oldest compactable unit — a complete tool-call/result group or a
+    /// plain turn — from the conversation body, returning whether anything was
+    /// dropped. Never dropped: the system message, the initial user turn(s) before
+    /// the first assistant message, the most-recent `floor` messages, and any
+    /// group whose tool result minted evidence. A group's assistant `tool_calls`
+    /// message and all its tool results are removed together, so no partial group
+    /// or dangling `tool_call_id` is ever left. Pure and deterministic: the runner
+    /// and replay call it identically, so a compacted run reproduces on replay.
+    pub fn drop_oldest_compactable(&mut self, floor: usize) -> bool {
+        let len = self.messages.len();
+        // The protected prefix is the leading system + initial user turn(s): the
+        // conversation body starts at the first assistant message.
+        let Some(body_start) = self
+            .messages
+            .iter()
+            .position(|message| message.role == Role::Assistant)
+        else {
+            return false;
+        };
+        let tail_start = len.saturating_sub(floor);
+        let mut index = body_start;
+        while index < tail_start {
+            // A group is an assistant tool-call message plus its ordered tool
+            // results; any other message is a single-message unit.
+            let end = if self.messages[index].role == Role::Assistant
+                && !self.messages[index].tool_calls.is_empty()
+            {
+                let mut past = index + 1;
+                while past < len && self.messages[past].role == Role::Tool {
+                    past += 1;
+                }
+                past
+            } else {
+                index + 1
+            };
+            // A unit reaching into the protected recent tail is itself recent;
+            // stop rather than split it.
+            if end > tail_start {
+                return false;
+            }
+            // Never drop a group that carries minted evidence: a checked
+            // candidate may cite it, and dropping it could change a verdict.
+            let carries_evidence = self.messages[index..end]
+                .iter()
+                .any(message_carries_evidence);
+            if carries_evidence {
+                index = end;
+                continue;
+            }
+            self.messages.drain(index..end);
+            return true;
+        }
+        false
+    }
+
     pub fn counters(&self) -> Counters {
         self.counters
     }
@@ -458,6 +513,25 @@ impl RunState {
     }
 }
 
+/// Whether a tool-result message minted evidence. The runner records a tool
+/// result as the encoded `ToolResult`, whose top-level `evidence_id` is present
+/// only for a complete read; compaction reads that field to protect it.
+fn message_carries_evidence(message: &Message) -> bool {
+    if message.role != Role::Tool {
+        return false;
+    }
+    let Some(content) = message.content.as_deref() else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
+        return false;
+    };
+    value
+        .get("evidence_id")
+        .and_then(|id| id.as_str())
+        .is_some()
+}
+
 fn valid_batch(calls: &[ToolCall]) -> bool {
     // These initial domain bounds supplement provider/body limits. Argument JSON
     // and tool authority are validated by the runner's typed tool boundary.
@@ -482,6 +556,133 @@ mod tests {
         initiate_with_tools("installed instruction".into(), "user request".into(), tools)
             .unwrap()
             .0
+    }
+
+    fn asst_call(id: &str) -> Message {
+        Message {
+            role: Role::Assistant,
+            content: None,
+            tool_calls: vec![ToolCall {
+                id: id.into(),
+                name: "read_file".into(),
+                arguments: r#"{"path":"project.txt"}"#.into(),
+            }],
+            tool_call_id: None,
+        }
+    }
+    fn tool_result(id: &str, evidence: bool) -> Message {
+        let content = if evidence {
+            format!(r#"{{"status":"ok","body":"x","truncated":false,"evidence_id":"{id}"}}"#)
+        } else {
+            r#"{"status":"ok","body":"x","truncated":false}"#.into()
+        };
+        Message {
+            role: Role::Tool,
+            content: Some(content),
+            tool_calls: Vec::new(),
+            tool_call_id: Some(id.into()),
+        }
+    }
+    /// A conversation with `groups` tool-call/result groups after the initial
+    /// system + prompt turns; the nth group's result carries evidence when its
+    /// index is in `evidence_groups`.
+    fn conversation(groups: usize, evidence_groups: &[usize]) -> RunState {
+        let mut state = state(true);
+        state.messages = vec![
+            Message::text(Role::System, "instruction".into()),
+            Message::text(Role::User, "prompt".into()),
+        ];
+        for group in 0..groups {
+            let id = format!("g{group}");
+            state.messages.push(asst_call(&id));
+            state
+                .messages
+                .push(tool_result(&id, evidence_groups.contains(&group)));
+        }
+        state
+    }
+
+    #[test]
+    fn drop_oldest_removes_whole_group() {
+        // System, User, then three groups; floor protects the last two messages.
+        let mut state = conversation(3, &[]);
+        assert!(state.drop_oldest_compactable(2));
+        // The oldest group (g0: assistant + its tool result) is gone as a unit.
+        assert_eq!(state.messages().len(), 6);
+        assert!(
+            state
+                .messages()
+                .iter()
+                .all(|m| m.tool_call_id.as_deref() != Some("g0"))
+        );
+        assert!(
+            state
+                .messages()
+                .iter()
+                .all(|m| m.tool_calls.iter().all(|c| c.id != "g0"))
+        );
+        // No dangling tool result: every Tool message follows its assistant.
+        for (i, message) in state.messages().iter().enumerate() {
+            if message.role == Role::Tool {
+                assert_eq!(state.messages()[i - 1].role, Role::Assistant);
+            }
+        }
+    }
+
+    #[test]
+    fn drop_oldest_preserves_system_and_recent_floor() {
+        let mut state = conversation(4, &[]);
+        let len = state.messages().len();
+        let floor = 3;
+        let tail: Vec<Role> = state.messages()[len - floor..]
+            .iter()
+            .map(|m| m.role)
+            .collect();
+        assert!(state.drop_oldest_compactable(floor));
+        // The system message and the most-recent `floor` messages are untouched.
+        assert_eq!(state.messages()[0].role, Role::System);
+        let new_len = state.messages().len();
+        let new_tail: Vec<Role> = state.messages()[new_len - floor..]
+            .iter()
+            .map(|m| m.role)
+            .collect();
+        assert_eq!(tail, new_tail);
+    }
+
+    #[test]
+    fn drop_oldest_preserves_evidence_bearing_result() {
+        // g0 carries evidence; g1 does not. The oldest droppable non-evidence
+        // group (g1) is dropped, and the evidence group is skipped, not removed.
+        let mut state = conversation(3, &[0]);
+        assert!(state.drop_oldest_compactable(2));
+        // g0's evidence result survives.
+        assert!(
+            state
+                .messages()
+                .iter()
+                .any(|m| m.tool_call_id.as_deref() == Some("g0"))
+        );
+        // g1 was dropped instead.
+        assert!(
+            state
+                .messages()
+                .iter()
+                .all(|m| m.tool_call_id.as_deref() != Some("g1"))
+        );
+    }
+
+    #[test]
+    fn drop_oldest_returns_false_when_only_protected_remain() {
+        // One group, but the floor protects the whole body: nothing is droppable.
+        let mut state = conversation(1, &[]);
+        let before = state.clone();
+        assert!(!state.drop_oldest_compactable(2));
+        assert_eq!(state, before);
+        // Even with a generous floor, an all-evidence body is never dropped.
+        let mut evidence_only = conversation(3, &[0, 1, 2]);
+        let before = evidence_only.clone();
+        assert!(!evidence_only.drop_oldest_compactable(2));
+        assert_eq!(evidence_only, before);
     }
 
     fn call(id: &str) -> ToolCall {

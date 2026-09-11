@@ -55,3 +55,17 @@
 - **Completed:** 2026-09-10T17:03:34Z
 - **Files modified:** .github/workflows/ci.yml
 - **Commit:** `1d072b623f1c5ba15869a94119bf68b98ab21f0d`
+
+## T-001 (sprint 2)
+- **Description:** add the pure `RunState::drop_oldest_compactable(floor)` to core — removes the oldest complete tool-call/result group or plain turn, preserving the system message, the initial user turn(s), the most-recent `floor` messages, and any evidence-bearing group (detected by a top-level `evidence_id` in the recorded tool result), with whole-group integrity. Add the `Compaction { enabled, floor }` config policy (default enabled, floor 6) with floor validation.
+- **Intent:** [INT-0002](../intents/INT-0002-context-compaction.md)
+- **Completed:** 2026-09-10T22:50:12Z
+- **Files modified:** src/core.rs, src/config.rs
+- **Commit:** `bf8825e400b30c9016dc93ee51ef90b170fbb1f5`
+
+## T-002 (sprint 2)
+- **Description:** compact at the history limit instead of stopping. Added `model::history_len` and the shared deterministic `model::compact_until_fits`; replaced the three runner stop sites and the mirrored replay sites with a compaction loop; added a `compactions` counter to the terminal counters (surfaced by inspect) rather than a separate event (a new event would break replay's positional planned/finished pair-walk). Refined replay's counter-divergence check to compare only the deterministically recomputable `model_turns`/`tool_calls`, ignoring runner-only observability totals (tokens, compactions). model.rs was a necessary touch beyond the plan's runner/replay for the shared pure helpers.
+- **Intent:** [INT-0002](../intents/INT-0002-context-compaction.md)
+- **Completed:** 2026-09-10T23:22:16Z
+- **Files modified:** src/runner.rs, src/replay.rs, src/model.rs, tests/runner_tools.rs, tests/replay.rs
+- **Commit:** `e095fd22ca9caba63b9b9e2ff68d1c422825af0f`

@@ -1186,3 +1186,172 @@ async fn command_cancelled_midrun_is_killed() {
     );
     settled.unwrap().expect("run settles");
 }
+
+fn toolcalls(content: &str, id: &str, name: &str, arguments: &str) -> ModelReply {
+    ModelReply::ToolCalls {
+        content: Some(content.into()),
+        calls: vec![call(id, name, arguments)],
+    }
+}
+fn terminal_counters(events: &[Event]) -> &Value {
+    &events
+        .iter()
+        .find(|event| event.kind == "run_finished")
+        .expect("a terminal event")
+        .data["counters"]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn run_continues_past_history_limit_by_compacting() {
+    let fixture = Fixture::new(&[]);
+    // A tiny history budget with a small floor; list_files results carry no
+    // evidence, so their groups are droppable.
+    let source = format!(
+        "{}\n[limits.compaction]\nfloor = 2\n",
+        CONFIG
+            .replace(
+                "tools = [\"read_file\"]",
+                "tools = [\"read_file\", \"list_files\"]"
+            )
+            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 6000")
+    );
+    let config = fixture.config(&source);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "List repeatedly.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    let bulky = "x".repeat(2000);
+    // Distinct paths so the repeat detector does not stop the run first.
+    let client = ModelClient::scripted([
+        toolcalls(&bulky, "l1", "list_files", r#"{"path":"."}"#).into(),
+        toolcalls(&bulky, "l2", "list_files", r#"{"path":"one"}"#).into(),
+        toolcalls(&bulky, "l3", "list_files", r#"{"path":"two"}"#).into(),
+        ModelReply::Answer("done".into()).into(),
+    ]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    let record = run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+    // The run reached its answer rather than stopping at the history limit.
+    assert_eq!(record.phase, "completed");
+    let counters = terminal_counters(&events);
+    assert!(
+        counters["compactions"].as_u64().unwrap_or(0) >= 1,
+        "the run compacted at least once: {counters}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn compaction_stops_when_nothing_droppable() {
+    let fixture = Fixture::new(&[]);
+    // The initial conversation fits, but a single oversized turn overflows the
+    // budget and is itself the most-recent (protected) content, so compaction can
+    // free nothing and the run stops exactly as before.
+    let source = CONFIG.replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 600");
+    let config = fixture.config(&source);
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "hello".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    // One bulky read turn overflows the budget before it can execute.
+    let client = ModelClient::scripted([toolcalls(
+        &"x".repeat(2000),
+        "r1",
+        "read_file",
+        r#"{"path":"project.txt"}"#,
+    )
+    .into()]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    let record = run_admitted(
+        authority.clone(),
+        client,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    let events = events(&store, &authority).await;
+    storage.shutdown().await.unwrap();
+    assert_eq!(record.phase, "stopped");
+    let finished = events
+        .iter()
+        .find(|event| event.kind == "run_finished")
+        .unwrap();
+    assert_eq!(finished.data["reason"], "history_bytes_limit");
+    // Nothing was compacted, so the counter is absent (not zero).
+    assert!(finished.data["counters"].get("compactions").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn checked_run_evidence_survives_compaction() {
+    // A checked workspace may grant read_file (evidence) and list_files
+    // (non-evidence); the checked bar only forbids mutating tools.
+    let source = format!(
+        "{}\n[limits.compaction]\nfloor = 2\n",
+        CONFIG
+            .replace(
+                "tools = [\"read_file\"]",
+                "tools = [\"read_file\", \"list_files\"]"
+            )
+            .replace("max_model_turns = 6", "max_model_turns = 12")
+            .replace("max_tool_calls = 8", "max_tool_calls = 16")
+            .replace("max_run_s = 10", "max_run_s = 10\nmax_history_bytes = 6000")
+    );
+    // Three bulky non-evidence list turns (distinct paths) precede the evidence
+    // read; compaction drops the old list groups while the read result is
+    // preserved, so the candidate can still cite it and the run passes.
+    let bulky = "x".repeat(2000);
+    let case = run_case(
+        &source,
+        &[("project.txt", SOURCE)],
+        vec![
+            toolcalls(&bulky, "l1", "list_files", r#"{"path":"."}"#),
+            toolcalls(&bulky, "l2", "list_files", r#"{"path":"one"}"#),
+            toolcalls(&bulky, "l3", "list_files", r#"{"path":"two"}"#),
+            batch(vec![read("r1", "project.txt")]),
+            ModelReply::Answer(prose()),
+            ModelReply::Answer(candidate("Rust", "e0")),
+        ],
+    )
+    .await;
+    // Evidence was not dropped: acceptance is unaffected.
+    assert_eq!(case.record.acceptance_status, "passed");
+    let counters = terminal_counters(&case.events);
+    assert!(
+        counters["compactions"].as_u64().unwrap_or(0) >= 1,
+        "the checked run compacted at least once: {counters}"
+    );
+}
