@@ -11,6 +11,7 @@
   - [INT-0008 Uniform, secure model transport (local and remote)](intents/INT-0008-remote-model-over-overlay.md)
   - [INT-0009 Koil: pure-Rust overlay transport](intents/INT-0009-koil-overlay-transport.md)
   - [INT-0010 Cross-agent write coordination](intents/INT-0010-cross-agent-write-coordination.md)
+  - [INT-0011 Production-readiness & security roadmap](intents/INT-0011-production-readiness-roadmap.md)
 - [Tasks](work/tasks.md)
 - [Completed tasks](work/completed-tasks.md)
 - [Sprint 0](sprints/s0/sprint-meta.md)
@@ -18,3 +19,4 @@
 - [Sprint 2](sprints/s2/sprint-meta.md)
 - [Sprint 3](sprints/s3/sprint-meta.md)
 - [Sprint 4](sprints/s4/sprint-meta.md)
+- [Sprint 5](sprints/s5/sprint-meta.md)
