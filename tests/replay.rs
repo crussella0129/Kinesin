@@ -888,3 +888,29 @@ async fn replay_reproduces_a_compacted_run() {
     assert_eq!(report.consistency, "consistent");
     assert_eq!(report.phase, "completed");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn replay_reproduces_a_cache_prompt_run() {
+    // cache_prompt is on by default, so a captured multi-turn run records requests
+    // carrying it; the frozen config stores the flag, so replay recomputes the
+    // identical request fingerprints and stays consistent.
+    let snapshot = capture(
+        false,
+        CaptureMode::Replay,
+        vec![
+            ModelReply::ToolCalls {
+                content: None,
+                calls: vec![ToolCall {
+                    id: "r1".into(),
+                    name: "read_file".into(),
+                    arguments: r#"{"path":"project.txt"}"#.into(),
+                }],
+            },
+            ModelReply::Answer("done".into()),
+        ],
+    )
+    .await;
+    let report = replay(&snapshot.run, &snapshot.events).expect("replay is consistent");
+    assert_eq!(report.consistency, "consistent");
+    assert!(report.model_requests >= 2);
+}

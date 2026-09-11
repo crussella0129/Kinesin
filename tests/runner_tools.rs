@@ -1355,3 +1355,119 @@ async fn checked_run_evidence_survives_compaction() {
         "the checked run compacted at least once: {counters}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prepared_request_of_each_turn_extends_the_previous() {
+    // The property the server's prefix reuse relies on: within a run the
+    // conversation only grows by appending, so each prepared request's message
+    // list is a prefix of the next turn's.
+    let fixture = Fixture::new(&[]);
+    let config = fixture.config(&CONFIG.replace(
+        "tools = [\"read_file\"]",
+        "tools = [\"read_file\", \"list_files\"]",
+    ));
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "List the workspace.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = fixture.storage().await;
+    let store = storage.client();
+    let client = ModelClient::scripted([
+        batch(vec![call("l1", "list_files", r#"{"path":"."}"#)]).into(),
+        batch(vec![call("l2", "list_files", r#"{"path":"one"}"#)]).into(),
+        ModelReply::Answer("done".into()).into(),
+    ]);
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    run_admitted(
+        authority.clone(),
+        client.clone(),
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .expect("run settles");
+    storage.shutdown().await.unwrap();
+    let requests = client.captured_requests().unwrap();
+    assert!(
+        requests.len() >= 2,
+        "a multi-turn run makes several requests"
+    );
+    for pair in requests.windows(2) {
+        let earlier: Value = serde_json::from_slice(&pair[0]).unwrap();
+        let later: Value = serde_json::from_slice(&pair[1]).unwrap();
+        let earlier = earlier["messages"].as_array().unwrap();
+        let later = later["messages"].as_array().unwrap();
+        assert!(later.len() > earlier.len(), "the conversation grew");
+        assert_eq!(
+            &later[..earlier.len()],
+            earlier.as_slice(),
+            "each turn's messages are a prefix of the next"
+        );
+        // Every request also carries the cache-reuse flag.
+        assert_eq!(
+            serde_json::from_slice::<Value>(&pair[0]).unwrap()["cache_prompt"],
+            true
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cache_prompt_does_not_change_run_outcome() {
+    // cache_prompt is an additive, transparent flag: the same scripted run yields
+    // the identical candidate and acceptance whether it is on or off.
+    async fn run_with(cache_prompt: bool) -> RunRecord {
+        let fixture = Fixture::new(&[("project.txt", SOURCE)]);
+        let source = if cache_prompt {
+            CONFIG.to_string()
+        } else {
+            CONFIG.replace(
+                "temperature = 0.0",
+                "temperature = 0.0\ncache_prompt = false",
+            )
+        };
+        let config = fixture.config(&source);
+        let authority = checked(&config);
+        let storage = fixture.storage().await;
+        let store = storage.client();
+        let client = ModelClient::scripted([
+            batch(vec![read("r1", "project.txt")]).into(),
+            ModelReply::Answer(prose()).into(),
+            ModelReply::Answer(candidate("Rust", "e0")).into(),
+        ]);
+        let resources = RunResources::single(1, config.concurrency().clone())
+            .with_workspace("practice", &fixture.root.join("workspace"))
+            .unwrap();
+        admit(&authority, &store, None).await.unwrap();
+        let record = run_admitted(
+            authority,
+            client,
+            store.clone(),
+            resources,
+            CancellationToken::new(),
+            Instant::now(),
+        )
+        .await
+        .expect("run settles");
+        storage.shutdown().await.unwrap();
+        record
+    }
+    let on = run_with(true).await;
+    let off = run_with(false).await;
+    assert_eq!(on.acceptance_status, "passed");
+    assert_eq!(on.acceptance_status, off.acceptance_status);
+    assert_eq!(
+        on.result.as_ref().map(|r| &r["candidate"]),
+        off.result.as_ref().map(|r| &r["candidate"])
+    );
+}

@@ -76,3 +76,10 @@
 - **Completed:** 2026-09-11T05:12:14Z
 - **Files modified:** src/model.rs, src/config.rs, src/runner.rs, src/replay.rs, tests/model_protocol.rs
 - **Commit:** `56706885bd560d1c50a0745ddc6d190e6a61211d`
+
+## T-002 (sprint 3)
+- **Description:** offline reuse invariants + the live measurement harness. `prepared_request_of_each_turn_extends_the_previous` proves each turn's messages are a prefix of the next (the property the server's reuse relies on) and carry `cache_prompt`; `cache_prompt_does_not_change_run_outcome` shows the flag is transparent (identical candidate/acceptance on vs off); `replay_reproduces_a_cache_prompt_run` shows a cache_prompt capture replays consistent. The headline reduction is an `#[ignore]`d live benchmark (`kv_cache_reuse_reduces_prompt_eval_time`) that sends a prefix-extended pair and asserts the second evaluates fewer prompt tokens than its full prompt. The prefix-extension test landed in runner_tools.rs (its scripted `captured_requests` harness) rather than model_protocol.rs.
+- **Intent:** [INT-0004](../intents/INT-0004-kv-cache-reuse.md)
+- **Completed:** 2026-09-11T05:18:07Z
+- **Files modified:** tests/runner_tools.rs, tests/replay.rs, tests/live_evaluation.rs
+- **Commit:** PENDING
