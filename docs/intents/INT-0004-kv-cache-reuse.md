@@ -6,7 +6,7 @@
 - **Work evidence:** [T-001 build plan](../sprints/s3/sprint-plans/build-plan.md#t-001-emit-cache_prompt-and-re-record-the-request-fixtures)
 - **Completion evidence:** none
 - **Code evidence:** none
-- **Test evidence:** none
+- **Test evidence:** [sprint 3 test report](../sprints/s3/sprint-tests/test-report.md)
 - **Documentation evidence:** none
 
 ## Intent
