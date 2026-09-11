@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0015
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s8/sprint-plans/build-plan.md#t-001-author-the-assurance-package)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -61,3 +61,4 @@ controls to move from "gap" to "mechanism."
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme B — supply-chain & assurance).
 - 2026-09-11: scope refined (still `proposed`) to explicitly own the service transport-authentication/identity boundary (bearer-over-loopback → mTLS for non-loopback exposure), closing the "no mTLS/identity beyond bearer" research-report gap flagged in ultrareview of the sprint 5 checkpoint.
 - 2026-09-11: `proposed → planned`; selected for sprint 8 and linked to the build plan (T-001 docs/threat-model.md with the OWASP/NIST/CISA mapping + memory-safety statement + corpus→matrix map; T-002 tests/redteam.rs consolidating the corpus).
+- 2026-09-11: `planned → active`; sprint 8 build began (T-001).

@@ -146,3 +146,10 @@
 - **Completed:** 2026-09-11T20:52:14Z
 - **Files modified:** tests/sandbox_linux.rs, src/bin/cmd-fixture.rs
 - **Commit:** `1d0dc92209d7e829b16965ef7727f6afed517252`
+
+## T-001 (sprint 8)
+- **Description:** authored `docs/threat-model.md` — the standards-mapped security-assurance package: an OWASP LLM Top-10 (2025) + Agentic Top-10 (2026) table mapping each risk to a mechanism / gap (owning intent) / accepted residual risk; a NIST AI-agent controls table (policy-based authz, task scoping, JIT-privilege gap→INT-0017, approval-gates gap→INT-0017, dev/test/prod residual, transport-auth mechanism+mTLS residual boundary); a CISA/NSA memory-safety statement enumerating every unsafe/FFI site (private_state.rs Windows security APIs + libc::geteuid, storage.rs CreateDirectoryW, signal.rs SetConsoleCtrlHandler, tools.rs Linux sandbox pre_exec) with the "no unsafe in the pure core" posture; and a red-team-corpus → release-evidence-matrix table naming the executed test(s) per row. Versioned (v1, owner, cadence). Linked from SUMMARY.
+- **Intent:** [INT-0015](../intents/INT-0015-threat-model-assurance.md)
+- **Completed:** 2026-09-11T22:01:43Z
+- **Files modified:** docs/threat-model.md, docs/SUMMARY.md
+- **Commit:** PENDING
