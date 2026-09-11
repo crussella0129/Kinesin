@@ -6,7 +6,7 @@
 - **Work evidence:** [T-001 build plan](../sprints/s8/sprint-plans/build-plan.md#t-001-author-the-assurance-package)
 - **Completion evidence:** none
 - **Code evidence:** none
-- **Test evidence:** none
+- **Test evidence:** [sprint 8 test report](../sprints/s8/sprint-tests/test-report.md)
 - **Documentation evidence:** none
 
 ## Intent
