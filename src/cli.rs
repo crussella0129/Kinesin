@@ -20,7 +20,7 @@ use crate::scheduler::{Controller, ControllerHandle, Job, PendingRun};
 use crate::storage::{Command, Event, QueueLimits, Response, RunRecord, Storage, StorageClient};
 
 pub const USAGE: &str = "kinesin
-kinesin run --config PATH --workspace ALIAS --model ALIAS --prompt TEXT [--allow-unchecked]\nkinesin run --config PATH --task ALIAS --model ALIAS\nkinesin batch --config PATH --input PATH\nkinesin inspect --config PATH --run ID\nkinesin export --config PATH --run ID --output NEW_FILE\nkinesin replay --input FILE\nkinesin retain --config PATH [--limit 100]\nkinesin backup --config PATH --output NEW_FILE\nkinesin serve --config PATH\nkinesin provision --config PATH --owner ALIAS --hours HOURS";
+kinesin [--config PATH] --workspace ALIAS --model ALIAS --prompt TEXT [--allow-unchecked]\nkinesin [--config PATH] --task ALIAS --model ALIAS\nkinesin batch --config PATH --input PATH\nkinesin inspect --config PATH --run ID\nkinesin export --config PATH --run ID --output NEW_FILE\nkinesin replay --input FILE\nkinesin retain --config PATH [--limit 100]\nkinesin backup --config PATH --output NEW_FILE\nkinesin serve --config PATH\nkinesin provision --config PATH --owner ALIAS --hours HOURS";
 pub const MAX_BATCH_ENTRIES: usize = 1_024;
 pub const MAX_BATCH_LINE_BYTES: usize = 65_536;
 pub const MAX_BATCH_BYTES: usize = 16 * 1_048_576;
@@ -56,8 +56,9 @@ pub struct BackupCommand {
     pub output: PathBuf,
 }
 pub enum CliCommand {
-    /// No arguments: an interactive session. Each entry continues the one
-    /// before it, so following up needs no run id and no flag.
+    /// No run input (no arguments, or only `--config`): an interactive session.
+    /// Each entry continues the one before it, so following up needs no run id
+    /// and no flag.
     Session {
         config: PathBuf,
     },
@@ -88,16 +89,14 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, Str
         });
     };
     let command = first.into_string().map_err(|_| USAGE)?;
-    if command == "--config" {
-        // `kinesin --config other.toml` still opens a session.
-        let config = PathBuf::from(args.next().ok_or("missing value for --config")?);
-        if args.next().is_some() {
-            return Err(USAGE.into());
-        }
-        return Ok(CliCommand::Session { config });
+    // Running is what bare `kinesin` does. A leading flag (or no argument at all)
+    // is the default entry: a one-shot run when run inputs are given, or the
+    // interactive session when only --config is. Only operations that do
+    // something other than run the app are named subcommands.
+    if command.starts_with("--") {
+        return parse_default(command, args);
     }
     if ![
-        "run",
         "batch",
         "inspect",
         "export",
@@ -112,17 +111,9 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, Str
         return Err(USAGE.into());
     }
     let mut values = BTreeMap::new();
-    let mut allow_unchecked = false;
     for _ in 0..16 {
         let Some(flag) = args.next() else { break };
         let flag = flag.into_string().map_err(|_| "flag must be UTF-8")?;
-        if flag == "--allow-unchecked" {
-            if allow_unchecked || command != "run" {
-                return Err("unchecked opt-in belongs to a single freeform selection or individual batch row".into());
-            }
-            allow_unchecked = true;
-            continue;
-        }
         let supported = match command.as_str() {
             "batch" => ["--config", "--input"].contains(&flag.as_str()),
             "inspect" => ["--config", "--run"].contains(&flag.as_str()),
@@ -132,15 +123,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, Str
             "backup" => ["--config", "--output"].contains(&flag.as_str()),
             "serve" => flag == "--config",
             "provision" => ["--config", "--owner", "--hours"].contains(&flag.as_str()),
-            _ => [
-                "--config",
-                "--workspace",
-                "--model",
-                "--prompt",
-                "--task",
-                "--capture",
-            ]
-            .contains(&flag.as_str()),
+            _ => false,
         };
         if !supported {
             return Err("unknown argument; see command usage".into());
@@ -220,6 +203,68 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, Str
             config,
             input: PathBuf::from(values.remove("--input").ok_or("missing --input")?),
         }));
+    }
+    // Every operator verb returns above; the whitelist guarantees no other reaches here.
+    Err(USAGE.into())
+}
+
+/// The default entry when the first argument is a flag (or absent): a one-shot
+/// run when run inputs are present, otherwise the interactive session. There is
+/// no `run` verb — running is what bare `kinesin` does.
+fn parse_default(
+    first_flag: String,
+    rest: impl Iterator<Item = OsString>,
+) -> Result<CliCommand, String> {
+    let mut values = BTreeMap::new();
+    let mut allow_unchecked = false;
+    let mut flags = std::iter::once(OsString::from(first_flag)).chain(rest);
+    for _ in 0..16 {
+        let Some(flag) = flags.next() else { break };
+        let flag = flag.into_string().map_err(|_| "flag must be UTF-8")?;
+        if flag == "--allow-unchecked" {
+            if allow_unchecked {
+                return Err("duplicate --allow-unchecked".into());
+            }
+            allow_unchecked = true;
+            continue;
+        }
+        if ![
+            "--config",
+            "--workspace",
+            "--model",
+            "--prompt",
+            "--task",
+            "--capture",
+        ]
+        .contains(&flag.as_str())
+        {
+            return Err(USAGE.into());
+        }
+        let value = flags
+            .next()
+            .ok_or_else(|| format!("missing value for {flag}"))?;
+        if values.insert(flag.clone(), value).is_some() {
+            return Err(format!("duplicate {flag}"));
+        }
+    }
+    if flags.next().is_some() {
+        return Err("too many arguments".into());
+    }
+    let config = values
+        .remove("--config")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_CONFIG));
+    // With no run input, this is the interactive session. --model or --capture
+    // alone is neither a session nor a complete run.
+    let has_run_input = allow_unchecked
+        || values.contains_key("--workspace")
+        || values.contains_key("--prompt")
+        || values.contains_key("--task");
+    if !has_run_input {
+        if !values.is_empty() {
+            return Err(USAGE.into());
+        }
+        return Ok(CliCommand::Session { config });
     }
     let model = take_text(&mut values, "--model")?;
     let capture = values
@@ -1331,10 +1376,31 @@ mod tests {
         };
         assert_eq!(config, PathBuf::from("other.toml"));
 
-        // Continuation is a property of the session, not a flag on run.
+        // There is no `run` verb — running is what bare `kinesin` does, so flags
+        // alone are a one-shot run.
+        assert!(
+            matches!(
+                parse(args(&["--workspace", "w", "--model", "m", "--prompt", "p"])).unwrap(),
+                CliCommand::Run(_)
+            ),
+            "flags alone run the app"
+        );
         assert!(
             parse(args(&[
                 "run",
+                "--workspace",
+                "w",
+                "--model",
+                "m",
+                "--prompt",
+                "p"
+            ]))
+            .is_err(),
+            "run is not a subcommand"
+        );
+        // Continuation is a property of the session, not a flag.
+        assert!(
+            parse(args(&[
                 "--config",
                 "kinesin.toml",
                 "--continue",
@@ -1343,7 +1409,7 @@ mod tests {
                 "and why?",
             ]))
             .is_err(),
-            "run has no continuation flag"
+            "there is no continuation flag"
         );
     }
 
@@ -1357,10 +1423,9 @@ mod tests {
     fn disjoint_shapes_and_unknown_flags_fail_before_io() {
         for values in [
             vec![
-                "run", "--config", "x", "--model", "m", "--task", "t", "--prompt", "other",
+                "--config", "x", "--model", "m", "--task", "t", "--prompt", "other",
             ],
             vec![
-                "run",
                 "--config",
                 "x",
                 "--model",
@@ -1369,7 +1434,7 @@ mod tests {
                 "t",
                 "--allow-unchecked",
             ],
-            vec!["run", "--config", "x", "--model", "m", "--owner", "root"],
+            vec!["--config", "x", "--model", "m", "--owner", "root"],
             vec![
                 "batch",
                 "--config",
@@ -1383,7 +1448,6 @@ mod tests {
         }
         assert!(
             parse(args(&[
-                "run",
                 "--config",
                 "x",
                 "--model",
@@ -1682,7 +1746,6 @@ mod tests {
         });
 
         let command = parse(args(&[
-            "run",
             "--config",
             &fixture.path().to_string_lossy(),
             "--workspace",
