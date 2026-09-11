@@ -117,4 +117,4 @@
 - **Intent:** [INT-0013](../intents/INT-0013-supply-chain-security.md)
 - **Completed:** 2026-09-11T19:15:56Z
 - **Files modified:** deny.toml, Cargo.toml
-- **Commit:** PENDING
+- **Commit:** `d043acd98e8ca752cd76fc689ae42d4f2379e37d`
