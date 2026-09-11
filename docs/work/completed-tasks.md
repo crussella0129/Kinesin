@@ -82,4 +82,4 @@
 - **Intent:** [INT-0004](../intents/INT-0004-kv-cache-reuse.md)
 - **Completed:** 2026-09-11T05:18:07Z
 - **Files modified:** tests/runner_tools.rs, tests/replay.rs, tests/live_evaluation.rs
-- **Commit:** PENDING
+- **Commit:** `8be0e845b1c9fd9ff4bbb527e20349b1542ce929`
