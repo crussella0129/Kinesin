@@ -97,3 +97,17 @@
 - **Completed:** 2026-09-11T14:16:05Z
 - **Files modified:** tests/runner_tools.rs, tests/live_evaluation.rs, docs/integration.md
 - **Commit:** `b2b19b401d6a6c2d0952ff3f544802326311eeb2`
+
+## T-001 (sprint 5)
+- **Description:** authored the seven workstream intent chapters for the roadmap — INT-0012 command-execution sandboxing (Landlock+seccomp / AppContainer+Job Object, mandatory-isolation mode), INT-0013 supply-chain security & signed releases (cargo-deny/audit/auditable/vet, SBOM, cosign), INT-0014 tamper-evident audit journal (hash-chain + signed receipts), INT-0015 threat model & security assurance (OWASP/NIST/CISA mapping + memory-safety statement + red-team corpus), INT-0016 observability (OpenTelemetry, no prompts), INT-0017 human-approval gates & JIT privilege, INT-0018 subagents & bounded parallel orchestration. Each is a well-formed v2 chapter; all `proposed` (INT-0018 lowest priority). Added SUMMARY navigation for each. check-book validates 18 chapters.
+- **Intent:** [INT-0011](../intents/INT-0011-production-readiness-roadmap.md)
+- **Completed:** 2026-09-11T16:59:42Z
+- **Files modified:** docs/intents/INT-0012-command-execution-sandboxing.md, docs/intents/INT-0013-supply-chain-security.md, docs/intents/INT-0014-tamper-evident-journal.md, docs/intents/INT-0015-threat-model-assurance.md, docs/intents/INT-0016-observability.md, docs/intents/INT-0017-approval-gates-jit-privilege.md, docs/intents/INT-0018-subagents-parallel-orchestration.md, docs/SUMMARY.md
+- **Commit:** `b18c7acb5286e6265106a9686fde0bd423a14b45`
+
+## T-002 (sprint 5)
+- **Description:** wrote `docs/roadmap.md` — the four-theme (A security hardening, B supply-chain & assurance, C operability, D SotA capability) prioritized roadmap with a current-state summary, recommended sequencing (INT-0013 → 0012 → 0015 → 0005/0006 → 0016/0017/0014/0010 → 0007/0009/0018), a SotA/standards mapping table, and a parking-lot (memory, programmatic tool results, ACP/A2A, Postgres/queue, vector retrieval). Added a one-line roadmap cross-reference to each existing proposed intent (INT-0005/0006/0007/0009/0010) and linked the roadmap from SUMMARY. Every research-report gap maps to a tracked intent.
+- **Intent:** [INT-0011](../intents/INT-0011-production-readiness-roadmap.md)
+- **Completed:** 2026-09-11T17:01:46Z
+- **Files modified:** docs/roadmap.md, docs/intents/INT-0005-mcp-tool-servers.md, docs/intents/INT-0006-skills-progressive-disclosure.md, docs/intents/INT-0007-managed-model-process.md, docs/intents/INT-0009-koil-overlay-transport.md, docs/intents/INT-0010-cross-agent-write-coordination.md
+- **Commit:** `f80a0321ae91732bba3577518d41afcb3da6fef8`

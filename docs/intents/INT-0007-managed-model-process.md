@@ -9,6 +9,8 @@
 - **Test evidence:** none
 - **Documentation evidence:** none
 
+> **Roadmap:** theme C (operability) — see [the roadmap](../roadmap.md) (INT-0011).
+
 ## Intent
 Optionally start and supervise the local `llama-server` process instead of
 requiring an operator to launch it by hand (today's attach-only profile). When

@@ -9,6 +9,8 @@
 - **Test evidence:** none
 - **Documentation evidence:** none
 
+> **Roadmap:** theme D (SotA capability) — see [the roadmap](../roadmap.md) (INT-0011).
+
 ## Intent
 Support operator-installed, on-disk skills — a directory per skill holding an
 instruction file with a name and description — whose instructions load into a
