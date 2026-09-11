@@ -13,7 +13,7 @@
   - [INT-0010 Cross-agent write coordination](intents/INT-0010-cross-agent-write-coordination.md)
   - [INT-0011 Production-readiness & security roadmap](intents/INT-0011-production-readiness-roadmap.md)
   - [INT-0012 Command-execution sandboxing](intents/INT-0012-command-execution-sandboxing.md)
-  - [INT-0013 Supply-chain security & signed releases](intents/INT-0013-supply-chain-security.md)
+  - [INT-0013 Supply-chain dependency gate](intents/INT-0013-supply-chain-security.md)
   - [INT-0014 Tamper-evident audit journal](intents/INT-0014-tamper-evident-journal.md)
   - [INT-0015 Threat model & security assurance](intents/INT-0015-threat-model-assurance.md)
   - [INT-0016 Observability (OpenTelemetry)](intents/INT-0016-observability.md)

@@ -31,7 +31,7 @@ oversight / just-in-time privilege; and SotA scaling (MCP, skills, subagents).
 - [INT-0010](intents/INT-0010-cross-agent-write-coordination.md) — cross-agent write coordination (presence-aware leases; concurrency safety). **proposed**
 
 ### B. Supply-chain & assurance
-- [INT-0013](intents/INT-0013-supply-chain-security.md) — supply-chain security & signed releases (cargo-deny/audit/auditable/vet, SBOM, cosign). **proposed**
+- [INT-0013](intents/INT-0013-supply-chain-security.md) — supply-chain **dependency gate** (cargo-deny + cargo-audit CI gate, deny.toml, cargo-vet decision). **planned** (sprint 6). Release-artifact integrity split to the parking-lot.
 - [INT-0015](intents/INT-0015-threat-model-assurance.md) — threat model & security assurance (OWASP/NIST/CISA mapping, memory-safety statement, red-team corpus, service transport-auth/identity boundary incl. mTLS-beyond-bearer). **proposed**
 
 ### C. Operability / production
@@ -66,6 +66,7 @@ The order is a recommendation; the operator picks each sprint's objective.
 
 ## Parking-lot (deferred without a chapter yet)
 Authored as an intent only when a sprint selects one:
+- **Release-artifact integrity** — SBOM, `cargo-auditable` binaries, cosign/sigstore signing, reproducible builds. Split from INT-0013; needs a release pipeline (none yet). Author as an intent when release engineering begins.
 - Episodic / procedural **memory** (recall past runs; tool-use heuristics).
 - **Programmatic (file-pointer) tool results** — revisit when a result must exceed the context (decisions.md).
 - **ACP / A2A protocol adapters** — additional surface adapters beyond CLI + loopback + MCP.
