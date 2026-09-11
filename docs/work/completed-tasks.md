@@ -83,3 +83,10 @@
 - **Completed:** 2026-09-11T05:18:07Z
 - **Files modified:** tests/runner_tools.rs, tests/replay.rs, tests/live_evaluation.rs
 - **Commit:** `8be0e845b1c9fd9ff4bbb527e20349b1542ce929`
+
+## T-001 (sprint 4)
+- **Description:** address-privacy policy for model origins. Reworked `validate_origin` into explicit host classification (`origin_reach`: loopback, RFC1918, CGNAT `100.64.0.0/10`, and IPv6 ULA `fc00::/7` are private/overlay; a non-`localhost` domain or public IP is public) plus policy: private/overlay accepts http or https; a public host is rejected unless the new root `allow_public_endpoints` (serde default false) is set, and even then only over https. This lets a plain-HTTP overlay endpoint (e.g. a Tailscale `100.x` address) be configured exactly like localhost while public plaintext is still refused. CGNAT range implemented by hand (std helper unstable on 1.96.0).
+- **Intent:** [INT-0008](../intents/INT-0008-remote-model-over-overlay.md)
+- **Completed:** 2026-09-11T14:10:25Z
+- **Files modified:** src/config.rs
+- **Commit:** PENDING

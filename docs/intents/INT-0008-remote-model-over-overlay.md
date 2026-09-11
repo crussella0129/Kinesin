@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0008
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s4/sprint-plans/build-plan.md#t-001-address-privacy-policy-for-model-origins)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -76,3 +76,4 @@ for the cross-machine case. Research may recommend folding in INT-0007
   broaden the origin policy to accept loopback + private/overlay addresses over
   HTTP, reject public by default (opt-in public requires HTTPS), keep the
   encrypted fabric out-of-band (adopt Tailscale now; Koil deferred to INT-0009).
+- 2026-09-11: `planned → active`; sprint 4 build began (T-001).

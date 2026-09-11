@@ -39,6 +39,8 @@ pub struct Config {
     owners: Vec<OwnerConfig>,
     #[serde(default)]
     service: Option<ServiceConfig>,
+    #[serde(default)]
+    allow_public_endpoints: bool,
     #[serde(skip)]
     config_path: PathBuf,
 }
@@ -63,6 +65,8 @@ struct ConfigFile {
     owners: Vec<OwnerConfig>,
     #[serde(default)]
     service: Option<ServiceConfig>,
+    #[serde(default)]
+    allow_public_endpoints: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -429,6 +433,7 @@ impl Config {
             tasks: raw.tasks,
             owners: raw.owners,
             service: raw.service,
+            allow_public_endpoints: raw.allow_public_endpoints,
             config_path: PathBuf::new(),
         };
         if config.version != 1 {
@@ -506,8 +511,9 @@ impl Config {
                 }
             }
         }
+        let allow_public = config.allow_public_endpoints;
         for model in &mut config.models {
-            model.base_url = validate_origin(&model.base_url)?;
+            model.base_url = validate_origin(&model.base_url, allow_public)?;
             if model.model_id.trim().is_empty()
                 || model.model_id.len() > 256
                 || model.model_id.chars().any(char::is_control)
@@ -798,7 +804,7 @@ pub fn validate_relative_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_origin(raw: &str) -> Result<String, String> {
+fn validate_origin(raw: &str, allow_public: bool) -> Result<String, String> {
     if raw.len() > 2_048
         || raw.chars().any(|c| c.is_whitespace() || c.is_control())
         || raw.contains('\\')
@@ -818,16 +824,69 @@ fn validate_origin(raw: &str) -> Result<String, String> {
     {
         return Err("model origin must omit credentials, API paths, query, and fragment".into());
     }
-    let loopback = match url.host() {
-        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
-        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
-        Some(url::Host::Domain(host)) => host == "localhost",
-        None => false,
-    };
-    if url.scheme() != "https" && !(url.scheme() == "http" && loopback) {
-        return Err("model origin requires HTTPS except for local loopback HTTP".into());
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err("model origin must use http or https".into());
+    }
+    // Address-privacy policy: loopback and private/overlay addresses may be
+    // reached over plaintext HTTP because the local host or the overlay
+    // (WireGuard/Tailscale) already confines and encrypts the traffic. A public
+    // address is refused unless the operator opts in, and even then only over
+    // HTTPS — plaintext must never cross the open internet.
+    match origin_reach(url.host().expect("host presence checked above")) {
+        OriginReach::Private => {}
+        OriginReach::Public => {
+            if !allow_public {
+                return Err(
+                    "model origin must be a loopback or private/overlay address; set allow_public_endpoints to permit a public HTTPS endpoint"
+                        .into(),
+                );
+            }
+            if url.scheme() != "https" {
+                return Err("a public model origin requires HTTPS".into());
+            }
+        }
     }
     Ok(url.origin().ascii_serialization())
+}
+
+/// Whether a model origin's host is confined to the local host or a
+/// private/overlay network, or is publicly routable.
+enum OriginReach {
+    Private,
+    Public,
+}
+
+/// Classify a host for the address-privacy policy. Loopback, RFC1918 IPv4, the
+/// CGNAT range `100.64.0.0/10` (used by Tailscale), and IPv6 unique-local
+/// `fc00::/7` count as private/overlay. A non-`localhost` domain is treated as
+/// public because a name cannot be proven to resolve onto an overlay here.
+fn origin_reach(host: url::Host<&str>) -> OriginReach {
+    match host {
+        url::Host::Ipv4(ip) => {
+            let octets = ip.octets();
+            let cgnat = octets[0] == 100 && (64..=127).contains(&octets[1]);
+            if ip.is_loopback() || ip.is_private() || cgnat {
+                OriginReach::Private
+            } else {
+                OriginReach::Public
+            }
+        }
+        url::Host::Ipv6(ip) => {
+            let unique_local = ip.octets()[0] & 0xfe == 0xfc;
+            if ip.is_loopback() || unique_local {
+                OriginReach::Private
+            } else {
+                OriginReach::Public
+            }
+        }
+        url::Host::Domain(host) => {
+            if host == "localhost" {
+                OriginReach::Private
+            } else {
+                OriginReach::Public
+            }
+        }
+    }
 }
 
 /// Canonicalize the nearest existing ancestor before appending missing names.
@@ -1247,13 +1306,75 @@ mod tests {
             "http://127.0.0.1:8080/a/..",
             "http://127.0.0.1:8080\\other",
         ] {
-            assert!(validate_origin(origin).is_err(), "{origin}");
+            assert!(validate_origin(origin, false).is_err(), "{origin}");
         }
         assert_eq!(
-            validate_origin("http://127.0.0.1:8080/").unwrap(),
+            validate_origin("http://127.0.0.1:8080/", false).unwrap(),
             "http://127.0.0.1:8080"
         );
-        assert!(validate_origin("https://model.example.org").is_ok());
+        // A public HTTPS host is admissible only when the operator opts in.
+        assert!(validate_origin("https://model.example.org", true).is_ok());
+    }
+
+    #[test]
+    fn origin_accepts_loopback_http() {
+        assert!(validate_origin("http://127.0.0.1:8080", false).is_ok());
+        assert!(validate_origin("http://localhost:8080", false).is_ok());
+        assert!(validate_origin("http://[::1]:8080", false).is_ok());
+    }
+
+    #[test]
+    fn origin_accepts_private_and_overlay_http() {
+        // RFC1918, CGNAT 100.64.0.0/10 (Tailscale), and IPv6 ULA fc00::/7 are
+        // private/overlay: plaintext HTTP is admissible without opting in.
+        for origin in [
+            "http://192.168.1.10:8080",
+            "http://10.0.0.5:8080",
+            "http://172.16.4.2:8080",
+            "http://100.100.20.30:8080",
+            "http://[fd7a:1234::1]:8080",
+        ] {
+            assert!(validate_origin(origin, false).is_ok(), "{origin}");
+        }
+        // A non-overlay CGNAT-adjacent address (100.128.x) is still public.
+        assert!(validate_origin("http://100.128.0.1:8080", false).is_err());
+    }
+
+    #[test]
+    fn origin_rejects_public_without_optin() {
+        for origin in ["http://93.184.216.34:8080", "https://api.example.com"] {
+            assert!(validate_origin(origin, false).is_err(), "{origin}");
+        }
+    }
+
+    #[test]
+    fn origin_accepts_public_https_with_optin() {
+        assert_eq!(
+            validate_origin("https://api.example.com", true).unwrap(),
+            "https://api.example.com"
+        );
+        assert!(validate_origin("https://8.8.8.8", true).is_ok());
+    }
+
+    #[test]
+    fn origin_rejects_public_http_with_optin() {
+        // Opting in permits a public HTTPS endpoint, never public plaintext.
+        assert!(validate_origin("http://93.184.216.34:8080", true).is_err());
+        assert!(validate_origin("http://api.example.com", true).is_err());
+    }
+
+    #[test]
+    fn allow_public_defaults_false() {
+        let fixture = Fixture::new();
+        // A config that omits the flag rejects a public HTTPS model origin.
+        let text = format!("{BASE}{TASK}{OWNER}").replace(
+            "base_url = \"http://127.0.0.1:8080\"",
+            "base_url = \"https://api.example.com\"",
+        );
+        assert!(fixture.parse(&text).is_err());
+        // The same config with the flag set parses.
+        let opted = format!("allow_public_endpoints = true\n{text}");
+        assert!(fixture.parse(&opted).is_ok());
     }
 
     #[test]
