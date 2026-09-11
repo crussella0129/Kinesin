@@ -132,3 +132,10 @@
 - **Completed:** 2026-09-11T20:33:54Z
 - **Files modified:** Cargo.toml, Cargo.lock
 - **Commit:** `3c58c9c1832673b84617a82b443af2ee1e8eb403`
+
+## T-002 (sprint 7)
+- **Description:** added the mandatory Linux command sandbox to `CommandRunner` (`src/tools.rs`, new `#[cfg(target_os="linux")] mod sandbox_linux`). Before `group_spawn`, `arm()` builds — in the parent — a Landlock ruleset (read-execute on existing system prefixes /usr,/lib,/lib64,/bin,/sbin,/etc,/proc plus the resolved command binary's directory; read-write on the workspace root; deny the rest) and compiles a seccomp-BPF filter denying network syscalls (socket/socketpair/connect/bind/listen/accept/accept4/sendto/sendmsg → EPERM), then applies them in an `unsafe` `pre_exec` closure (apply-only: `restrict_self` + `apply_filter`, no allocation). If Landlock is NotEnforced or the ruleset/filter can't be built, it refuses with a defined `sandbox_unavailable` error (mandatory, secure-by-default) — never spawns unconfined. `resolve_binary` PATH-resolves the allow-listed name so the binary (incl. a test fixture in target/) stays executable. Verified in WSL (kernel 6.6, Landlock+seccomp enforced) and clippy-clean on Linux; cfg-gated so Windows/macos are unchanged.
+- **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
+- **Completed:** 2026-09-11T20:51:38Z
+- **Files modified:** src/tools.rs
+- **Commit:** PENDING
