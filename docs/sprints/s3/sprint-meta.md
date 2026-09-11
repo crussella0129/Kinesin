@@ -9,5 +9,5 @@
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
 - **Summary:** Reuse llama.cpp's cached prompt prefix via `cache_prompt` (config-toggled), preserving immutability/replay; measure the reduction on a live server (INT-0004).
-- **Intents:** [INT-0004](../../intents/INT-0004-kv-cache-reuse.md) — planned
+- **Intents:** [INT-0004](../../intents/INT-0004-kv-cache-reuse.md) — realized
 - **Completion evidence:** (filled at Loop Phase)

@@ -5,12 +5,11 @@ and INT-0004.
 
 ## Concerns
 
-### C-001: the headline acceptance is not CI-verified
+### C-001: the headline acceptance is not CI-verified — RESOLVED (measured)
 - **Where:** `e2e-tests.md` / `kv_cache_reuse_reduces_prompt_eval_time`.
-- **Quote:** "measured reduction in prompt-eval time … `#[ignore]`d … run manually against the pinned server."
 - **Failure mode:** e2e-drift.
-- **Why it matters:** INT-0004's first acceptance criterion is a measured reduction; CI cannot produce a wall-clock measurement.
-- **Suggested response:** defer-with-rationale / accept. The measurement is inherently live and machine-specific; the mechanism and every invariant it depends on are CI-verified (request carries the flag, prefix-extension validity, outcome-invariance, replay consistency), and the reduction is recorded via the repo's `#[ignore]`d live harness — the same non-unit verification the CI matrix used. The intent frames the measurement as recorded-with-workload-and-machine, i.e. a live artifact.
+- **Why it mattered:** INT-0004's first acceptance criterion is a *measured* reduction; CI cannot produce a wall-clock measurement, and the sprint must not close on an unproduced number.
+- **Resolution:** the benchmark was **run** against the pinned b6500 server on 2026-09-11 (the same profile in `model-preflight.md`) and passed: the second, prefix-extending turn evaluated **16 of 59** prompt tokens. A cold-vs-warm probe recorded the prompt-eval *time* reduction with workload and machine — ≈18.4× (933 ms → 51 ms) on a ~2 576-token shared prefix, stable across 3 iterations. The criterion is satisfied by an executed measurement, not deferred. **Honest nuance recorded:** the wall-clock reduction scales with prefix size (≈1.0× at ~55 tokens, where per-request overhead dominates; large where prompt-eval is compute-bound). The measurement remains outside CI because it is inherently machine-specific, but that is a property of the metric, not an unverified claim.
 
 ### C-002: the static request fixtures were not re-recorded (plan deviation)
 - **Where:** locked `build-plan.md` T-001 said "re-record the request fixtures (`tests/fixtures/live/*.request.json`)"; the completed task left them unchanged.
@@ -32,7 +31,7 @@ and INT-0004.
 
 ## Screen of the remaining failure modes
 - **Intent/EARS trace gap:** none — all three acceptance criteria map to named tests (immutability/replay → replay test + unchanged suite; never-corrupts → outcome-invariance + server semantics; measured reduction → live benchmark).
-- **Plan-test mismatch:** none — every EARS clause maps to a named test; the live clause maps to the named ignored benchmark, which compiles and lists.
+- **Plan-test mismatch:** none — every EARS clause maps to a named test; the live clause maps to the named ignored benchmark, which was executed against the pinned server and passed.
 - **Stub leakage:** none beyond C-003, which is inherent to offline verification of a server-side optimization.
 - **Missing risk coverage:** none — the research risks each landed on a test or an explicit deferral (slot pinning deferred to auto-prefix-match).
 - **Granularity:** none — T-001 mechanism, T-002 verification; distinct.
