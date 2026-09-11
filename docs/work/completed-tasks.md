@@ -96,4 +96,4 @@
 - **Intent:** [INT-0008](../intents/INT-0008-remote-model-over-overlay.md)
 - **Completed:** 2026-09-11T14:16:05Z
 - **Files modified:** tests/runner_tools.rs, tests/live_evaluation.rs, docs/integration.md
-- **Commit:** PENDING
+- **Commit:** `b2b19b401d6a6c2d0952ff3f544802326311eeb2`
