@@ -89,4 +89,4 @@
 - **Intent:** [INT-0008](../intents/INT-0008-remote-model-over-overlay.md)
 - **Completed:** 2026-09-11T14:10:25Z
 - **Files modified:** src/config.rs
-- **Commit:** PENDING
+- **Commit:** `32ab6d5aa3d86f7834a5aae3d24e580353630c7a`
