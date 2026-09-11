@@ -8,7 +8,7 @@
   - [INT-0005 MCP tool servers](intents/INT-0005-mcp-tool-servers.md)
   - [INT-0006 Skills and progressive disclosure](intents/INT-0006-skills-progressive-disclosure.md)
   - [INT-0007 Managed local model-process supervision](intents/INT-0007-managed-model-process.md)
-  - [INT-0008 Remote model endpoints over a private overlay](intents/INT-0008-remote-model-over-overlay.md)
+  - [INT-0008 Uniform, secure model transport (local and remote)](intents/INT-0008-remote-model-over-overlay.md)
   - [INT-0009 Koil: pure-Rust overlay transport](intents/INT-0009-koil-overlay-transport.md)
   - [INT-0010 Cross-agent write coordination](intents/INT-0010-cross-agent-write-coordination.md)
 - [Tasks](work/tasks.md)
@@ -17,3 +17,4 @@
 - [Sprint 1](sprints/s1/sprint-meta.md)
 - [Sprint 2](sprints/s2/sprint-meta.md)
 - [Sprint 3](sprints/s3/sprint-meta.md)
+- [Sprint 4](sprints/s4/sprint-meta.md)
