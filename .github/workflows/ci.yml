@@ -22,3 +22,21 @@ jobs:
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Run offline tests
         run: cargo test --locked
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install the recorded toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal
+      # Prebuilt binaries; pinned to the major tag, consistent with checkout@v7.
+      - name: Install cargo-deny and cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny,cargo-audit
+      - name: cargo-deny (advisories, licenses, bans, sources)
+        run: cargo deny check
+      - name: cargo-audit (RustSec advisories)
+        run: cargo audit

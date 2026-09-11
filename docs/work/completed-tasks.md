@@ -118,3 +118,10 @@
 - **Completed:** 2026-09-11T19:15:56Z
 - **Files modified:** deny.toml, Cargo.toml
 - **Commit:** `d043acd98e8ca752cd76fc689ae42d4f2379e37d`
+
+## T-002 (sprint 6)
+- **Description:** added a blocking `supply-chain` CI job to `.github/workflows/ci.yml` (ubuntu-latest, top-level `permissions: contents: read`, `actions/checkout@v7` with `persist-credentials: false`, pinned toolchain 1.96.0). It installs cargo-deny + cargo-audit via `taiki-e/install-action@v2` (prebuilt binaries; pinned to the major tag, consistent with the repo's `checkout@v7`) and runs `cargo deny check` and `cargo audit` as blocking steps. The existing windows+ubuntu fmt/clippy/test `check` matrix is unchanged. YAML validated (two jobs). Corrected the plan's `cargo audit --locked` misnomer to plain `cargo audit`. Verification is non-unit: the job green on the checkpoint PR.
+- **Intent:** [INT-0013](../intents/INT-0013-supply-chain-security.md)
+- **Completed:** 2026-09-11T19:17:08Z
+- **Files modified:** .github/workflows/ci.yml
+- **Commit:** PENDING
