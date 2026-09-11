@@ -125,3 +125,24 @@
 - **Completed:** 2026-09-11T19:17:08Z
 - **Files modified:** .github/workflows/ci.yml
 - **Commit:** `550a3a55d861cb0283d73963b0a948cc208db36d`
+
+## T-001 (sprint 7)
+- **Description:** added `landlock` 0.4.7 + `seccompiler` 0.5.0 (and transitive `enumflags2`) under `[target.'cfg(target_os="linux")'.dependencies]` so they compile only on Linux and leave Windows/macos builds untouched. The INT-0013 supply-chain gate stays green with the new deps: `cargo deny check` all-ok (their MIT/Apache licenses were already allowed — no deny.toml edit) and `cargo audit` clean (225 deps). `cargo check` confirms the Windows build is unaffected (cfg-gated deps not pulled).
+- **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
+- **Completed:** 2026-09-11T20:33:54Z
+- **Files modified:** Cargo.toml, Cargo.lock
+- **Commit:** `3c58c9c1832673b84617a82b443af2ee1e8eb403`
+
+## T-002 (sprint 7)
+- **Description:** added the mandatory Linux command sandbox to `CommandRunner` (`src/tools.rs`, new `#[cfg(target_os="linux")] mod sandbox_linux`). Before `group_spawn`, `arm()` builds — in the parent — a Landlock ruleset (read-execute on existing system prefixes /usr,/lib,/lib64,/bin,/sbin,/etc,/proc plus the resolved command binary's directory; read-write on the workspace root; deny the rest) and compiles a seccomp-BPF filter denying network syscalls (socket/socketpair/connect/bind/listen/accept/accept4/sendto/sendmsg → EPERM), then applies them in an `unsafe` `pre_exec` closure (apply-only: `restrict_self` + `apply_filter`, no allocation). If Landlock is NotEnforced or the ruleset/filter can't be built, it refuses with a defined `sandbox_unavailable` error (mandatory, secure-by-default) — never spawns unconfined. `resolve_binary` PATH-resolves the allow-listed name so the binary (incl. a test fixture in target/) stays executable. Verified in WSL (kernel 6.6, Landlock+seccomp enforced) and clippy-clean on Linux; cfg-gated so Windows/macos are unchanged.
+- **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
+- **Completed:** 2026-09-11T20:51:38Z
+- **Files modified:** src/tools.rs
+- **Commit:** `e9fb97b2e3e4be8008dbff8a8fe8e3f3da38f489`
+
+## T-003 (sprint 7)
+- **Description:** Linux sandbox enforcement tests (`tests/sandbox_linux.rs`, `#![cfg(target_os="linux")]`) driving the real `cmd-fixture` through `CommandRunner`: `sandbox_denies_out_of_workspace_read` (Landlock denies a read of a file beside the workspace under /tmp → `READ_DENIED`/exit 21), `sandbox_denies_network_socket` (seccomp denies UDP socket creation → `SOCKET_DENIED`/exit 22), `sandbox_allows_in_workspace_work` (in-workspace read → `READ_OK`), and `sandbox_is_mandatory` (a command is either enforced-Ok or refused with `sandbox_unavailable`, never unconfined). Each enforcement test skips with a note on a kernel that cannot enforce (mandatory-refuse). Added `--read-file`/`--open-socket` probe directives to `cmd-fixture`. All 4 pass in WSL with real enforcement; full suite green on WSL + Windows; the ubuntu CI `check` job is the authoritative Landlock run.
+- **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
+- **Completed:** 2026-09-11T20:52:14Z
+- **Files modified:** tests/sandbox_linux.rs, src/bin/cmd-fixture.rs
+- **Commit:** `1d0dc92209d7e829b16965ef7727f6afed517252`

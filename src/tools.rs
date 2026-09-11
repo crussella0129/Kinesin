@@ -1041,6 +1041,14 @@ impl CommandRunner {
                 command.env(key, value);
             }
         }
+        // Defense in depth on Linux: confine the child's filesystem (Landlock)
+        // and deny network syscalls (seccomp), applied in the child via pre_exec.
+        // Mandatory — if the kernel cannot enforce it, refuse rather than run the
+        // command unconfined.
+        #[cfg(target_os = "linux")]
+        if let Err((code, message)) = sandbox_linux::arm(&mut command, &self.root, &argv[0]) {
+            return ToolResult::failure(ToolStatus::Error, code, message);
+        }
         let mut child = match command.group_spawn() {
             Ok(child) => child,
             Err(_) => {
@@ -1097,6 +1105,132 @@ impl CommandRunner {
                 "The command was cancelled and its process group terminated.",
             ),
         }
+    }
+}
+
+/// Mandatory Linux command sandbox: a Landlock filesystem ruleset (workspace
+/// root read-write, standard system prefixes read-execute, deny the rest) plus a
+/// seccomp filter denying network syscalls, both built in the parent and applied
+/// to the child in a `pre_exec` closure. If the kernel cannot enforce either,
+/// `arm` refuses rather than letting the command run unconfined.
+#[cfg(target_os = "linux")]
+mod sandbox_linux {
+    use std::path::Path;
+
+    use landlock::{
+        ABI, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus,
+        path_beneath_rules,
+    };
+    use seccompiler::{BpfProgram, SeccompAction, SeccompFilter};
+
+    /// Read-execute prefixes a normal command needs (dynamic linker, shared
+    /// libraries, read-only config). Non-existent entries are skipped.
+    const SYSTEM_RX: &[&str] = &["/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc", "/proc"];
+
+    fn network_syscalls() -> [i64; 9] {
+        [
+            libc::SYS_socket,
+            libc::SYS_socketpair,
+            libc::SYS_connect,
+            libc::SYS_bind,
+            libc::SYS_listen,
+            libc::SYS_accept,
+            libc::SYS_accept4,
+            libc::SYS_sendto,
+            libc::SYS_sendmsg,
+        ]
+    }
+
+    fn build_bpf() -> Result<BpfProgram, ()> {
+        use std::collections::BTreeMap;
+        let mut rules: BTreeMap<i64, Vec<seccompiler::SeccompRule>> = BTreeMap::new();
+        for syscall in network_syscalls() {
+            rules.insert(syscall, vec![]); // empty rule vec = match unconditionally
+        }
+        let arch = std::env::consts::ARCH.try_into().map_err(|_| ())?;
+        let filter = SeccompFilter::new(
+            rules,
+            SeccompAction::Allow, // default: allow everything else
+            SeccompAction::Errno(libc::EPERM as u32), // network syscalls: EPERM
+            arch,
+        )
+        .map_err(|_| ())?;
+        BpfProgram::try_from(filter).map_err(|_| ())
+    }
+
+    /// Resolve an allow-listed command name to its binary path so the sandbox can
+    /// grant execute access to its location (system prefixes cover the common
+    /// case; this also covers binaries elsewhere, e.g. a test fixture in target/).
+    fn resolve_binary(name: &str) -> Option<std::path::PathBuf> {
+        let direct = Path::new(name);
+        if direct.is_absolute() || name.contains('/') {
+            return direct.is_file().then(|| direct.to_path_buf());
+        }
+        let path = std::env::var_os("PATH")?;
+        std::env::split_paths(&path)
+            .map(|dir| dir.join(name))
+            .find(|candidate| candidate.is_file())
+    }
+
+    fn build_ruleset(root: &Path, bin: &str) -> Result<landlock::RulesetCreated, ()> {
+        // Read-execute prefixes: existing system dirs plus the directory of the
+        // resolved command binary (so it can be exec'd even outside /usr).
+        let mut read_paths: Vec<std::path::PathBuf> = SYSTEM_RX
+            .iter()
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.exists())
+            .collect();
+        if let Some(dir) = resolve_binary(bin).and_then(|b| b.parent().map(Path::to_path_buf)) {
+            read_paths.push(dir);
+        }
+        let abi = ABI::V1;
+        Ruleset::default()
+            .handle_access(AccessFs::from_all(abi))
+            .map_err(|_| ())?
+            .create()
+            .map_err(|_| ())?
+            .add_rules(path_beneath_rules(read_paths, AccessFs::from_read(abi)))
+            .map_err(|_| ())?
+            .add_rules(path_beneath_rules([root], AccessFs::from_all(abi)))
+            .map_err(|_| ())
+    }
+
+    /// Arm the mandatory sandbox on `command`. Builds the ruleset and BPF in the
+    /// parent; the child applies them (enforce-only, no allocation) in `pre_exec`.
+    pub fn arm(
+        command: &mut tokio::process::Command,
+        root: &Path,
+        bin: &str,
+    ) -> Result<(), (&'static str, &'static str)> {
+        const UNAVAILABLE: (&str, &str) = (
+            "sandbox_unavailable",
+            "The command sandbox (Landlock/seccomp) could not be established on this kernel; refusing to run the command unconfined.",
+        );
+        let ruleset = build_ruleset(root, bin).map_err(|()| UNAVAILABLE)?;
+        let bpf = build_bpf().map_err(|()| UNAVAILABLE)?;
+        let mut ruleset = Some(ruleset);
+        // SAFETY: the closure runs in the forked child before `exec`, on the sole
+        // surviving thread, and performs only apply-only syscalls with no
+        // allocation: it enforces the parent-built Landlock ruleset and installs
+        // the parent-compiled seccomp filter, then returns.
+        unsafe {
+            command.pre_exec(move || {
+                use std::io::Error;
+                let created = ruleset
+                    .take()
+                    .ok_or_else(|| Error::other("sandbox armed twice"))?;
+                let status = created
+                    .restrict_self()
+                    .map_err(|_| Error::other("landlock restrict_self failed"))?;
+                if status.ruleset == RulesetStatus::NotEnforced {
+                    return Err(Error::other("landlock not enforced"));
+                }
+                seccompiler::apply_filter(&bpf)
+                    .map_err(|_| Error::other("seccomp apply failed"))?;
+                Ok(())
+            });
+        }
+        Ok(())
     }
 }
 

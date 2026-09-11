@@ -8,8 +8,12 @@
 //! `--print-env <name>` writes an env var's value (empty if unset); `--sleep-ms
 //! <ms>` sleeps; `--spawn-grandchild <marker>` spawns a detached grandchild that
 //! appends to the marker file forever (to prove whole-tree cleanup);
-//! `--grandchild-loop <marker>` is that grandchild's internal mode; and `--exit
-//! <code>` sets the process exit code (default 0).
+//! `--grandchild-loop <marker>` is that grandchild's internal mode;
+//! `--read-file <path>` prints `READ_OK`/`READ_DENIED` and exits 21 if the read
+//! was denied (filesystem-sandbox probe); `--open-socket` prints
+//! `SOCKET_OK`/`SOCKET_DENIED` and exits 22 if socket creation was denied
+//! (network-sandbox probe); and `--exit <code>` sets the process exit code
+//! (default 0).
 
 use std::io::Write;
 use std::time::Duration;
@@ -84,6 +88,37 @@ fn main() {
                     }
                     std::thread::sleep(Duration::from_millis(50));
                 }
+            }
+            "--read-file" => {
+                // Probe filesystem confinement: try to read a path, report the
+                // outcome. Denied (e.g. by Landlock outside the workspace) => 21.
+                let path = value(&mut i);
+                let mut out = std::io::stdout();
+                match std::fs::read(&path) {
+                    Ok(_) => {
+                        let _ = out.write_all(b"READ_OK");
+                    }
+                    Err(_) => {
+                        let _ = out.write_all(b"READ_DENIED");
+                        exit_code = 21;
+                    }
+                }
+                let _ = out.flush();
+            }
+            "--open-socket" => {
+                // Probe network confinement: creating a UDP socket exercises the
+                // `socket` syscall. Denied (e.g. by seccomp) => 22.
+                let mut out = std::io::stdout();
+                match std::net::UdpSocket::bind("127.0.0.1:0") {
+                    Ok(_) => {
+                        let _ = out.write_all(b"SOCKET_OK");
+                    }
+                    Err(_) => {
+                        let _ = out.write_all(b"SOCKET_DENIED");
+                        exit_code = 22;
+                    }
+                }
+                let _ = out.flush();
             }
             "--exit" => {
                 exit_code = value(&mut i).parse().unwrap_or(0);
