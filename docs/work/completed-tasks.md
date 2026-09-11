@@ -110,4 +110,4 @@
 - **Intent:** [INT-0011](../intents/INT-0011-production-readiness-roadmap.md)
 - **Completed:** 2026-09-11T17:01:46Z
 - **Files modified:** docs/roadmap.md, docs/intents/INT-0005-mcp-tool-servers.md, docs/intents/INT-0006-skills-progressive-disclosure.md, docs/intents/INT-0007-managed-model-process.md, docs/intents/INT-0009-koil-overlay-transport.md, docs/intents/INT-0010-cross-agent-write-coordination.md
-- **Commit:** PENDING
+- **Commit:** `f80a0321ae91732bba3577518d41afcb3da6fef8`
