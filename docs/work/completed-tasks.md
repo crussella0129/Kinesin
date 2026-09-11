@@ -69,3 +69,10 @@
 - **Completed:** 2026-09-10T23:22:16Z
 - **Files modified:** src/runner.rs, src/replay.rs, src/model.rs, tests/runner_tools.rs, tests/replay.rs
 - **Commit:** `e095fd22ca9caba63b9b9e2ff68d1c422825af0f`
+
+## T-001 (sprint 3)
+- **Description:** emit llama.cpp `cache_prompt` in `prepare` (config-toggled via a new `ModelConfig.cache_prompt`, default on), threaded through `ModelOptions` and the runner/replay `options` builders; the flag is stored in the frozen config so replay recomputes the identical request. The static `tests/fixtures/live/*.request.json` files were left as dated provider captures (no offline test loads them — only the `.sse` responses are `include_bytes!`'d); current cache_prompt behavior is unit-tested instead.
+- **Intent:** [INT-0004](../intents/INT-0004-kv-cache-reuse.md)
+- **Completed:** 2026-09-11T05:12:14Z
+- **Files modified:** src/model.rs, src/config.rs, src/runner.rs, src/replay.rs, tests/model_protocol.rs
+- **Commit:** PENDING

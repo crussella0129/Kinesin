@@ -224,6 +224,7 @@ pub fn options(authority: &RunAuthority) -> ModelOptions {
         max_request_bytes: authority.limits().max_request_bytes,
         max_response_bytes: authority.limits().max_response_bytes,
         stream: authority.model().stream,
+        cache_prompt: authority.model().cache_prompt,
         tools: authority
             .workspace()
             .tools
@@ -1261,6 +1262,7 @@ mod tests {
             max_request_bytes: 131072,
             max_response_bytes: 1048576,
             stream: false,
+            cache_prompt: true,
             tools: Vec::new(),
             constraint: None,
         }

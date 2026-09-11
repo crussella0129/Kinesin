@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0004
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-001 build plan](../sprints/s3/sprint-plans/build-plan.md#t-001-emit-cache_prompt-and-re-record-the-request-fixtures)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -40,3 +40,4 @@ interaction with the scheduler, concurrency, and the immutable-run design.
 ## Transition history
 - 2026-09-08: created as `proposed`.
 - 2026-09-11: `proposed → planned`; selected for sprint 3 and linked to the build plan (T-001, T-002). Approach: emit llama.cpp `cache_prompt` (config-toggled, default on) so the growing within-run prefix and the stable system prefix are reused; offline-verify the prefix-extension property, outcome-invariance, and replay consistency; measure the reduction via an ignored live benchmark.
+- 2026-09-11: `planned → active`; sprint 3 build began.

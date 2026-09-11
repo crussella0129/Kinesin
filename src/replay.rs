@@ -221,6 +221,7 @@ impl FrozenContext {
             max_request_bytes: self.limits.max_request_bytes,
             max_response_bytes: self.limits.max_response_bytes,
             stream: self.model.stream,
+            cache_prompt: self.model.cache_prompt,
             tools: self
                 .workspace
                 .tools

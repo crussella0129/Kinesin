@@ -162,6 +162,10 @@ pub struct ModelConfig {
     pub read_timeout_s: u64,
     #[serde(default = "default_model_queue_timeout")]
     pub model_queue_timeout_s: u64,
+    /// Ask llama.cpp to reuse the cached KV prefix instead of re-evaluating it.
+    /// Default on; an operator can disable it for a server that rejects the field.
+    #[serde(default = "default_cache_prompt")]
+    pub cache_prompt: bool,
 }
 
 const fn default_request_timeout() -> u64 {
@@ -175,6 +179,9 @@ const fn default_read_timeout() -> u64 {
 }
 const fn default_model_queue_timeout() -> u64 {
     10
+}
+const fn default_cache_prompt() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -976,6 +983,24 @@ mod tests {
         assert!(!fixture.root.join("state").exists());
         assert_eq!(config.limits.max_model_turns, 12);
         assert_eq!(config.concurrency.journal_queue_bytes, 8_388_608);
+    }
+
+    #[test]
+    fn cache_prompt_defaults_on() {
+        let fixture = Fixture::new();
+        // BASE has no cache_prompt line, so the default applies.
+        let config = fixture.parse(BASE).unwrap();
+        assert!(config.model("local").unwrap().cache_prompt);
+        // An explicit opt-out is honored.
+        let off = BASE.replace("stream = false", "stream = false\ncache_prompt = false");
+        assert!(
+            !fixture
+                .parse(&off)
+                .unwrap()
+                .model("local")
+                .unwrap()
+                .cache_prompt
+        );
     }
 
     #[test]
