@@ -11,3 +11,4 @@
 - **Summary:** Reuse llama.cpp's cached prompt prefix via `cache_prompt` (config-toggled), preserving immutability/replay; measure the reduction on a live server (INT-0004).
 - **Intents:** [INT-0004](../../intents/INT-0004-kv-cache-reuse.md) — realized
 - **Completion evidence:** INT-0004 realized: cache_prompt reuse shipped; live benchmark measured ~18.4x prompt-eval reduction (933ms->51ms) on a ~2.6k-token shared prefix, 241 offline tests green, proceed-with-caveats critique accepted
+- **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/5
