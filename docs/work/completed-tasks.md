@@ -131,4 +131,4 @@
 - **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
 - **Completed:** 2026-09-11T20:33:54Z
 - **Files modified:** Cargo.toml, Cargo.lock
-- **Commit:** PENDING
+- **Commit:** `3c58c9c1832673b84617a82b443af2ee1e8eb403`
