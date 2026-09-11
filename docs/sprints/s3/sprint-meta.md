@@ -8,6 +8,6 @@
 - **Bundle version:** 0.22.0
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
-- **Summary:** (one-line description of sprint goal, filled after Plan Phase)
-- **Intents:** (filled after Plan Phase)
+- **Summary:** Reuse llama.cpp's cached prompt prefix via `cache_prompt` (config-toggled), preserving immutability/replay; measure the reduction on a live server (INT-0004).
+- **Intents:** [INT-0004](../../intents/INT-0004-kv-cache-reuse.md) — planned
 - **Completion evidence:** (filled at Loop Phase)
