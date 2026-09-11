@@ -6,7 +6,7 @@
 - **Work evidence:** [T-001 build plan](../sprints/s4/sprint-plans/build-plan.md#t-001-address-privacy-policy-for-model-origins)
 - **Completion evidence:** none
 - **Code evidence:** none
-- **Test evidence:** none
+- **Test evidence:** [sprint 4 test report](../sprints/s4/sprint-tests/test-report.md)
 - **Documentation evidence:** none
 
 ## Intent
