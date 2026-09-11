@@ -145,4 +145,4 @@
 - **Intent:** [INT-0012](../intents/INT-0012-command-execution-sandboxing.md)
 - **Completed:** 2026-09-11T20:52:14Z
 - **Files modified:** tests/sandbox_linux.rs, src/bin/cmd-fixture.rs
-- **Commit:** PENDING
+- **Commit:** `1d0dc92209d7e829b16965ef7727f6afed517252`
