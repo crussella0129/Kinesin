@@ -28,3 +28,4 @@
 - [Sprint 3](sprints/s3/sprint-meta.md)
 - [Sprint 4](sprints/s4/sprint-meta.md)
 - [Sprint 5](sprints/s5/sprint-meta.md)
+- [Sprint 6](sprints/s6/sprint-meta.md)
