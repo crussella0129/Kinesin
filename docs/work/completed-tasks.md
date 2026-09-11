@@ -124,4 +124,4 @@
 - **Intent:** [INT-0013](../intents/INT-0013-supply-chain-security.md)
 - **Completed:** 2026-09-11T19:17:08Z
 - **Files modified:** .github/workflows/ci.yml
-- **Commit:** PENDING
+- **Commit:** `550a3a55d861cb0283d73963b0a948cc208db36d`
