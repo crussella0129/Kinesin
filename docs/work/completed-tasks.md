@@ -153,3 +153,10 @@
 - **Completed:** 2026-09-11T22:01:43Z
 - **Files modified:** docs/threat-model.md, docs/SUMMARY.md
 - **Commit:** `5b4c631b679fa98d6ed63b88c149ec1c62789401`
+
+## T-002 (sprint 8)
+- **Description:** added `tests/redteam.rs`, the labeled consolidating red-team corpus: `redteam_denies_unauthorized` (a command not on the workspace allow-list is denied at the policy gate before any spawn — a forbidden effect cannot pass) and `redteam_treats_content_as_data` (a command argument crafted as an injected instruction with shell metacharacters is delivered verbatim as one argv element and echoed literally — argv-only, never a shell — creating no `owned.txt` side effect; tolerant of the mandatory-sandbox refuse path on a non-Landlock kernel). Both green on Windows and WSL; referenced by the docs/threat-model.md corpus→matrix map rather than duplicating the broader adversarial/auth/sandbox suites.
+- **Intent:** [INT-0015](../intents/INT-0015-threat-model-assurance.md)
+- **Completed:** 2026-09-11T22:03:43Z
+- **Files modified:** tests/redteam.rs
+- **Commit:** PENDING
