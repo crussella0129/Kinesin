@@ -8,6 +8,6 @@
 - **Bundle version:** 0.22.0
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
-- **Summary:** (one-line description of sprint goal, filled after Plan Phase)
-- **Intents:** (filled after Plan Phase)
+- **Summary:** Confine run_command on Linux with a mandatory Landlock filesystem ruleset + seccomp network denylist applied via pre_exec (refuse-if-unavailable), verified in WSL + ubuntu CI; Windows AppContainer split to INT-0019 (INT-0012).
+- **Intents:** [INT-0012](../../intents/INT-0012-command-execution-sandboxing.md) — planned
 - **Completion evidence:** (filled at Loop Phase)
