@@ -2,12 +2,12 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0011
-- **State:** active
+- **State:** realized
 - **Work evidence:** [T-001 build plan](../sprints/s5/sprint-plans/build-plan.md#t-001-author-the-seven-workstream-intent-chapters)
-- **Completion evidence:** none
+- **Completion evidence:** [T-001–T-002 completion log](../work/completed-tasks.md)
 - **Code evidence:** none
-- **Test evidence:** [sprint 5 test report](../sprints/s5/sprint-tests/test-report.md)
-- **Documentation evidence:** none
+- **Test evidence:** [sprint 5 test report](../sprints/s5/sprint-tests/test-report.md) — all acceptance criteria verified (tested head `84fb7a3`)
+- **Documentation evidence:** [the roadmap](../roadmap.md)
 
 ## Intent
 Define and maintain a prioritized, gap-complete roadmap that takes Kinesin from
@@ -59,3 +59,4 @@ in place after realization.
 - 2026-09-11: created as `proposed`; sprint 5 (roadmap review) selected it as the objective.
 - 2026-09-11: `proposed → planned`; linked to the sprint 5 build plan (T-001 author INT-0012..0018, T-002 write docs/roadmap.md + cross-reference existing intents).
 - 2026-09-11: `planned → active`; sprint 5 build began (T-001).
+- 2026-09-11: `active → realized`; sprint 5 authored `docs/roadmap.md` (four themes, recommended sequencing, SotA/standards mapping, parking-lot) and seven workstream intents (INT-0012..0018), reviewed and cross-referenced the five existing proposed intents, and every gap from the codebase review + SotA survey maps to a tracked intent. check-book validates the 18-chapter Book. The workstream intents are `proposed` backlog, not delivered work; this meta-intent is realized by the roadmap's existence and gap-completeness, and will be `superseded` by a future roadmap revision rather than edited after realization.
