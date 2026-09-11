@@ -2,11 +2,11 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0013
-- **State:** active
+- **State:** realized
 - **Work evidence:** [T-001 build plan](../sprints/s6/sprint-plans/build-plan.md#t-001-author-denytoml-supply-chain-policy)
-- **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** [sprint 6 test report](../sprints/s6/sprint-tests/test-report.md)
+- **Completion evidence:** [T-001–T-002 completion log](../work/completed-tasks.md)
+- **Code evidence:** [T-001 `d043acd` (deny.toml + publish=false), T-002 `550a3a5` (CI supply-chain job)](../work/completed-tasks.md)
+- **Test evidence:** [sprint 6 test report](../sprints/s6/sprint-tests/test-report.md) — gate green locally and the `supply-chain` CI job confirmed **success** on the dev run (tested head `62abee0`)
 - **Documentation evidence:** none
 
 ## Intent
@@ -56,3 +56,4 @@ maintenance when a release pipeline is built.
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme B — supply-chain & assurance); recommended as an early, standalone sprint.
 - 2026-09-11: `proposed → planned`; selected for sprint 6 and linked to the build plan (T-001 deny.toml policy, T-002 CI supply-chain gate). Re-scoped to the CI **dependency gate** (a distinct, deliverable-now outcome): release-artifact integrity (SBOM, cargo-auditable, cosign signing, reproducible builds) was split out to the roadmap parking-lot because it needs a release pipeline that does not exist yet; cargo-vet remains a documented decision (cargo-deny is the baseline). Title changed from "Supply-chain security & signed releases" to "Supply-chain dependency gate" to match.
 - 2026-09-11: `planned → active`; sprint 6 build began (T-001).
+- 2026-09-11: `active → realized`; sprint 6 shipped the CI dependency gate — a committed `deny.toml` (deny-by-default; advisories/bans/licenses/sources; license allow-list tightened to the tree via `cargo deny list`, `CDLA-Permissive-2.0` for webpki-root-certs) authored green (`cargo deny check` all-ok, `cargo audit` 0 vulns on 221 deps), and a blocking `supply-chain` CI job (cargo-deny + cargo-audit via pinned `taiki-e/install-action`) confirmed **success** in CI. `publish = false` + `private.ignore` handle the crate's own license field. Release-artifact integrity (SBOM/auditable/signing/reproducible) remains split to the roadmap parking-lot.
