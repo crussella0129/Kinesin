@@ -242,12 +242,7 @@ pub fn options(authority: &RunAuthority) -> ModelOptions {
         max_response_bytes: authority.limits().max_response_bytes,
         stream: authority.model().stream,
         cache_prompt: authority.model().cache_prompt,
-        tools: authority
-            .workspace()
-            .tools
-            .iter()
-            .map(|tool| tool.wire_name())
-            .collect(),
+        tools: model::tool_defs(&authority.workspace().tools, authority.mcp_tools()),
         constraint: None,
     }
 }

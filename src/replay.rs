@@ -233,12 +233,7 @@ impl FrozenContext {
             max_response_bytes: self.limits.max_response_bytes,
             stream: self.model.stream,
             cache_prompt: self.model.cache_prompt,
-            tools: self
-                .workspace
-                .tools
-                .iter()
-                .map(|tool| tool.wire_name())
-                .collect(),
+            tools: crate::model::tool_defs(&self.workspace.tools, &self.mcp_tools),
             constraint,
         }
     }

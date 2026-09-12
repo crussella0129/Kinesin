@@ -181,3 +181,10 @@
 - **Completed:** 2026-09-12T01:08:08Z
 - **Files modified:** Cargo.toml, Cargo.lock, src/mcp.rs, src/lib.rs, src/policy.rs, src/replay.rs, src/runner.rs, src/config.rs, src/cli.rs
 - **Commit:** `9e85b5388400b1dacc1c3e4eadd093d13e92d932`
+
+## T-004 (sprint 9)
+- **Description:** emit discovered MCP tool schemas to the model, identical on live and replay. Changed `ModelOptions.tools` from `Vec<String>` to `Vec<ToolDef>` (`Compiled(name)` | `Mcp { name, description, input_schema }`, with `From<&str>`/`From<String>`); the `prepare` compiler now emits the fixed schema for a compiled tool and the server-discovered `input_schema` verbatim for an MCP tool. Added the shared `model::tool_defs(allow, mcp)` builder (preserves allow-list order, pairs each MCP ref with its frozen def) and pointed both `runner::options` and `FrozenContext::options` at it, so both paths read the same frozen source and produce byte-identical requests. Compiled-tool schemas and replay parity confirmed unchanged (lib/model_protocol/replay/runner_tools green).
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T05:12:58Z
+- **Files modified:** src/model.rs, src/runner.rs, src/replay.rs
+- **Commit:** PENDING

@@ -47,6 +47,55 @@ impl From<WireUsage> for Usage {
     }
 }
 
+/// A tool the model is offered in a request. A compiled tool carries only its
+/// wire name (its schema is fixed and lives in `prepare`); an MCP tool carries
+/// the schema discovered from its server, so the request describes a tool the
+/// harness never hard-coded. Both the live builder and the replay builder derive
+/// this list from the same frozen source, so the emitted bytes match.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ToolDef {
+    Compiled(String),
+    Mcp {
+        name: String,
+        description: String,
+        input_schema: Value,
+    },
+}
+
+impl From<&str> for ToolDef {
+    fn from(name: &str) -> Self {
+        Self::Compiled(name.to_owned())
+    }
+}
+
+impl From<String> for ToolDef {
+    fn from(name: String) -> Self {
+        Self::Compiled(name)
+    }
+}
+
+/// Build the model-facing tool list from the run's allow-list and its frozen MCP
+/// tool schemas, preserving allow-list order. A compiled entry keeps its fixed
+/// schema (emitted in `prepare`); an MCP entry pairs with its frozen definition.
+/// Reading the same frozen inputs on the live and replay paths yields identical
+/// bytes, so the prepared-request fingerprint matches.
+pub fn tool_defs(allow: &[crate::config::ToolRef], mcp: &[crate::mcp::McpToolDef]) -> Vec<ToolDef> {
+    allow
+        .iter()
+        .filter_map(|tool| match tool {
+            crate::config::ToolRef::Compiled(name) => Some(ToolDef::Compiled(name.as_str().into())),
+            crate::config::ToolRef::Mcp { server, tool: name } => mcp
+                .iter()
+                .find(|def| &def.server == server && &def.tool == name)
+                .map(|def| ToolDef::Mcp {
+                    name: tool.wire_name(),
+                    description: def.description.clone(),
+                    input_schema: def.input_schema.clone(),
+                }),
+        })
+        .collect()
+}
+
 #[derive(Clone, Debug)]
 pub struct ModelOptions {
     pub origin: String,
@@ -58,7 +107,7 @@ pub struct ModelOptions {
     pub stream: bool,
     /// Ask llama.cpp to reuse the cached KV prefix for this request.
     pub cache_prompt: bool,
-    pub tools: Vec<String>,
+    pub tools: Vec<ToolDef>,
     /// A JSON Schema for the whole reply. Mutually exclusive with `tools`: the
     /// server installs its own grammar for tool calls from the chat template,
     /// so a second constraint has no slot. The builder enforces this by
@@ -196,7 +245,9 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
             "json_schema": {"name": "kinesin_candidate", "schema": schema, "strict": true}
         });
     } else if !options.tools.is_empty() {
-        let definitions = options.tools.iter().map(|name| {
+        let definitions = options.tools.iter().map(|tool| {
+            let function = match tool {
+                ToolDef::Compiled(name) => {
             let (description, parameters) = match name.as_str() {
                 "read_file" => ("Read bounded UTF-8 file contents inside the workspace. Use a relative path. Output reports truncation and an evidence_id for the actual observation.", json!({
                     "type":"object","properties":{"path":{"type":"string"}},
@@ -248,9 +299,20 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
                 })),
                 _ => return Err("unsupported compiled tool".to_owned()),
             };
-            Ok(json!({"type":"function","function":{
-                "name":name,"description":description,"parameters":parameters
-            }}))
+                    json!({"name": name, "description": description, "parameters": parameters})
+                }
+                ToolDef::Mcp {
+                    name,
+                    description,
+                    input_schema,
+                } => {
+                    // The schema is the server's discovered inputSchema, emitted
+                    // verbatim. Description and schema are untrusted server text;
+                    // offering the tool grants no authority the allow-list withheld.
+                    json!({"name": name, "description": description, "parameters": input_schema})
+                }
+            };
+            Ok(json!({"type":"function","function": function}))
         }).collect::<Result<Vec<_>, String>>()?;
         request["tools"] = Value::Array(definitions);
         request["tool_choice"] = json!("auto");
@@ -1101,7 +1163,7 @@ fn merge_identity(
 mod tests {
     use super::*;
 
-    fn base(tools: Vec<String>, constraint: Option<Value>) -> ModelOptions {
+    fn base(tools: Vec<ToolDef>, constraint: Option<Value>) -> ModelOptions {
         ModelOptions {
             origin: "http://127.0.0.1:8080".into(),
             served_model: "fixture".into(),
