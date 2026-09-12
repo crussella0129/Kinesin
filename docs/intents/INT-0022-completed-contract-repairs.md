@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0022
-- **State:** planned
+- **State:** active
 - **Work evidence:** [sprint 10 build plan](../sprints/s10/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -37,3 +37,4 @@ Operator-trusted MCP binaries must not deliberately escape their owned process g
 ## Transition history
 - 2026-09-12: created as `proposed` following the sprint 10 intent-first review and implementation audit.
 - 2026-09-12: `proposed → planned`; selected for sprint 10 under the user's instruction to audit, repair, verify and submit the PR.
+- 2026-09-12: `planned → active`; the reviewed plan pair is locked and sprint 10 Build has begun.

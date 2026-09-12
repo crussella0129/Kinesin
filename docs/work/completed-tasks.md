@@ -209,3 +209,10 @@
 - **Completed:** 2026-09-12T05:41:45Z
 - **Files modified:** Cargo.toml, Cargo.lock, src/bin/mcp-fixture.rs, tests/mcp.rs
 - **Commit:** `73fb0d781d845cdadac609e92e60ef19b46a642f`
+
+## T-001 (sprint 10)
+- **Description:** Completed the ordered all-intent audit and explicit intent revisions, preserved overclaimed historical evidence through supersession, and locked build/test plans after an independent critic resolved four concerns. Book validation and git diff checks pass; source remained unchanged until Build. No TaskCreate tool is exposed in this host, so this canonical ledger tracks each step.
+- **Intent:** [INT-0021](../intents/INT-0021-harness-contract-review.md)
+- **Completed:** 2026-09-12T15:12:00Z
+- **Files modified:** docs/intents, docs/SUMMARY.md, docs/sprints/s10 research/plans/meta, docs/work ledgers
+- **Commit:** PENDING
