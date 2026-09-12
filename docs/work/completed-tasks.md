@@ -271,4 +271,4 @@
 - **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
 - **Completed:** 2026-09-12T16:01:45Z
 - **Files modified:** src/cli.rs, src/scheduler.rs, src/service.rs, src/runner.rs, src/replay.rs, src/policy.rs, src/mcp.rs, src/mcp/transport.rs, src/bin/mcp-fixture.rs, tests/mcp.rs, tests/service.rs
-- **Commit:** PENDING
+- **Commit:** `e584d9e15f15399b6e0a365a16de74f02c0c9eee`
