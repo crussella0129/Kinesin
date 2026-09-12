@@ -9,36 +9,59 @@
 - **Test evidence:** none
 - **Documentation evidence:** none
 
-> **Roadmap:** theme D (SotA capability) — see [the roadmap](../roadmap.md) (INT-0011). Executes under the INT-0012 sandbox.
+> **Roadmap:** theme D (SotA capability) — see [the roadmap](../roadmap.md) (INT-0011). Remote transport + delegated authorization split to [INT-0020](INT-0020-remote-mcp-delegated-auth.md).
 
 ## Intent
-Reach external tool servers through the Model Context Protocol, adapting them
-into the same authority, allow-list, and resource gates the compiled tools use.
-The operator approves each server identity; discovery and a server's own schema
-never establish authority; a server's returned text is untrusted data, exactly
-as file contents are. Non-goal: trusting a server's `read-only` annotation, or
-forwarding an incoming credential onward.
+Reach an **operator-declared, local (stdio) tool server** through the Model
+Context Protocol, adapting its discovered tools into the same authority,
+allow-list, and resource gates the compiled tools use. The operator approves each
+server identity in config — a trusted binary, like the model endpoint — and
+allow-lists which of its tools a run may call; discovery and a server's own schema
+never establish authority. A server's returned text **and its tool descriptions**
+are untrusted data, exactly as file contents are; an MCP tool call mints no
+evidence, like `run_command`. Deterministic replay stays pure: the discovered
+tool set is frozen into the run config at capture and replay re-validates the
+recorded call and observation against that frozen set without reconnecting.
+Non-goals: trusting a server's `read-only` annotation; forwarding an incoming
+credential onward; **remote (HTTP) transport and OAuth/delegated authorization,
+which are [INT-0020](INT-0020-remote-mcp-delegated-auth.md)**.
 
 ## Acceptance criteria
-- An operator-approved MCP server's tools run under the same per-run allow-list,
-  capability bounds, and byte limits as a compiled tool.
-- Server-supplied text cannot grant a tool or become installed policy.
-- Remote MCP carries a separate authorization context; a credential is not
-  forwarded through the harness.
-- Tests cover an approved call, a denied unapproved server, and untrusted
-  server text treated as data.
+- An operator-declared MCP server's allow-listed tools run under the same per-run
+  allow-list, capability bounds, byte limits, timeout, and concurrency permit as a
+  compiled tool, and mint no evidence.
+- Both gates hold: a server not declared in operator config is denied, and a tool
+  not in the run's allow-list is denied — regardless of what the server advertises.
+- Server-supplied text (tool descriptions and results) cannot grant a tool or
+  become installed policy; it is recorded as an untrusted observation.
+- Replay of an MCP run reproduces from the frozen discovered-schema set and the
+  recorded observation, without reconnecting to the server.
+- Tests cover an approved call (bounded), a denied unapproved server / un-allow-
+  listed tool, untrusted server text treated as data, and replay reproduction,
+  against an in-repo fixture server (no external network).
 
 ## Rationale
 MCP is the common tool-interface standard; adopting it unlocks a large existing
-tool ecosystem without hand-writing each integration.
+tool ecosystem without hand-writing each integration. The stdio, operator-approved
+core is the smallest change that delivers the capability while preserving
+capability scoping, deterministic replay, and untrusted-content-as-data.
 
 ## Alternatives
 Keep compiled tools only (current; smallest surface). Wait until a demonstrated
-task needs an external server (the documented gate).
+task needs an external server (the documented gate). A bespoke JSON-RPC client
+instead of the official `rmcp` SDK (rejected — re-implements the spec and adds
+unaudited surface).
 
 ## Consequences
-Adds a protocol and a transport; a new trust boundary on server identity and on
-untrusted server output; lifecycle and cancellation of a remote call.
+Adds a protocol and a stdio transport (the official `rmcp` client) and a
+dependency; generalizes the closed `ToolName` enum into a tool reference across
+config/model/runner/replay/policy; a new trust boundary on operator-declared
+server identity and on untrusted server output/descriptions; freeze-at-capture of
+the discovered tool set for replay. The MCP **server process** is operator-trusted
+and is not force-confined by the INT-0012 sandbox (which exists to confine argv the
+*model* proposes via `run_command`); confining a not-fully-trusted server is a
+named follow-up.
 
 ## Transition history
 - 2026-09-08: created as `proposed`.
+- 2026-09-11: scope refined (still `proposed`) in the sprint 9 research phase — narrowed to the **local stdio, operator-approved** MVP grounded on the official `rmcp` SDK (v3.3.0). The remote (HTTP) transport, OAuth resource-server auth, RFC 8707 resource indicators, and no-token-passthrough / confused-deputy defense were **split to [INT-0020](INT-0020-remote-mcp-delegated-auth.md)** (created this phase), which carries the former "remote MCP separate authorization context / credential not forwarded" acceptance criterion. Acceptance criteria rewritten to the stdio core (two-gate approval, untrusted description+output, replay-from-frozen-schema, in-repo fixture tests); the INT-0012 sandbox relationship clarified (MCP servers are operator-trusted). Rationale/Alternatives/Consequences updated.
