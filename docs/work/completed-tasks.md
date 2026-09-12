@@ -180,4 +180,4 @@
 - **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
 - **Completed:** 2026-09-12T01:08:08Z
 - **Files modified:** Cargo.toml, Cargo.lock, src/mcp.rs, src/lib.rs, src/policy.rs, src/replay.rs, src/runner.rs, src/config.rs, src/cli.rs
-- **Commit:** PENDING
+- **Commit:** `9e85b5388400b1dacc1c3e4eadd093d13e92d932`
