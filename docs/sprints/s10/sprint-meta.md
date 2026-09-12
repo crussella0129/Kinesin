@@ -7,9 +7,9 @@
 - **Model:** unknown
 - **Bundle version:** 0.22.0
 - **Exit status:** in-progress
-- **Token count:** (filled at Loop Phase if observable)
-- **Summary:** Intent-first whole-harness audit, completed-contract repairs, refreshed roadmap and assurance, full validation and dev-to-main PR.
-- **Intents:** [INT-0021](../../intents/INT-0021-harness-contract-review.md), [INT-0022](../../intents/INT-0022-completed-contract-repairs.md) — active; remaining new capability chapters stay proposed.
+- **Token count:** unknown (not exposed by this host)
+- **Summary:** Audit harness intents and repair execution, isolation, replay and transport contracts
+- **Intents:** [INT-0021](../../intents/INT-0021-harness-contract-review.md), [INT-0022](../../intents/INT-0022-completed-contract-repairs.md) — realized; remaining capability chapters stay proposed.
 - **Completion evidence:** (filled at Loop Phase)
 
 ## Build integration notes
@@ -31,3 +31,21 @@ T-011's explicit repair-and-retest clause owns these additional contract fixes.
 The live cache probe also showed that omitting cache_prompt is not a cache-off
 control on b6500; the measurement reports observed reuse without claiming a
 causal speedup from the flag.
+
+## Loop reconciliation
+
+The completed task ledger, [accepted TEST report](sprint-tests/test-report.md),
+[clean independent critique](sprint-tests/critique.md) and
+[canonical verification record](sprint-tests/verification-record.md) satisfy the
+two advanced intents. Windows 303 and Ubuntu 315 ordinary tests passed in CI,
+with format/clippy and dependency gates. Additional actual nighthawk serving,
+session-cache observation and disconnected replay passed within their recorded
+scope; model/tunnel cleanup was verified. Failed local WSL/storage attempts and
+the later recovered Ubuntu startup are preserved as separate observations.
+
+Seven executable carry-forward entries remain unscheduled backlog, linked to
+their proposed owning intents. Historical supersessions and broader Windows,
+session, lifecycle, credential, evaluation and deployment gaps remain explicit.
+The confidence throttle uses `patched`: integration review required additional
+contract fixes before the accepted final report. The final submitted-head checks
+are retained by the PR's check suite; the merge policy remains human-approve.

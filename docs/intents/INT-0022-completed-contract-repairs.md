@@ -2,12 +2,12 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0022
-- **State:** active
+- **State:** realized
 - **Work evidence:** [sprint 10 build plan](../sprints/s10/sprint-plans/build-plan.md)
-- **Completion evidence:** none
-- **Code evidence:** none
+- **Completion evidence:** [T-011 integrated completion](../work/completed-tasks.md#t-011-sprint-10), [T-007 MCP completion](../work/completed-tasks.md#t-007-sprint-10), [T-005 sandbox completion](../work/completed-tasks.md#t-005-sprint-10)
+- **Code evidence:** [core](../../src/core.rs), [model](../../src/model.rs), [policy](../../src/policy.rs), [runner](../../src/runner.rs), [replay](../../src/replay.rs), [tools](../../src/tools.rs), [process ownership](../../src/process.rs), [MCP](../../src/mcp.rs), [configuration](../../src/config.rs), [dependency policy](../../deny.toml)
 - **Test evidence:** [sprint 10 test report](../sprints/s10/sprint-tests/test-report.md)
-- **Documentation evidence:** none
+- **Documentation evidence:** [security boundaries](../security.md), [configuration](../configuration.md), [supply-chain policy](../supply-chain.md), [scoped remote observations](../sprints/s10/sprint-tests/remote-deployment.md)
 
 ## Intent
 Repair the concrete completed-intent defects identified in sprint 10 research while preserving authority, checked evidence, bounded effects and pure replay. Scope is token-accounting honesty, freeform compaction, command lifecycle/output and Linux isolation, MCP lifecycle/resource/authority gates, confidential model-origin policy, and an enforced dependency policy. Historical INT-0001/0002/0003/0005/0008/0012/0013 remain provenance; this follow-on owns the repairs. Non-goals: implementing every proposed capability or claiming unavailable live/platform evidence.
@@ -38,3 +38,4 @@ Operator-trusted MCP binaries must not deliberately escape their owned process g
 - 2026-09-12: created as `proposed` following the sprint 10 intent-first review and implementation audit.
 - 2026-09-12: `proposed → planned`; selected for sprint 10 under the user's instruction to audit, repair, verify and submit the PR.
 - 2026-09-12: `planned → active`; the reviewed plan pair is locked and sprint 10 Build has begun.
+- 2026-09-12: `active → realized`; every repair criterion is linked to executed adversarial/regression evidence, successful native Windows/Ubuntu CI and a clean independent TEST critique. Full local Linux attempts that failed from mounted execution or storage limits are not counted as passing; broader proposals retain their own acceptance boundaries.

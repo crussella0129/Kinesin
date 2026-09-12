@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0026
 - **State:** proposed
-- **Work evidence:** none
+- **Work evidence:** [T-102 backlog](../work/tasks.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** [sprint 10 partial live observation](../sprints/s10/sprint-tests/remote-deployment.md#faithful-session-cache-observation); broader criteria remain unverified

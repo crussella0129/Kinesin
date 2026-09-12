@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0027
 - **State:** proposed
-- **Work evidence:** none
+- **Work evidence:** [T-106 backlog](../work/tasks.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** [sprint 10 scoped two-host observation](../sprints/s10/sprint-tests/remote-deployment.md); broader deployment criteria remain unverified
