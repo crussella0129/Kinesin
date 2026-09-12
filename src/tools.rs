@@ -1235,7 +1235,65 @@ mod sandbox_linux {
         ]
     }
 
-    fn build_bpf() -> Result<[BpfProgram; 2], ()> {
+    #[cfg(target_arch = "x86_64")]
+    fn native_x86_64_guard() -> BpfProgram {
+        // x32 shares AUDIT_ARCH_X86_64 but sets bit 30 in syscall numbers.
+        // seccompiler's architecture check alone therefore cannot protect a
+        // native-number deny list. Also reject the legacy untagged x32 range.
+        // See seccomp(2), "Filters": https://man7.org/linux/man-pages/man2/seccomp.2.html
+        let instruction = |code: u32, k, jt, jf| seccompiler::sock_filter {
+            code: code as u16,
+            jt,
+            jf,
+            k,
+        };
+        vec![
+            instruction(
+                libc::BPF_LD | libc::BPF_W | libc::BPF_ABS,
+                std::mem::offset_of!(libc::seccomp_data, arch) as u32,
+                0,
+                0,
+            ),
+            // Only the native x86-64 audit architecture reaches the nr check.
+            instruction(
+                libc::BPF_JMP | libc::BPF_JEQ | libc::BPF_K,
+                0xc000_003e,
+                1,
+                0,
+            ),
+            instruction(
+                libc::BPF_RET | libc::BPF_K,
+                libc::SECCOMP_RET_KILL_PROCESS,
+                0,
+                0,
+            ),
+            instruction(
+                libc::BPF_LD | libc::BPF_W | libc::BPF_ABS,
+                std::mem::offset_of!(libc::seccomp_data, nr) as u32,
+                0,
+                0,
+            ),
+            // [4] Tagged x32 (and negative numbers) jump to [8] EPERM.
+            instruction(
+                libc::BPF_JMP | libc::BPF_JGE | libc::BPF_K,
+                0x4000_0000,
+                3,
+                0,
+            ),
+            // [5..6] Untagged 512..547 also reach [8]; native values reach [7].
+            instruction(libc::BPF_JMP | libc::BPF_JGE | libc::BPF_K, 512, 0, 1),
+            instruction(libc::BPF_JMP | libc::BPF_JGE | libc::BPF_K, 548, 0, 1),
+            instruction(libc::BPF_RET | libc::BPF_K, libc::SECCOMP_RET_ALLOW, 0, 0),
+            instruction(
+                libc::BPF_RET | libc::BPF_K,
+                libc::SECCOMP_RET_ERRNO | libc::EPERM as u32,
+                0,
+                0,
+            ),
+        ]
+    }
+
+    fn build_bpf() -> Result<Vec<BpfProgram>, ()> {
         use std::collections::BTreeMap;
         let mut rules: BTreeMap<i64, Vec<seccompiler::SeccompRule>> = BTreeMap::new();
         for syscall in denied_syscalls() {
@@ -1285,10 +1343,17 @@ mod sandbox_linux {
             arch,
         )
         .map_err(|_| ())?;
-        Ok([
+        let filters = vec![
             BpfProgram::try_from(filter).map_err(|_| ())?,
             BpfProgram::try_from(clone3).map_err(|_| ())?,
-        ])
+        ];
+        #[cfg(target_arch = "x86_64")]
+        let filters = {
+            let mut guarded = vec![native_x86_64_guard()];
+            guarded.extend(filters);
+            guarded
+        };
+        Ok(filters)
     }
 
     /// Resolve an allow-listed command name to its binary path so the sandbox can
@@ -1414,6 +1479,104 @@ mod sandbox_linux {
     #[cfg(test)]
     mod tests {
         use super::*;
+
+        #[cfg(target_arch = "x86_64")]
+        fn evaluate_filter(program: &BpfProgram, data: &[u8; 64]) -> u32 {
+            // Interpret the classic-BPF instructions used by our actual compiled
+            // policy against synthetic seccomp_data. This tests ABI rejection
+            // even on hosts whose kernel cannot execute x32 system calls.
+            let (mut accumulator, mut pc) = (0_u32, 0_usize);
+            for _ in 0..4096 {
+                let instruction = &program[pc];
+                let code = u32::from(instruction.code);
+                if code == libc::BPF_LD | libc::BPF_W | libc::BPF_ABS {
+                    let offset = instruction.k as usize;
+                    accumulator = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+                } else if code == libc::BPF_ALU | libc::BPF_AND | libc::BPF_K {
+                    accumulator &= instruction.k;
+                } else if code == libc::BPF_JMP | libc::BPF_JA {
+                    pc += instruction.k as usize;
+                } else if code & 0x07 == libc::BPF_JMP {
+                    let matches = match code & 0xf0 {
+                        libc::BPF_JEQ => accumulator == instruction.k,
+                        libc::BPF_JGE => accumulator >= instruction.k,
+                        libc::BPF_JGT => accumulator > instruction.k,
+                        _ => panic!("unsupported BPF jump {code:#x}"),
+                    };
+                    pc += usize::from(if matches {
+                        instruction.jt
+                    } else {
+                        instruction.jf
+                    });
+                } else if code == libc::BPF_RET | libc::BPF_K {
+                    return instruction.k;
+                } else {
+                    panic!("unsupported BPF instruction {code:#x}");
+                }
+                pc += 1;
+            }
+            panic!("BPF policy did not terminate");
+        }
+
+        #[cfg(target_arch = "x86_64")]
+        #[test]
+        fn production_filters_deny_x32_numbers_independently_of_kernel_support() {
+            let filters = build_bpf().unwrap();
+            let action = |nr: u32, arch: u32, flags: u64| {
+                let mut data = [0_u8; 64];
+                data[..4].copy_from_slice(&nr.to_le_bytes());
+                data[4..8].copy_from_slice(&arch.to_le_bytes());
+                data[16..24].copy_from_slice(&flags.to_le_bytes());
+                filters
+                    .iter()
+                    .map(|filter| evaluate_filter(filter, &data))
+                    // The kernel selects the most restrictive action, whose
+                    // signed high 16 bits have the smallest value.
+                    .min_by_key(|result| (result & libc::SECCOMP_RET_ACTION_FULL) as i32)
+                    .unwrap()
+            };
+            const NATIVE_ARCH: u32 = 0xc000_003e;
+            let denied = libc::SECCOMP_RET_ERRNO | libc::EPERM as u32;
+            for nr in denied_syscalls() {
+                assert_eq!(action(nr as u32, NATIVE_ARCH, 0), denied);
+                assert_eq!(action(nr as u32 | 0x4000_0000, NATIVE_ARCH, 0), denied);
+            }
+            for nr in [
+                libc::SYS_read,
+                libc::SYS_write,
+                libc::SYS_execve,
+                libc::SYS_clone,
+            ] {
+                assert_eq!(action(nr as u32, NATIVE_ARCH, 0), libc::SECCOMP_RET_ALLOW);
+                assert_eq!(action(nr as u32 | 0x4000_0000, NATIVE_ARCH, 0), denied);
+            }
+            assert_eq!(
+                action(
+                    libc::SYS_clone as u32,
+                    NATIVE_ARCH,
+                    libc::CLONE_NEWUSER as u64
+                ),
+                denied
+            );
+            assert_eq!(
+                action(libc::SYS_clone3 as u32, NATIVE_ARCH, 0),
+                libc::SECCOMP_RET_ERRNO | libc::ENOSYS as u32
+            );
+            assert_eq!(
+                action(libc::SYS_clone3 as u32 | 0x4000_0000, NATIVE_ARCH, 0),
+                denied
+            );
+            for nr in 512..=547 {
+                assert_eq!(action(nr, NATIVE_ARCH, 0), denied);
+            }
+            for nr in [0x4000_0000, 0x7fff_ffff, 0x8000_0000, u32::MAX] {
+                assert_eq!(action(nr, NATIVE_ARCH, 0), denied);
+            }
+            for nr in [511, 548, 0x3fff_ffff] {
+                assert_eq!(action(nr, NATIVE_ARCH, 0), libc::SECCOMP_RET_ALLOW);
+            }
+            assert_eq!(action(0, 0x4000_0003, 0), libc::SECCOMP_RET_KILL_PROCESS);
+        }
 
         #[test]
         fn partial_or_missing_enforcement_is_refused() {

@@ -182,10 +182,24 @@ fn main() {
                     "unshare" => libc::SYS_unshare,
                     "setns" => libc::SYS_setns,
                     "clone3" => libc::SYS_clone3,
+                    #[cfg(target_arch = "x86_64")]
+                    "x32-getpid" => libc::SYS_getpid | 0x4000_0000,
+                    #[cfg(target_arch = "x86_64")]
+                    "x32-socket" => libc::SYS_socket | 0x4000_0000,
+                    #[cfg(target_arch = "x86_64")]
+                    "x32-setpgid" => libc::SYS_setpgid | 0x4000_0000,
+                    #[cfg(target_arch = "x86_64")]
+                    "x32-setsid" => libc::SYS_setsid | 0x4000_0000,
+                    #[cfg(target_arch = "x86_64")]
+                    "x32-legacy-first" => 512,
+                    #[cfg(target_arch = "x86_64")]
+                    "x32-legacy-last" => 547,
                     _ => panic!("unsupported syscall probe"),
                 };
                 // SAFETY: zero arguments are invalid for io_uring or request a
                 // self group/session change; no foreign pointer is dereferenced.
+                // x32/legacy probes must be rejected by seccomp with EPERM;
+                // kernel ENOSYS on unsupported x32 hosts is not a passing probe.
                 let result = unsafe {
                     libc::syscall(
                         syscall, 0_usize, 0_usize, 0_usize, 0_usize, 0_usize, 0_usize,

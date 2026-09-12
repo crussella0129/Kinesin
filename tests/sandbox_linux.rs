@@ -203,6 +203,28 @@ async fn sandbox_denies_io_uring_and_process_group_escape() {
     let _ = std::fs::remove_dir_all(base);
 }
 
+#[cfg(target_arch = "x86_64")]
+#[tokio::test]
+async fn sandbox_denies_x32_syscalls_before_kernel_abi_dispatch() {
+    let (base, ws) = scratch();
+    for name in [
+        "x32-getpid",
+        "x32-socket",
+        "x32-setpgid",
+        "x32-setsid",
+        "x32-legacy-first",
+        "x32-legacy-last",
+    ] {
+        let result = run(&ws, &["cmd-fixture", "--probe-syscall", name]).await;
+        assert_eq!(result.status, ToolStatus::Ok, "{name}: {:?}", result.error);
+        // Require our EPERM policy action, including on kernels which otherwise
+        // return ENOSYS for unsupported x32; kernel non-support cannot pass this.
+        assert_eq!(body(&result)["stdout"], "SYSCALL_DENIED\n", "{name}");
+        assert_eq!(body(&result)["exit_code"], 0, "{name}");
+    }
+    let _ = std::fs::remove_dir_all(base);
+}
+
 #[tokio::test]
 async fn sandbox_closes_inherited_non_stdio_descriptors() {
     use std::os::fd::AsRawFd;

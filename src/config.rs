@@ -277,8 +277,8 @@ pub struct ModelConfig {
     pub read_timeout_s: u64,
     #[serde(default = "default_model_queue_timeout")]
     pub model_queue_timeout_s: u64,
-    /// Ask llama.cpp to reuse the cached KV prefix instead of re-evaluating it.
-    /// Default on; an operator can disable it for a server that rejects the field.
+    /// Send `cache_prompt: true` to request llama.cpp prefix reuse. Default on.
+    /// False omits the field; it does not disable a server's own cache behavior.
     #[serde(default = "default_cache_prompt")]
     pub cache_prompt: bool,
 }
@@ -337,7 +337,8 @@ impl Default for Limits {
 /// Bounded, evidence-preserving history compaction. When `enabled`, a run at
 /// `max_history_bytes` drops its oldest compactable units instead of stopping,
 /// always keeping the system message, the initial turn, the most-recent `floor`
-/// messages, and any evidence-bearing group.
+/// messages, and checked-task evidence groups. Freeform read observations may
+/// still be compacted.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct Compaction {
@@ -787,6 +788,24 @@ impl Config {
                 .any(|v| service.credential_verifiers.starts_with(&v.root))
             {
                 return Err("credential verifiers must stay outside tool workspaces".into());
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let verifiers_root = service
+                    .credential_verifiers
+                    .parent()
+                    .ok_or("credential verifiers need a directory")?;
+                for workspace in &config.workspaces {
+                    if workspace
+                        .tools
+                        .contains(&ToolRef::Compiled(ToolName::RunCommand))
+                    {
+                        crate::tools::validate_command_private_paths(
+                            &workspace.commands,
+                            &[verifiers_root],
+                        )?;
+                    }
+                }
             }
         }
         Ok(config)
@@ -1256,6 +1275,52 @@ mod tests {
             "private state and configuration must be disjoint from command sandbox runtime grants"
         );
         assert!(!std::path::Path::new("/usr/kinesin-private-probe").exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn command_runtime_grants_cannot_cover_credential_verifiers() {
+        let fixture = Fixture::new();
+        let service = |path: &str| {
+            format!(
+                "\n[service]\nlisten = \"127.0.0.1:8081\"\ncredential_verifiers = \"{path}\"\nmax_submission_bytes = 4096\nmax_page_size = 20\nidempotency_retention_hours = 24\n"
+            )
+        };
+        let commands = BASE.replace(
+            "tools = [\"read_file\"]",
+            "tools = [\"read_file\", \"run_command\"]\ncommands = [\"echo\"]",
+        );
+        let exposed = "/usr/kinesin-private-verifier-probe/credentials.json";
+        let error = fixture
+            .parse(&format!("{commands}{}", service(exposed)))
+            .unwrap_err();
+        assert_eq!(
+            error,
+            "private state and configuration must be disjoint from command sandbox runtime grants"
+        );
+        // Parsing rejects the overlap without creating a directory under /usr.
+        assert!(!Path::new(exposed).parent().unwrap().exists());
+        // A sibling private root stays valid. Without a command grant, /usr is
+        // not implicitly exposed by capability-scoped read_file either.
+        let config = fixture
+            .parse(&format!(
+                "{commands}{}",
+                service("verifiers/credentials.json")
+            ))
+            .unwrap();
+        assert_eq!(
+            config.service().unwrap().credential_verifiers,
+            fixture
+                .root
+                .canonicalize()
+                .unwrap()
+                .join("verifiers/credentials.json")
+        );
+        assert!(
+            fixture
+                .parse(&format!("{BASE}{}", service(exposed)))
+                .is_ok()
+        );
     }
 
     #[test]

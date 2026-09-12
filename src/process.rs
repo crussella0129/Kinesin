@@ -79,10 +79,71 @@ impl OwnedProcess {
         self.child.stderr.take()
     }
 
-    /// Tokio's direct-child wait is cancellation-safe and creates no detached
-    /// blocking group waiter. A finished leader does not relinquish its tree.
+    /// Observe leader exit without releasing Unix process-group identity. The
+    /// unreaped leader reserves its PID until `terminate_and_wait` kills the
+    /// group; reaping here could let cleanup signal an unrelated reused PGID.
+    /// This wait is cancellation-safe and creates no detached blocking waiter.
     pub async fn wait_leader(&mut self) -> io::Result<ExitStatus> {
+        #[cfg(unix)]
+        {
+            if self.settled {
+                return self.child.wait().await;
+            }
+            // Match Child::wait: close any stdin still owned by the child so an
+            // otherwise-finished process cannot wait forever for our EOF.
+            self.child.stdin.take();
+            // Register before observing the child, so an exit between the
+            // observation and recv remains buffered in the signal stream.
+            let mut changed =
+                tokio::signal::unix::signal(tokio::signal::unix::SignalKind::child())?;
+            loop {
+                if let Some(status) = self.peek_leader_status()? {
+                    return Ok(status);
+                }
+                changed
+                    .recv()
+                    .await
+                    .ok_or_else(|| io::Error::other("child signal stream closed"))?;
+            }
+        }
+        #[cfg(windows)]
         self.child.wait().await
+    }
+
+    #[cfg(unix)]
+    fn peek_leader_status(&self) -> io::Result<Option<ExitStatus>> {
+        use std::os::unix::process::ExitStatusExt;
+
+        // SAFETY: siginfo_t is a C output structure whose all-zero representation
+        // is valid; clearing it also makes a no-change WNOHANG result portable.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // SAFETY: group is our direct child's still-owned positive PID. WNOWAIT
+        // observes exit without consuming the status owned by Tokio's Child.
+        if unsafe {
+            libc::waitid(
+                libc::P_PID,
+                self.group as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+            )
+        } == -1
+        {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: waitid initialized the SIGCHLD fields, or the structure is
+        // still zeroed because no exit was available with WNOHANG.
+        if unsafe { info.si_pid() } == 0 {
+            return Ok(None);
+        }
+        // SAFETY: a nonzero si_pid from WEXITED identifies child exit status.
+        let status = unsafe { info.si_status() };
+        let raw = match info.si_code {
+            libc::CLD_EXITED => status << 8,
+            libc::CLD_KILLED => status,
+            libc::CLD_DUMPED => status | 0x80,
+            _ => return Err(io::Error::other("unexpected child exit notification")),
+        };
+        Ok(Some(ExitStatus::from_raw(raw)))
     }
 
     fn terminate(&mut self) -> io::Result<()> {
@@ -126,6 +187,90 @@ impl Drop for OwnedProcess {
             // drop. On Windows Job's close also enforces kill-on-close.
             let _ = self.child.start_kill();
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use std::os::unix::process::ExitStatusExt;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn leader_observation_retains_pid_until_group_cleanup() {
+        let mut command = Command::new("/bin/false");
+        let mut process = OwnedProcess::spawn(&mut command).unwrap();
+        let pid = process.group;
+        let status = tokio::time::timeout(Duration::from_secs(5), process.wait_leader())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status.code(), Some(1));
+
+        // Independently inspect the kernel's child record at the public API
+        // boundary: a retained zombie reserves the PID even when no descendant
+        // survives. The former Child::wait implementation returned ECHILD here.
+        // SAFETY: zero is a valid siginfo_t representation; waitid fills it.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // SAFETY: pid belongs to this test's child; WNOWAIT does not reap it.
+        assert_eq!(
+            unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    pid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+                )
+            },
+            0,
+            "leader was reaped before its process group was terminated"
+        );
+        // SAFETY: successful WEXITED waitid initialized child status fields.
+        assert_eq!(unsafe { info.si_pid() }, pid);
+        assert_eq!(process.wait_leader().await.unwrap().code(), Some(1));
+
+        process.terminate_and_wait().await.unwrap();
+        assert!(process.settled);
+        // The Tokio child caches the real status after final reaping.
+        assert_eq!(process.wait_leader().await.unwrap().code(), Some(1));
+        // SAFETY: this nonblocking query only observes our former child PID.
+        assert_eq!(
+            unsafe {
+                libc::waitid(
+                    libc::P_PID,
+                    pid as libc::id_t,
+                    &mut info,
+                    libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+                )
+            },
+            -1
+        );
+        assert_eq!(
+            io::Error::last_os_error().raw_os_error(),
+            Some(libc::ECHILD)
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelled_observation_preserves_cleanup_and_signal_status() {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("60");
+        let mut process = OwnedProcess::spawn(&mut command).unwrap();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), process.wait_leader())
+                .await
+                .is_err()
+        );
+        // SAFETY: the still-owned, unreaped child reserves this group's PID.
+        assert_eq!(unsafe { libc::killpg(process.group, libc::SIGTERM) }, 0);
+        let status = tokio::time::timeout(Duration::from_secs(5), process.wait_leader())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(status.signal(), Some(libc::SIGTERM));
+        assert_eq!(status.code(), None);
+        process.terminate_and_wait().await.unwrap();
+        assert_eq!(process.wait_leader().await.unwrap(), status);
     }
 }
 
