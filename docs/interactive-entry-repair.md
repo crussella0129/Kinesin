@@ -95,6 +95,13 @@ Windows' native `0xC000013A` status. A manual Ctrl+C through the tool's PowerShe
 PTY also exited promptly, but interrupted the enclosing test script with status
 1; it is not used as proof of the product's precise 130 status.
 
+After the final installation, repeated the exact creation request in project-b:
+run `3d98f1b2-d744-4b36-bbaf-dd2e11e065a2` created its `test 1` directory, confirmed
+on disk; run `c0c23a4f-5b51-46d4-b2cf-f9a33e19e7b5` listed that directory at the
+workspace root. Both completed, showed successful tool activity and readable
+answers, and `/exit` returned 0. The earlier empty project-b observation therefore
+precedes this deliberate final verification write.
+
 ### Linux first-use defect discovered during verification
 
 The initial native Debian build passed 342 tests, format and all-target Clippy.
@@ -171,6 +178,8 @@ session exit-code wording and the setup/native cancellation distinction.
 
 The requested entry and workspace behavior is narrower than complete Codex CLI
 parity. It uses the existing Qwen2.5-Coder 7B model, which can resolve ambiguous
-references differently from the operator. Follow-ups carry the preceding answer,
+references differently from the operator and can emit an unclosed Markdown
+backtick even after a successful tool operation. Model prose is preserved rather
+than silently rewritten into a stronger result. Follow-ups carry the preceding answer,
 not full conversation history. Model serving remains separate. Installed proof
 uses debug builds; it does not claim a new release packaging/signing pipeline.

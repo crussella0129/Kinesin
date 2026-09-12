@@ -2,12 +2,12 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0029
-- **State:** active
+- **State:** realized
 - **Work evidence:** [T-108 repair plan](../interactive-entry-repair.md#t-108-interactive-entry-and-workspace-operations)
-- **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** none
-- **Documentation evidence:** none
+- **Completion evidence:** [T-108 direct repair](../work/completed-tasks.md#t-108-direct-follow-up)
+- **Code evidence:** [personal setup](../../src/onboarding.rs), [CLI lifecycle](../../src/cli.rs), [human presentation](../../src/cli/presentation.rs), [directory tool](../../src/tools.rs), [private journal files](../../src/storage.rs)
+- **Test evidence:** [native platform verification](../interactive-entry-repair.md), [CLI process regressions](../../tests/cli_inspect.rs), [Windows console cancellation](../../tests/windows_signal.rs), [granted directory effects](../../tests/runner_tools.rs), [effect-free replay](../../tests/replay.rs)
+- **Documentation evidence:** [README entry](../../README.md#start-here), [Windows/Linux usage](../getting-started.md), [CLI reference](../cli.md)
 
 ## Intent
 An operator launches `kinesin` from any directory, receives an introduction,
@@ -60,3 +60,4 @@ continuity stays with INT-0026; current follow-ups cite the preceding answer.
 - 2026-09-12: created as `proposed` after the user's actual first-use failures.
 - 2026-09-12: `proposed → planned`; the user explicitly requested selection upon entry, a command callable anywhere and a Codex CLI-like experience.
 - 2026-09-12: `planned → active`; T-108 implements the global entry, human session and bounded workspace operation repair as a direct follow-up to PR #11.
+- 2026-09-12: `active → realized`; T-108 completed with native Windows/Linux terminal and filesystem evidence, cancellation and permission regressions, full platform suites, dependency gates and independent review. PR #11 had already merged; the subsequent repair has its own submission checkpoint without reopening sprint 11.
