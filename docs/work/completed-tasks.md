@@ -208,4 +208,4 @@
 - **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
 - **Completed:** 2026-09-12T05:41:45Z
 - **Files modified:** Cargo.toml, Cargo.lock, src/bin/mcp-fixture.rs, tests/mcp.rs
-- **Commit:** PENDING
+- **Commit:** `73fb0d781d845cdadac609e92e60ef19b46a642f`
