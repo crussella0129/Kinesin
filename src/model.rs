@@ -20,8 +20,8 @@ use crate::core::{Message, ModelReply, Role};
 /// the pure-core `ModelReply`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Usage {
-    pub prompt_tokens: u64,
-    pub completion_tokens: u64,
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
 }
 
 /// A decoded reply paired with the provider's token usage, when it reported any.
@@ -33,10 +33,8 @@ pub struct ModelOutcome {
 
 #[derive(Deserialize)]
 struct WireUsage {
-    #[serde(default)]
-    prompt_tokens: u64,
-    #[serde(default)]
-    completion_tokens: u64,
+    prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
 }
 impl From<WireUsage> for Usage {
     fn from(wire: WireUsage) -> Self {
@@ -1329,8 +1327,8 @@ mod tests {
         assert_eq!(
             outcome.usage,
             Some(Usage {
-                prompt_tokens: 37,
-                completion_tokens: 6
+                prompt_tokens: Some(37),
+                completion_tokens: Some(6)
             })
         );
     }
@@ -1364,8 +1362,8 @@ mod tests {
         assert_eq!(
             outcome.usage,
             Some(Usage {
-                prompt_tokens: 37,
-                completion_tokens: 6
+                prompt_tokens: Some(37),
+                completion_tokens: Some(6)
             })
         );
     }

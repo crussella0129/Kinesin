@@ -134,6 +134,9 @@ allow_replay = true
     /// Produce a completed local checked run whose every model call reports the
     /// same token usage, so the terminal counters sum to a known total.
     fn produce_reporting_usage(&self, per_call: Usage) -> RunRecord {
+        self.produce_usage([Some(per_call); 3])
+    }
+    fn produce_usage(&self, usage: [Option<Usage>; 3]) -> RunRecord {
         let config = BoundedConfig::load(&self.config()).unwrap();
         let submission = Submission::Checked {
             task: "practice-fields".into(),
@@ -147,10 +150,10 @@ allow_replay = true
         let resources = RunResources::single(1, config.concurrency().clone())
             .with_workspace("practice", &self.root.join("workspace"))
             .unwrap();
-        let step = |reply: ModelReply| ScriptStep {
+        let step = |index: usize, reply: ModelReply| ScriptStep {
             delay: std::time::Duration::ZERO,
             reply,
-            usage: Some(per_call),
+            usage: usage[index],
         };
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -159,19 +162,25 @@ allow_replay = true
         runtime.block_on(async move {
             admit(&authority, &store, None).await.unwrap();
             let client = ModelClient::scripted([
-                step(ModelReply::ToolCalls {
-                    content: None,
-                    calls: vec![ToolCall {
-                        id: "read-1".into(),
-                        name: "read_file".into(),
-                        arguments: "{\"path\":\"project.txt\"}".into(),
-                    }],
-                }),
-                step(ModelReply::Answer("I read the file.".into())),
-                step(ModelReply::Answer(
-                    json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]})
-                        .to_string(),
-                )),
+                step(
+                    0,
+                    ModelReply::ToolCalls {
+                        content: None,
+                        calls: vec![ToolCall {
+                            id: "read-1".into(),
+                            name: "read_file".into(),
+                            arguments: "{\"path\":\"project.txt\"}".into(),
+                        }],
+                    },
+                ),
+                step(1, ModelReply::Answer("I read the file.".into())),
+                step(
+                    2,
+                    ModelReply::Answer(
+                        json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]})
+                            .to_string(),
+                    ),
+                ),
             ]);
             let result = run_admitted(
                 authority,
@@ -293,8 +302,8 @@ fn inspect_surfaces_token_totals_when_reported() {
     let fixture = Fixture::new();
     // A checked run makes three model calls; each reports (13, 5).
     let run = fixture.produce_reporting_usage(Usage {
-        prompt_tokens: 13,
-        completion_tokens: 5,
+        prompt_tokens: Some(13),
+        completion_tokens: Some(5),
     });
     let mut args = fixture.command("inspect");
     args.extend(["--run".into(), run.run_id.clone().into()]);
@@ -333,6 +342,31 @@ fn inspect_omits_token_totals_when_unreported() {
         "unreported usage stays unknown, not zero"
     );
     assert!(counters.get("completion_tokens").is_none());
+    fixture.no_model_calls();
+}
+
+#[test]
+fn inspect_preserves_only_completely_reported_token_dimensions() {
+    let fixture = Fixture::new();
+    let run = fixture.produce_usage([
+        Some(Usage {
+            prompt_tokens: Some(0),
+            completion_tokens: Some(3),
+        }),
+        Some(Usage {
+            prompt_tokens: Some(0),
+            completion_tokens: None,
+        }),
+        Some(Usage {
+            prompt_tokens: Some(0),
+            completion_tokens: Some(4),
+        }),
+    ]);
+    let mut args = fixture.command("inspect");
+    args.extend(["--run".into(), run.run_id.clone().into()]);
+    let inspected = successful(fixture.cli(args));
+    assert_eq!(inspected["counters"]["prompt_tokens"], 0);
+    assert!(inspected["counters"].get("completion_tokens").is_none());
     fixture.no_model_calls();
 }
 

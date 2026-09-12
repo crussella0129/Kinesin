@@ -891,8 +891,8 @@ async fn model_finished_carries_tokens_when_reported() {
         delay: Duration::ZERO,
         reply: ModelReply::Answer("done".into()),
         usage: Some(Usage {
-            prompt_tokens: 40,
-            completion_tokens: 8,
+            prompt_tokens: Some(40),
+            completion_tokens: Some(8),
         }),
     }]);
     let resources = RunResources::single(1, config.concurrency().clone())
@@ -944,16 +944,16 @@ async fn reported_usage_accumulates_into_terminal_counters() {
             delay: Duration::ZERO,
             reply: batch(vec![read("r1", "project.txt")]),
             usage: Some(Usage {
-                prompt_tokens: 40,
-                completion_tokens: 8,
+                prompt_tokens: Some(40),
+                completion_tokens: Some(8),
             }),
         },
         ScriptStep {
             delay: Duration::ZERO,
             reply: ModelReply::Answer("done".into()),
             usage: Some(Usage {
-                prompt_tokens: 55,
-                completion_tokens: 12,
+                prompt_tokens: Some(55),
+                completion_tokens: Some(12),
             }),
         },
     ]);
@@ -1030,6 +1030,129 @@ async fn absent_usage_omits_token_totals() {
         "unreported usage stays unknown, not zero"
     );
     assert!(counters.get("completion_tokens").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mixed_usage_never_claims_complete_totals() {
+    let usage = |prompt_tokens, completion_tokens| {
+        Some(Usage {
+            prompt_tokens,
+            completion_tokens,
+        })
+    };
+    // Expected totals are explicit, including independent dimensions and
+    // overflows in either direction. A missing early count cannot be repaired
+    // by a later report, and a failed dispatched call also makes it unknown.
+    let cases = [
+        ([usage(Some(4), Some(2)), None], false, None, None),
+        ([None, usage(Some(4), Some(2))], false, None, None),
+        (
+            [usage(Some(4), None), usage(Some(3), Some(2))],
+            false,
+            Some(7),
+            None,
+        ),
+        (
+            [usage(None, Some(4)), usage(Some(3), Some(2))],
+            false,
+            None,
+            Some(6),
+        ),
+        (
+            [usage(Some(0), Some(0)), usage(Some(0), Some(0))],
+            false,
+            Some(0),
+            Some(0),
+        ),
+        (
+            [usage(Some(u64::MAX), Some(0)), usage(Some(1), Some(0))],
+            false,
+            None,
+            Some(0),
+        ),
+        (
+            [usage(Some(0), Some(u64::MAX)), usage(Some(0), Some(1))],
+            false,
+            Some(0),
+            None,
+        ),
+        ([usage(Some(4), Some(2)), None], true, None, None),
+    ];
+    for (reports, fail, expected_prompt, expected_completion) in cases {
+        let fixture = Fixture::new(&[("project.txt", SOURCE)]);
+        let config = fixture.config(CONFIG);
+        let authority = config
+            .authorize_local(Submission::Freeform {
+                workspace: "practice".into(),
+                model: "local".into(),
+                continues: None,
+                prompt: "Read project.txt.".into(),
+                limits: None,
+                capture: Some(CaptureMode::Replay),
+            })
+            .unwrap();
+        let storage = fixture.storage().await;
+        let store = storage.client();
+        let client = ModelClient::scripted([
+            ScriptStep {
+                delay: Duration::ZERO,
+                reply: batch(vec![read("r1", "project.txt")]),
+                usage: reports[0],
+            },
+            ScriptStep {
+                delay: Duration::ZERO,
+                reply: if fail {
+                    ModelReply::Failure("model_transport_failed".into())
+                } else {
+                    ModelReply::Answer("done".into())
+                },
+                usage: reports[1],
+            },
+        ]);
+        let resources = RunResources::single(1, config.concurrency().clone())
+            .with_workspace("practice", &fixture.root.join("workspace"))
+            .unwrap();
+        admit(&authority, &store, None).await.unwrap();
+        let run = run_admitted(
+            authority.clone(),
+            client,
+            store.clone(),
+            resources,
+            CancellationToken::new(),
+            Instant::now(),
+        )
+        .await
+        .unwrap();
+        let observed = events(&store, &authority).await;
+        storage.shutdown().await.unwrap();
+        assert_eq!(run.phase, if fail { "failed" } else { "completed" });
+        let counters = terminal_counters(&observed);
+        assert_eq!(counters["model_turns"], 2);
+        assert_eq!(
+            counters.get("prompt_tokens").and_then(Value::as_u64),
+            expected_prompt,
+            "{reports:?}"
+        );
+        assert_eq!(
+            counters.get("completion_tokens").and_then(Value::as_u64),
+            expected_completion,
+            "{reports:?}"
+        );
+        for (event, report) in observed
+            .iter()
+            .filter(|event| event.kind == "model_finished")
+            .zip(reports)
+        {
+            assert_eq!(
+                event.data.get("prompt_tokens").and_then(Value::as_u64),
+                report.and_then(|usage| usage.prompt_tokens)
+            );
+            assert_eq!(
+                event.data.get("completion_tokens").and_then(Value::as_u64),
+                report.and_then(|usage| usage.completion_tokens)
+            );
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

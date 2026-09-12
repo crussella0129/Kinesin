@@ -327,9 +327,10 @@ struct RunJournal {
     cancel: CancellationToken,
     model_turns: usize,
     tool_calls: usize,
-    prompt_tokens: u64,
-    completion_tokens: u64,
-    usage_reported: bool,
+    // Exact totals become unknown permanently if any dispatched call omits a
+    // component or its sum overflows. Each component has independent coverage.
+    prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
     compactions: u64,
     journal_wait_ms: u64,
     capacity_stopped: bool,
@@ -337,13 +338,17 @@ struct RunJournal {
 }
 
 impl RunJournal {
-    /// Per-run counters. Token totals appear only when at least one model call
-    /// reported usage, so an absent report stays unknown rather than zero.
+    /// Per-run counters. A token total requires complete dispatched-call
+    /// coverage and an exact sum. No dispatch is unknown rather than zero.
     fn counters(&self) -> Value {
         let mut counters = json!({"model_turns": self.model_turns, "tool_calls": self.tool_calls});
-        if self.usage_reported {
-            counters["prompt_tokens"] = json!(self.prompt_tokens);
-            counters["completion_tokens"] = json!(self.completion_tokens);
+        if self.model_turns > 0 {
+            if let Some(tokens) = self.prompt_tokens {
+                counters["prompt_tokens"] = json!(tokens);
+            }
+            if let Some(tokens) = self.completion_tokens {
+                counters["completion_tokens"] = json!(tokens);
+            }
         }
         // Present only when the run actually compacted, so an ordinary run's
         // counters are unchanged and old replay captures never carry it.
@@ -637,9 +642,8 @@ pub async fn run_admitted_with_text(
         cancel: cancel.clone(),
         model_turns: 0,
         tool_calls: 0,
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        usage_reported: false,
+        prompt_tokens: Some(0),
+        completion_tokens: Some(0),
         compactions: 0,
         journal_wait_ms: 0,
         capacity_stopped: false,
@@ -823,16 +827,22 @@ pub async fn run_admitted_with_text(
                 let mut metadata = json!({"effect_id":effect_id,"dispatch":"attempted","duration_ms":exchange_start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
                     "control_dispatch":dispatch_control,
                     "classification":match &observation {ModelReply::Answer(_)=>"answer",ModelReply::ToolCalls{..}=>"tool_calls",ModelReply::Incomplete(_)=>"incomplete",ModelReply::Failure(_)=>"failure"}});
-                if let Some(usage) = usage {
-                    metadata["prompt_tokens"] = json!(usage.prompt_tokens);
-                    metadata["completion_tokens"] = json!(usage.completion_tokens);
-                    journal.prompt_tokens =
-                        journal.prompt_tokens.saturating_add(usage.prompt_tokens);
-                    journal.completion_tokens = journal
-                        .completion_tokens
-                        .saturating_add(usage.completion_tokens);
-                    journal.usage_reported = true;
+                let prompt_tokens = usage.and_then(|usage| usage.prompt_tokens);
+                let completion_tokens = usage.and_then(|usage| usage.completion_tokens);
+                if let Some(tokens) = prompt_tokens {
+                    metadata["prompt_tokens"] = json!(tokens);
                 }
+                if let Some(tokens) = completion_tokens {
+                    metadata["completion_tokens"] = json!(tokens);
+                }
+                journal.prompt_tokens = journal
+                    .prompt_tokens
+                    .zip(prompt_tokens)
+                    .and_then(|(total, tokens)| total.checked_add(tokens));
+                journal.completion_tokens = journal
+                    .completion_tokens
+                    .zip(completion_tokens)
+                    .and_then(|(total, tokens)| total.checked_add(tokens));
                 if authority.capture() == CaptureMode::Replay {
                     metadata["replay"] = observed_json(&observation);
                 }

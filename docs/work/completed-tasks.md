@@ -213,6 +213,13 @@
 ## T-001 (sprint 10)
 - **Description:** Completed the ordered all-intent audit and explicit intent revisions, preserved overclaimed historical evidence through supersession, and locked build/test plans after an independent critic resolved four concerns. Book validation and git diff checks pass; source remained unchanged until Build. No TaskCreate tool is exposed in this host, so this canonical ledger tracks each step.
 - **Intent:** [INT-0021](../intents/INT-0021-harness-contract-review.md)
-- **Completed:** 2026-09-12T15:12:00Z
+- **Completed:** 2026-09-12T15:07:13Z
 - **Files modified:** docs/intents, docs/SUMMARY.md, docs/sprints/s10 research/plans/meta, docs/work ledgers
 - **Commit:** `817f5bdc6bdce1c355fc6914999b03a05f477e45`
+
+## T-002 (sprint 10)
+- **Description:** Preserved independent optional token dimensions, honest mixed-call/error coverage and checked-add overflow without inventing zeros; per-event counts remain known where reported. Focused usage/token tests passed (10 tests), targeted rustfmt and all-target/all-feature clippy with warnings denied passed.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:15:20.6988646Z
+- **Files modified:** src/model.rs, src/runner.rs, tests/model_protocol.rs, tests/runner_tools.rs, tests/cli_inspect.rs
+- **Commit:** PENDING
