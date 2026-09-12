@@ -885,9 +885,11 @@ impl WorkspaceWriter {
         result
     }
 
-    /// Rename one regular file inside the capability. The source must be a
-    /// regular file; the destination must not already exist, so a move never
-    /// silently overwrites another file. The rename is atomic.
+    /// Move a regular file by publishing a hard link without replacing any
+    /// destination, then removing the source. Destination creation is atomic;
+    /// changing both names is not. A failed source cleanup is explicit and the
+    /// published destination is preserved for inspection. Requires hard links
+    /// on the same filesystem; concurrent source changes require coordination.
     pub fn move_file(&self, from: &str, to: &str) -> ToolResult {
         match self.target_state(from, true) {
             Ok(true) => {}
@@ -905,8 +907,40 @@ impl WorkspaceWriter {
             }
             Err(denial) => return denial,
         }
-        if let Err(error) = self.root.rename(from, &self.root, to) {
+        self.publish_move(from, to)
+    }
+
+    fn publish_move(&self, from: &str, to: &str) -> ToolResult {
+        // Capability-relative hard_link is one no-replace filesystem operation.
+        // An earlier absence check is only a diagnostic, never arbitration.
+        if let Err(error) = self.root.hard_link(from, &self.root, to) {
+            if error.kind() == ErrorKind::AlreadyExists {
+                return ToolResult::failure(
+                    ToolStatus::Denied,
+                    "destination_exists",
+                    "The destination already exists; move never overwrites.",
+                );
+            }
             return io_failure(error.kind());
+        }
+        self.finish_move(from, to)
+    }
+
+    fn finish_move(&self, from: &str, to: &str) -> ToolResult {
+        if self.root.remove_file(from).is_err() {
+            let mut result = ToolResult::failure(
+                ToolStatus::Error,
+                "move_source_cleanup_failed",
+                "Destination created; source cleanup failed. Inspect both paths before retrying.",
+            );
+            result.body = serde_json::to_string(&json!({
+                "from": from, "to": to,
+                "destination_created": true, "source_cleanup": "failed",
+            }))
+            .expect("fixed partial move result shape");
+            // Never roll back by removing the destination: another writer may
+            // already have changed it, and its initial publication did succeed.
+            return result;
         }
         let mut result = ToolResult::success(None);
         result.body = serde_json::to_string(&json!({ "moved": from, "to": to }))
@@ -2139,7 +2173,7 @@ language=note
     }
 
     #[test]
-    fn move_renames_a_file_and_never_overwrites() {
+    fn move_publishes_a_file_and_never_overwrites() {
         let fixture = Fixture::new();
         fixture.write("from.txt", "payload");
         fixture.write("occupied.txt", "existing");
@@ -2185,6 +2219,98 @@ language=note
             "not_found"
         );
         assert!(TypedToolArgs::parse(r#"{"path":"a","to":"../x"}"#).is_err());
+    }
+
+    #[test]
+    fn move_collision_after_absence_check_preserves_destination_and_source() {
+        use std::sync::Barrier;
+        let fixture = Fixture::new();
+        fixture.write("source", "original");
+        let writer = fixture.writer();
+        let checked = Barrier::new(2);
+        let created = Barrier::new(2);
+        let result = std::thread::scope(|scope| {
+            let mover = scope.spawn(|| {
+                assert!(!writer.target_state("destination", false).unwrap());
+                checked.wait();
+                created.wait();
+                // Resume at the real publication boundary after another writer
+                // creates the destination. There is no timing-based race here.
+                writer.publish_move("source", "destination")
+            });
+            checked.wait();
+            fixture.write("destination", "concurrent writer");
+            created.wait();
+            mover.join().unwrap()
+        });
+        assert_eq!(result.status, ToolStatus::Denied);
+        assert_eq!(result.error.unwrap().code, "destination_exists");
+        assert_eq!(fixture.read_back("destination"), "concurrent writer");
+        assert_eq!(fixture.read_back("source"), "original");
+    }
+
+    #[test]
+    fn move_competition_publishes_exactly_one_destination_and_keeps_loser_source() {
+        use std::sync::Barrier;
+        let fixture = Fixture::new();
+        fixture.write("first", "one");
+        fixture.write("second", "two");
+        let first = fixture.writer();
+        let second = fixture.writer();
+        let start = Barrier::new(2);
+        let results = std::thread::scope(|scope| {
+            let a = scope.spawn(|| {
+                start.wait();
+                first.move_file("first", "destination")
+            });
+            let b = scope.spawn(|| {
+                start.wait();
+                second.move_file("second", "destination")
+            });
+            [a.join().unwrap(), b.join().unwrap()]
+        });
+        assert_eq!(
+            results
+                .iter()
+                .filter(|result| result.status == ToolStatus::Ok)
+                .count(),
+            1
+        );
+        let (winner, loser, payload, other) = if results[0].status == ToolStatus::Ok {
+            ("first", "second", "one", "two")
+        } else {
+            ("second", "first", "two", "one")
+        };
+        assert!(!fixture.root.join("workspace").join(winner).exists());
+        assert_eq!(fixture.read_back(loser), other);
+        assert_eq!(fixture.read_back("destination"), payload);
+    }
+
+    #[test]
+    fn move_source_cleanup_failure_preserves_published_destination_and_reports_partial_effect() {
+        let fixture = Fixture::new();
+        fixture.write("source", "payload");
+        let writer = fixture.writer();
+        writer
+            .root
+            .hard_link("source", &writer.root, "destination")
+            .unwrap();
+        writer.root.remove_file("source").unwrap();
+        // The source was replaced by a nonempty directory after publication,
+        // producing a real cleanup failure on both supported platforms.
+        writer.root.create_dir("source").unwrap();
+        writer
+            .root
+            .write("source/retained", "new structure")
+            .unwrap();
+        let result = writer.finish_move("source", "destination");
+        assert_eq!(result.status, ToolStatus::Error);
+        assert_eq!(result.error.unwrap().code, "move_source_cleanup_failed");
+        let body: serde_json::Value = serde_json::from_str(&result.body).unwrap();
+        assert_eq!(body["destination_created"], true);
+        assert_eq!(body["source_cleanup"], "failed");
+        assert_eq!(fixture.read_back("destination"), "payload");
+        assert_eq!(fixture.read_back("source/retained"), "new structure");
     }
 
     #[test]

@@ -251,3 +251,10 @@
 - **Completed:** 2026-09-12T15:30:55Z
 - **Files modified:** src/tools.rs, src/config.rs, src/bin/cmd-fixture.rs, tests/sandbox_linux.rs
 - **Commit:** `9034980397513e1b7849fa900c90eb5785093bed`
+
+## T-010 (sprint 10)
+- **Description:** Published move destinations with capability-scoped atomic no-replace hard links, followed by source cleanup. Explicit move_source_cleanup_failed reports destination publication if cleanup fails; hard-link/same-filesystem and concurrent-source limitations remain documented. Windows tools 29/29 and Linux move 4/4 tests passed, including synchronized destination creation, simultaneous competitors and cleanup failure. Rustfmt, diff checks and affected Windows/Linux clippy passed. Final security/tool documentation is reconciled in T-009.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:45:43Z
+- **Files modified:** src/tools.rs
+- **Commit:** PENDING
