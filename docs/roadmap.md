@@ -40,7 +40,7 @@ oversight / just-in-time privilege; and SotA scaling (MCP, skills, subagents).
 - [INT-0007](intents/INT-0007-managed-model-process.md) — managed local model-process supervision (Kineserve). **proposed**
 
 ### D. SotA capability
-- [INT-0005](intents/INT-0005-mcp-tool-servers.md) — MCP tool-server integration, **local stdio tier** (operator-approved server, dynamic tools through the existing gate, frozen-for-replay). **proposed**
+- [INT-0005](intents/INT-0005-mcp-tool-servers.md) — MCP tool-server integration, **local stdio tier** (operator-approved server, dynamic tools through the existing gate, frozen-for-replay). **realized** (sprint 9).
 - [INT-0020](intents/INT-0020-remote-mcp-delegated-auth.md) — MCP **remote tier**: HTTP transport + OAuth resource-server auth (RFC 8707 resource indicators, no token passthrough). **proposed** (split from INT-0005).
 - [INT-0006](intents/INT-0006-skills-progressive-disclosure.md) — skills & progressive disclosure. **proposed**
 - [INT-0009](intents/INT-0009-koil-overlay-transport.md) — Koil pure-Rust overlay transport (own repo; behind Tailscale). **proposed**
