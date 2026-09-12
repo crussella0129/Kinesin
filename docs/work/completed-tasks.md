@@ -166,4 +166,4 @@
 - **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
 - **Completed:** 2026-09-12T00:46:06Z
 - **Files modified:** src/config.rs, src/policy.rs, src/runner.rs, src/replay.rs, docs/intents/INT-0005-mcp-tool-servers.md
-- **Commit:** PENDING
+- **Commit:** `8d13879d67c61fac9fb38bbc84ccc9a9f78a842e`
