@@ -385,13 +385,17 @@ pub(crate) fn authorize_with_prior(
         return Err("owner may not capture private replay data".into());
     }
     let instructions = config.instructions().to_owned();
-    // JSON-encode a normalized initial conversation to count escaping/envelopes.
-    let initial = serde_json::to_vec(&serde_json::json!([
-        {"role": "system", "content": &instructions},
-        {"role": "user", "content": &prompt}
-    ]))
-    .map_err(|_| "cannot serialize initial conversation")?;
-    if initial.len() > limits.max_history_bytes || initial.len() > limits.max_request_bytes {
+    // Use the runner's actual conversation shape, including the framed prior
+    // answer and JSON escaping, before admitting the immutable input set.
+    let (initial, _) = crate::core::initiate_continued(
+        instructions.clone(),
+        prior.as_ref().map(|prior| prior.answer.clone()),
+        prompt.clone(),
+        !workspace.tools.is_empty(),
+    )
+    .map_err(|_| "cannot initialize conversation")?;
+    let initial_bytes = crate::model::history_len(initial.messages())?;
+    if initial_bytes > limits.max_history_bytes || initial_bytes > limits.max_request_bytes {
         return Err("initial conversation exceeds effective history/request budget".into());
     }
     let task_bytes =
@@ -662,6 +666,47 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn continuation_initial_context_is_bounded() {
+        let fixture = Fixture::new();
+        let config = fixture.parse(BASE).unwrap();
+        let prior = PriorAnswer {
+            run_id: "11111111-1111-4111-8111-111111111111".into(),
+            answer: "quoted \\\"value\\\"\n".repeat(40),
+        };
+        assert!(prior.answer.len() < MAX_PRIOR_ANSWER_BYTES);
+        for limits in [
+            LimitOverrides {
+                max_history_bytes: Some(512),
+                ..Default::default()
+            },
+            LimitOverrides {
+                max_request_bytes: Some(512),
+                ..Default::default()
+            },
+        ] {
+            let submission = |continues| Submission::Freeform {
+                workspace: "practice".into(),
+                model: "local".into(),
+                continues,
+                prompt: "Continue.".into(),
+                limits: Some(limits.clone()),
+                capture: None,
+            };
+            assert!(config.authorize_local(submission(None)).is_ok());
+            let error = config
+                .authorize_local_continued(
+                    submission(Some(prior.run_id.clone())),
+                    Some(prior.clone()),
+                )
+                .unwrap_err();
+            assert_eq!(
+                error,
+                "initial conversation exceeds effective history/request budget"
+            );
+        }
     }
 
     use super::*;

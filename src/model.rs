@@ -247,7 +247,7 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
             let function = match tool {
                 ToolDef::Compiled(name) => {
             let (description, parameters) = match name.as_str() {
-                "read_file" => ("Read bounded UTF-8 file contents inside the workspace. Use a relative path. Output reports truncation and an evidence_id for the actual observation.", json!({
+                "read_file" => ("Read bounded UTF-8 file contents inside the workspace. Use a relative path. Output reports truncation and, in checked runs, an evidence_id for the actual observation.", json!({
                     "type":"object","properties":{"path":{"type":"string"}},
                     "required":["path"],"additionalProperties":false
                 })),

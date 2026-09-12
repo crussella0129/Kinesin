@@ -265,7 +265,7 @@ impl RunState {
     /// plain turn — from the conversation body, returning whether anything was
     /// dropped. Never dropped: the system message, the initial user turn(s) before
     /// the first assistant message, the most-recent `floor` messages, and any
-    /// group whose tool result minted evidence. A group's assistant `tool_calls`
+    /// group whose tool result minted evidence in a checked run. A group's assistant `tool_calls`
     /// message and all its tool results are removed together, so no partial group
     /// or dangling `tool_call_id` is ever left. Pure and deterministic: the runner
     /// and replay call it identically, so a compacted run reproduces on replay.
@@ -303,9 +303,10 @@ impl RunState {
             }
             // Never drop a group that carries minted evidence: a checked
             // candidate may cite it, and dropping it could change a verdict.
-            let carries_evidence = self.messages[index..end]
-                .iter()
-                .any(message_carries_evidence);
+            let carries_evidence = self.checked_task
+                && self.messages[index..end]
+                    .iter()
+                    .any(message_carries_evidence);
             if carries_evidence {
                 index = end;
                 continue;
@@ -602,6 +603,13 @@ mod tests {
         state
     }
 
+    fn checked_conversation(groups: usize, evidence_groups: &[usize]) -> RunState {
+        let mut checked = state(true);
+        checked.require_acceptance_check().unwrap();
+        checked.messages = conversation(groups, evidence_groups).messages;
+        checked
+    }
+
     #[test]
     fn drop_oldest_removes_whole_group() {
         // System, User, then three groups; floor protects the last two messages.
@@ -653,7 +661,7 @@ mod tests {
     fn drop_oldest_preserves_evidence_bearing_result() {
         // g0 carries evidence; g1 does not. The oldest droppable non-evidence
         // group (g1) is dropped, and the evidence group is skipped, not removed.
-        let mut state = conversation(3, &[0]);
+        let mut state = checked_conversation(3, &[0]);
         assert!(state.drop_oldest_compactable(2));
         // g0's evidence result survives.
         assert!(
@@ -679,10 +687,35 @@ mod tests {
         assert!(!state.drop_oldest_compactable(2));
         assert_eq!(state, before);
         // Even with a generous floor, an all-evidence body is never dropped.
-        let mut evidence_only = conversation(3, &[0, 1, 2]);
+        let mut evidence_only = checked_conversation(3, &[0, 1, 2]);
         let before = evidence_only.clone();
         assert!(!evidence_only.drop_oldest_compactable(2));
         assert_eq!(evidence_only, before);
+    }
+
+    #[test]
+    fn freeform_compaction_drops_a_whole_multi_call_group() {
+        let mut state = conversation(3, &[0]);
+        // A second result belongs to the same old assistant batch. Neither an
+        // evidence-shaped field nor multiple results can cause a partial drop.
+        state.messages[2].tool_calls.push(ToolCall {
+            id: "g0-second".into(),
+            name: "read_file".into(),
+            arguments: "{}".into(),
+        });
+        state.messages.insert(4, tool_result("g0-second", true));
+        assert!(state.drop_oldest_compactable(2));
+        assert_eq!(state.messages().len(), 6);
+        assert!(state.messages().iter().all(|message| {
+            message
+                .tool_call_id
+                .as_deref()
+                .is_none_or(|id| !id.starts_with("g0"))
+                && message
+                    .tool_calls
+                    .iter()
+                    .all(|call| !call.id.starts_with("g0"))
+        }));
     }
 
     fn call(id: &str) -> ToolCall {

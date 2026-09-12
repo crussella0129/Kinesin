@@ -22,11 +22,11 @@ pub const MAX_REPLAY_EVENTS: usize = 256;
 
 /// Bump the applicable version whenever its recorded semantics change. This
 /// guards admission: a capture stamped with a different set is refused up front
-/// (`replay_versions_unsupported`) rather than failing deep in replay. `adapter`
-/// is at 2 since INT-0004 added `cache_prompt` to the prepared request, changing
-/// the recorded request bytes a pre-upgrade capture cannot reproduce.
+/// (`replay_versions_unsupported`) rather than failing deep in replay. Core 2
+/// permits unchecked read compaction; tools 2 mints evidence only in checked
+/// runs; adapter 3 describes that distinction in the prepared tool schema.
 pub fn versions() -> Value {
-    json!({"capture":2,"core":1,"adapter":2,"tools":1,"checker":1,
+    json!({"capture":2,"core":2,"adapter":3,"tools":2,"checker":1,
         "source_parser":1,"output_contract":1})
 }
 
@@ -255,6 +255,12 @@ impl FrozenContext {
             self.limits.validate().is_ok()
                 && self.instructions.len() <= 16384
                 && self.prompt.len() <= 16384
+                && self.prior.as_ref().is_none_or(|prior| {
+                    !self.task.is_checked()
+                        && validate_id(&prior.run_id).is_ok()
+                        && !prior.answer.trim().is_empty()
+                        && prior.answer.len() <= crate::policy::MAX_PRIOR_ANSWER_BYTES
+                })
                 && self.model.temperature.is_finite()
                 && !self.model.model_id.is_empty()
                 && self
@@ -343,7 +349,11 @@ impl FrozenContext {
             "replay_task_identity",
             seq,
         )?;
-        ensure(self.input_sources.len() == 2, "replay_input_sources", seq)?;
+        ensure(
+            self.input_sources.len() == 2 + usize::from(self.prior.is_some()),
+            "replay_input_sources",
+            seq,
+        )?;
         for (source, id, purpose, origin, text) in [
             (
                 &self.input_sources[0],
@@ -370,6 +380,18 @@ impl FrozenContext {
                     && source.origin == origin
                     && source.bytes == text.len()
                     && source.sha256 == model::fingerprint(text.as_bytes()),
+                "replay_input_sources",
+                seq,
+            )?;
+        }
+        if let Some(prior) = &self.prior {
+            let source = &self.input_sources[2];
+            ensure(
+                source.id == "prior_answer"
+                    && source.purpose == "cited earlier answer"
+                    && source.origin == "earlier model output"
+                    && source.bytes == prior.answer.len()
+                    && source.sha256 == model::fingerprint(prior.answer.as_bytes()),
                 "replay_input_sources",
                 seq,
             )?;
@@ -742,7 +764,17 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     Some(finished.seq),
                 )?;
                 let mut evidence_error = None;
-                if dispatch == "executed" && tool == Some(ToolName::ReadFile) {
+                if !frozen.task.is_checked() {
+                    ensure(
+                        result.evidence_id.is_none(),
+                        "replay_evidence_identity",
+                        Some(finished.seq),
+                    )?;
+                }
+                if frozen.task.is_checked()
+                    && dispatch == "executed"
+                    && tool == Some(ToolName::ReadFile)
+                {
                     if result.status == ToolStatus::Ok {
                         ensure(
                             result.evidence_id.as_deref() == Some(evidence.next_id().as_str()),

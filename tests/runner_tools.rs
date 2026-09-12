@@ -1611,9 +1611,9 @@ async fn uniform_attach_prepares_identically_across_local_and_overlay_backends()
             ModelReply::Answer(format!(" {}\n", candidate("Rust", "e0"))),
         ]
     };
-    // 100.100.20.30 is in Tailscale's CGNAT range, reached over plain HTTP just
-    // like the loopback default.
-    let overlay = CONFIG.replace("http://127.0.0.1:8080", "http://100.100.20.30:8080");
+    // Private addressing does not prove encryption: non-loopback origins use
+    // HTTPS while preserving the same prepared model request as local HTTP.
+    let overlay = CONFIG.replace("http://127.0.0.1:8080", "https://100.100.20.30:8080");
     let local = run_case(CONFIG, &[("project.txt", SOURCE)], replies()).await;
     let remote = run_case(&overlay, &[("project.txt", SOURCE)], replies()).await;
     assert_eq!(local.requests.len(), 3);

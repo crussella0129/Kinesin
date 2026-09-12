@@ -237,3 +237,10 @@
 - **Completed:** 2026-09-12T15:28:40Z
 - **Files modified:** src/mcp.rs, src/mcp/transport.rs, src/bin/mcp-fixture.rs, tests/mcp.rs
 - **Commit:** `133aa3f992de035065963bc36bae1c16bec5d0fb`
+
+## T-003 (sprint 10)
+- **Description:** Made unchecked reads evidence-free and compactable while protecting checked evidence; bounded the actual framed continuation before admission. Faithful session requests exposed and repaired replay's incorrect two-source assumption; replay now validates the prior-answer source and explicitly refuses old semantic versions. Red regressions reproduced oversized admission and long-read history failure. Windows library 159, CLI inspect 10, model protocol 17, runner tools 24, replay 16 and offline live-evaluation 2 tests passed, with targeted rustfmt and clippy. Actual-session cache timing remains manual evidence pending host preparation. Includes T-008's HTTPS fixture compatibility update.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:30:05Z
+- **Files modified:** src/core.rs, src/model.rs, src/policy.rs, src/runner.rs, src/replay.rs, tests/replay.rs, tests/live_evaluation.rs, tests/runner_tools.rs
+- **Commit:** PENDING

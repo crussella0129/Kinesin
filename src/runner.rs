@@ -1077,8 +1077,9 @@ pub async fn run_admitted_with_text(
                                     let query = validated.query.clone();
                                     let case_sensitive = validated.case_sensitive.unwrap_or(false);
                                     let maximum = authority.limits().max_tool_result_bytes;
-                                    let evidence_id =
-                                        name.mints_evidence().then(|| evidence.next_id());
+                                    let evidence_id = (authority.task().is_checked()
+                                        && name.mints_evidence())
+                                    .then(|| evidence.next_id());
                                     dispatched = true;
                                     if name == ToolName::RunCommand {
                                         // A command spawns a process, so it runs on the async
@@ -1235,6 +1236,7 @@ pub async fn run_admitted_with_text(
                     }
                     journal.record("tool_finished", metadata, None).await?;
                     if dispatched
+                        && authority.task().is_checked()
                         && tool == Some(ToolName::ReadFile)
                         && let Err(reason) = evidence.add_observation(
                             &authority,
