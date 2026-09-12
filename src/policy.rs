@@ -180,10 +180,9 @@ pub struct RunAuthority {
     prior: Option<PriorAnswer>,
     submission_sha256: String,
     input_sources: Vec<InputSource>,
-    /// The MCP tools discovered at run start for this run's allow-listed MCP
-    /// entries, frozen so the model request and replay reproduce identically
-    /// without reconnecting. Empty (and omitted from the serialized authority)
-    /// for a run with no MCP tools, so a non-MCP run's frozen bytes are unchanged.
+    /// The active runner's discovered MCP schemas. Accepted authority leaves
+    /// this empty; preparation freezes schemas in the separate startup event
+    /// before the runner derives a local copy for request preparation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     mcp_tools: Vec<crate::mcp::McpToolDef>,
 }
@@ -242,9 +241,10 @@ impl RunAuthority {
     pub fn mcp_tools(&self) -> &[crate::mcp::McpToolDef] {
         &self.mcp_tools
     }
-    /// Attach the tools discovered at run start, before the authority is frozen
-    /// into the journal. Called once by the runner after discovery; the pure
-    /// authorize path never performs I/O, so the frozen set is set here.
+    /// Derive an execution copy from admitted preparation. The runner commits
+    /// its startup journal before using this copy to dispatch a model request.
+    /// Schemas never extend workspace grants. Passing a preprepared authority
+    /// into the runner is refused before process or model dispatch.
     pub fn with_mcp_tools(mut self, tools: Vec<crate::mcp::McpToolDef>) -> Self {
         self.mcp_tools = tools;
         self

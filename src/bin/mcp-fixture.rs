@@ -50,6 +50,19 @@ async fn main() {
             .find(|pair| pair[0] == flag)
             .map(|pair| pair[1].clone())
     };
+    if let Some(path) = value("--start-marker") {
+        use std::io::Write;
+        writeln!(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .unwrap(),
+            "{}",
+            std::process::id()
+        )
+        .unwrap();
+    }
     if let Some(path) = value("--child-marker") {
         for counter in 0_u64.. {
             std::fs::write(&path, counter.to_string()).unwrap();
@@ -68,6 +81,13 @@ async fn main() {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while !std::path::Path::new(&path).exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
         // The test deliberately leaves lifecycle ownership with the client.
     }
     if let Some(path) = value("--probe-env-file") {
@@ -143,5 +163,24 @@ async fn adversarial_protocol(mode: &str) {
         encoded.push(b'\n');
         output.write_all(&encoded).await.unwrap();
         output.flush().await.unwrap();
+        if mode == "frame-count" && request["method"] == "initialize" {
+            // A peer can amplify tiny frames into SDK response tasks. Do not
+            // read their replies: the client's pre-SDK count bound must stop it.
+            let mut flood = Vec::new();
+            for request_id in 0..5000 {
+                serde_json::to_writer(
+                    &mut flood,
+                    &json!({"jsonrpc":"2.0","id":request_id,"method":"ping"}),
+                )
+                .unwrap();
+                flood.push(b'\n');
+            }
+            if output.write_all(&flood).await.is_err() {
+                return;
+            }
+            let _ = output.flush().await;
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            return;
+        }
     }
 }

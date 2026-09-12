@@ -25,8 +25,9 @@ pub const MAX_REPLAY_EVENTS: usize = 256;
 /// (`replay_versions_unsupported`) rather than failing deep in replay. Core 2
 /// permits unchecked read compaction; tools 2 mints evidence only in checked
 /// runs; adapter 3 describes that distinction in the prepared tool schema.
+/// Capture 3 freezes MCP preparation after admission in the startup event.
 pub fn versions() -> Value {
-    json!({"capture":2,"core":2,"adapter":3,"tools":2,"checker":1,
+    json!({"capture":3,"core":2,"adapter":3,"tools":2,"checker":1,
         "source_parser":1,"output_contract":1})
 }
 
@@ -447,6 +448,98 @@ impl From<RecordedReply> for ModelReply {
 
 /// Establishes internal consistency of captured inputs, not their authenticity
 /// or present-world correctness. The original database verdict is never changed.
+/// Preparation is a recorded external observation. It can supply bounded
+/// schemas for already granted identities, never create additional authority.
+fn replay_mcp_start(
+    frozen: &mut FrozenContext,
+    start: &Event,
+    control_log: &mut RecordedControl,
+) -> Result<Option<(RunPhase, String)>, ReplayError> {
+    let seq = Some(start.seq);
+    let has_prepared_authority = !frozen.mcp_tools.is_empty();
+    let needs_mcp = frozen
+        .workspace
+        .tools
+        .iter()
+        .any(|tool| tool.mcp().is_some())
+        || has_prepared_authority;
+    if !needs_mcp {
+        ensure(
+            start.data.as_object().is_some_and(|data| {
+                !data.keys().any(|key| key.starts_with("mcp_")) && !data.contains_key("replay")
+            }),
+            "replay_mcp_unexpected",
+            seq,
+        )?;
+        return Ok(None);
+    }
+    let started = control_log.observe(start, "mcp_start_control", 0)?;
+    let finished = control_log.observe(start, "mcp_finish_control", started.elapsed_us / 1000)?;
+    let deadline_us = started
+        .elapsed_us
+        .saturating_add(crate::mcp::MCP_DISCOVERY_DEADLINE.as_micros() as u64)
+        .min(frozen.limits.max_run_s.saturating_mul(1_000_000));
+    ensure(
+        start.data["mcp_deadline_us"] == deadline_us,
+        "replay_mcp_deadline",
+        seq,
+    )?;
+    let defs: Vec<crate::mcp::McpToolDef> =
+        serde_json::from_value(start.data["replay"]["mcp_tools"].clone())
+            .map_err(|_| error("replay_mcp_freeze_missing", seq))?;
+    let encoded = serde_json::to_vec(&defs).map_err(|_| error("replay_mcp_freeze_missing", seq))?;
+    ensure(
+        start.data["replay"] == json!({"mcp_tools": defs})
+            && encoded.len() <= crate::mcp::MAX_MCP_METADATA_BYTES
+            && start.data["mcp_tool_count"] == defs.len()
+            && start.data["mcp_tools_sha256"] == model::fingerprint(&encoded),
+        "replay_mcp_freeze_digest",
+        seq,
+    )?;
+    let stopped = started.stop(frozen.limits.max_run_s);
+    let stop = match start.data["mcp_status"].as_str() {
+        Some("ready") => {
+            ensure(
+                !has_prepared_authority
+                    && stopped.is_none()
+                    && start.data["mcp_reason"].is_null()
+                    && crate::mcp::frozen_tools_digest(&frozen.workspace.tools, &defs).is_ok(),
+                "replay_mcp_freeze_policy",
+                seq,
+            )?;
+            None
+        }
+        Some("failed") => {
+            let reason = start.data["mcp_reason"]
+                .as_str()
+                .ok_or_else(|| error("replay_mcp_status", seq))?;
+            ensure(
+                stopped.is_none()
+                    && defs.is_empty()
+                    && crate::mcp::is_preparation_error(reason)
+                    && (has_prepared_authority == (reason == "mcp_authority_already_prepared"))
+                    && (reason != "mcp_prepare_cancelled" || finished.cancelled)
+                    && (reason != "mcp_prepare_timeout" || finished.elapsed_us >= deadline_us),
+                "replay_mcp_status",
+                seq,
+            )?;
+            Some((RunPhase::Failed, reason.to_owned()))
+        }
+        Some("not_started") => {
+            let (_, reason) = stopped.ok_or_else(|| error("replay_mcp_status", seq))?;
+            ensure(
+                defs.is_empty() && start.data["mcp_reason"] == reason,
+                "replay_mcp_status",
+                seq,
+            )?;
+            Some((RunPhase::Failed, reason.to_owned()))
+        }
+        _ => return Err(error("replay_mcp_status", seq)),
+    };
+    frozen.mcp_tools = defs;
+    Ok(stop)
+}
+
 pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayError> {
     ensure(run.capture == "replay", "replay_unavailable_metadata", None)?;
     ensure(
@@ -483,7 +576,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         "replay_versions_unsupported",
         Some(0),
     )?;
-    let frozen: FrozenContext =
+    let mut frozen: FrozenContext =
         serde_json::from_value(accepted.data["replay"]["authority"].clone())
             .map_err(|_| error("replay_frozen_input_missing", Some(0)))?;
     // Config structs permit defaults for live configuration. A replay capture
@@ -511,6 +604,12 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
             .require_acceptance_check()
             .map_err(|_| error("replay_initial_transition", Some(0)))?;
     }
+    let mut control_log = RecordedControl::default();
+    if let Some((phase, reason)) = replay_mcp_start(&mut frozen, &events[1], &mut control_log)? {
+        effect = state
+            .stop(phase, reason)
+            .map_err(|_| error("replay_initial_transition", Some(1)))?;
+    }
     let mut index = 2;
     let mut observed_candidate = None;
     let mut evidence = EvidenceInventory::default();
@@ -518,7 +617,6 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
     let mut repeat_count = 0;
     let mut prepared_hashes = Vec::new();
     let mut observations = 0;
-    let mut control_log = RecordedControl::default();
     while index < events.len() - 1 {
         let planned = &events[index];
         let finished = events
@@ -691,8 +789,17 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     } else {
                         None
                     }
-                } else if mcp_def.is_some() {
-                    if mcp_args.is_none() {
+                } else if let Some(def) = mcp_def {
+                    if !frozen.workspace.tools.contains(&ToolRef::Mcp {
+                        server: def.server.clone(),
+                        tool: def.tool.clone(),
+                    }) {
+                        Some(ToolResult::failure(
+                            ToolStatus::Denied,
+                            "tool_denied",
+                            "Tool is not allowed",
+                        ))
+                    } else if mcp_args.is_none() {
                         Some(ToolResult::failure(
                             ToolStatus::Denied,
                             "invalid_arguments",
@@ -866,6 +973,27 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
             Some(terminal.seq),
         )?;
         effect = stop_state(&mut state, "model_queue_timeout")?;
+    }
+    if events[1].data.get("mcp_status").is_some() {
+        let cleanup = terminal.data["mcp_cleanup"].as_str();
+        ensure(
+            matches!(cleanup, Some("closed" | "failed"))
+                && (matches!(effect, Effect::Candidate(_) | Effect::Stop { .. })
+                    || terminal_control.stop(frozen.limits.max_run_s).is_some()),
+            "replay_mcp_cleanup",
+            Some(terminal.seq),
+        )?;
+        if cleanup == Some("failed") {
+            effect = state
+                .stop(RunPhase::Failed, "mcp_cleanup_failed".into())
+                .map_err(|_| error("replay_core_divergence", Some(terminal.seq)))?;
+        }
+    } else {
+        ensure(
+            terminal.data.get("mcp_cleanup").is_none(),
+            "replay_mcp_cleanup",
+            Some(terminal.seq),
+        )?;
     }
     if let Some((phase, reason)) = terminal_control.stop(frozen.limits.max_run_s) {
         effect = state

@@ -265,3 +265,10 @@
 - **Completed:** 2026-09-12T15:49:05Z
 - **Files modified:** tests/live_evaluation.rs, docs/configuration.md, docs/integration.md, docs/sprints/s10/sprint-tests/remote-deployment.md; shared prerequisites src/config.rs and tests/runner_tools.rs recorded in T-005/T-003
 - **Commit:** `e131ed8bc979df56368e64342b9a39b178f4a2d3`
+
+## T-007 (sprint 10)
+- **Description:** Replaced pre-admission MCP sessions with declarative job configuration and one active-run-owned pool. Startup is cancelled/deadline bounded, durably freezes schemas before model dispatch, and cannot enlarge live/replay grants. Cleanup precedes terminal commit and still runs after journal errors; restart recovery handles storage-unavailable rows. Capture v3 explicitly records/replays startup and cleanup. Integrated the independent 4,096-frame ceiling; a tiny-frame flood is bounded and torn down by the deadline, without claiming immediate SDK response completion. Windows lib 164, CLI inspect 10, MCP 20, replay 16 and service 16 tests passed; isolated environment worker is invoked by its parent. Targeted clippy, rustfmt and diff checks passed.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T16:01:45Z
+- **Files modified:** src/cli.rs, src/scheduler.rs, src/service.rs, src/runner.rs, src/replay.rs, src/policy.rs, src/mcp.rs, src/mcp/transport.rs, src/bin/mcp-fixture.rs, tests/mcp.rs, tests/service.rs
+- **Commit:** PENDING

@@ -1,8 +1,8 @@
 //! Operator-approved MCP tool servers reached over stdio. A server is a trusted
 //! local binary the operator declared in config (like the model endpoint); what
 //! stays untrusted is its tool descriptions and outputs, which are data, never
-//! authority. Discovery runs once at run start and its result is frozen into the
-//! run authority, so deterministic replay reproduces the model request and
+//! authority. Discovery runs under admitted active ownership and its result is
+//! frozen in the startup journal before dispatch, so replay reproduces requests
 //! re-validates each call without ever reconnecting.
 
 use std::collections::{BTreeMap, HashSet};
@@ -23,6 +23,9 @@ mod transport;
 
 pub const MAX_MCP_FRAME_BYTES: usize = 256 * 1024;
 pub const MAX_MCP_SESSION_BYTES: usize = 16 * 1024 * 1024;
+/// All inbound lines, including notifications and empty/unterminated frames.
+/// This protocol ceiling is independent of the run's tool-call budget.
+pub const MAX_MCP_SESSION_FRAMES: usize = 4096;
 pub const MAX_MCP_METADATA_BYTES: usize = 64 * 1024;
 pub const MAX_MCP_SERVERS: usize = 8;
 pub const MAX_MCP_TOOLS: usize = 64;
@@ -38,13 +41,13 @@ pub const MCP_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 pub const MCP_DISCOVERY_DEADLINE: Duration = Duration::from_secs(20);
 
 /// Caps on the untrusted, server-supplied tool metadata that is frozen into the
-/// run authority (and journaled) and embedded verbatim in every model request. A
+/// startup journal and embedded verbatim in every model request. A
 /// server cannot bloat the journal or push requests past the model's request
 /// budget with an oversized schema or description.
 pub const MAX_MCP_SCHEMA_BYTES: usize = 16 * 1024;
 pub const MAX_MCP_DESCRIPTION_BYTES: usize = 4 * 1024;
 
-/// One discovered MCP tool, frozen into the run authority. `input_schema` is the
+/// One discovered MCP tool, frozen in the startup journal. `input_schema` is the
 /// server-advertised JSON Schema, emitted verbatim to the model and used to
 /// validate a call's arguments; it is untrusted data, not authority.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -65,6 +68,72 @@ impl McpToolDef {
         }
         .wire_name()
     }
+}
+
+/// A frozen description is data, never a second tool grant. Validate the whole
+/// discovered set independently on live startup and replay before using it.
+pub fn frozen_tools_digest(allow: &[ToolRef], defs: &[McpToolDef]) -> Result<String, &'static str> {
+    let expected = allow.iter().filter(|tool| tool.mcp().is_some()).count();
+    if defs.len() > MAX_MCP_TOOLS || defs.len() != expected {
+        return Err("mcp_frozen_tool_count");
+    }
+    let mut seen = HashSet::new();
+    for def in defs {
+        let identity = ToolRef::Mcp {
+            server: def.server.clone(),
+            tool: def.tool.clone(),
+        };
+        if !allow.contains(&identity) || !seen.insert(identity) {
+            return Err("mcp_frozen_tool_denied");
+        }
+        if def.description.len() > MAX_MCP_DESCRIPTION_BYTES
+            || !def.input_schema.is_object()
+            || serde_json::to_vec(&def.input_schema)
+                .map_err(|_| "mcp_schema_invalid")?
+                .len()
+                > MAX_MCP_SCHEMA_BYTES
+        {
+            return Err("mcp_frozen_schema_invalid");
+        }
+    }
+    let encoded = serde_json::to_vec(defs).map_err(|_| "mcp_schema_invalid")?;
+    if encoded.len() > MAX_MCP_METADATA_BYTES {
+        return Err("mcp_metadata_limit");
+    }
+    Ok(crate::model::fingerprint(&encoded))
+}
+
+/// Stable, content-free startup outcomes accepted in a replay capture. Provider
+/// text is never copied into a terminal reason or made a control instruction.
+pub fn is_preparation_error(code: &str) -> bool {
+    matches!(
+        code,
+        "mcp_server_limit"
+            | "mcp_server_undeclared"
+            | "mcp_server_duplicate"
+            | "mcp_command_empty"
+            | "mcp_spawn_failed"
+            | "mcp_pipe_failed"
+            | "mcp_initialize_timeout"
+            | "mcp_initialize_failed"
+            | "mcp_tool_limit"
+            | "mcp_server_unconnected"
+            | "mcp_list_timeout"
+            | "mcp_list_failed"
+            | "mcp_advertised_tool_limit_or_duplicate"
+            | "mcp_description_too_large"
+            | "mcp_schema_invalid"
+            | "mcp_schema_too_large"
+            | "mcp_metadata_limit"
+            | "mcp_pagination_limit"
+            | "mcp_tool_absent"
+            | "mcp_frozen_tool_count"
+            | "mcp_frozen_tool_denied"
+            | "mcp_frozen_schema_invalid"
+            | "mcp_authority_already_prepared"
+            | "mcp_prepare_cancelled"
+            | "mcp_prepare_timeout"
+    )
 }
 
 /// A run-scoped error reaching or discovering an MCP server. It carries a stable
@@ -157,8 +226,12 @@ impl McpClientPool {
                 .take_stdin()
                 .ok_or_else(|| McpError::new("mcp_pipe_failed", id))?;
             self.processes.get_mut().insert(id.clone(), process);
-            let reader =
-                transport::BoundedReader::new(stdout, MAX_MCP_FRAME_BYTES, MAX_MCP_SESSION_BYTES);
+            let reader = transport::BoundedReader::new(
+                stdout,
+                MAX_MCP_FRAME_BYTES,
+                MAX_MCP_SESSION_BYTES,
+                MAX_MCP_SESSION_FRAMES,
+            );
             let transport = rmcp::transport::async_rw::AsyncRwTransport::new_client(reader, stdin);
             let client = tokio::time::timeout(timeout, ().serve(transport))
                 .await
@@ -178,21 +251,20 @@ impl McpClientPool {
             service.cancellation_token().cancel();
         }
         let mut processes = self.processes.lock().await;
+        let mut failure = None;
         for (server, process) in processes.iter_mut() {
-            process
-                .terminate_and_wait()
-                .await
-                .map_err(|_| McpError::new("mcp_cleanup_failed", server))?;
+            if process.terminate_and_wait().await.is_err() && failure.is_none() {
+                failure = Some(McpError::new("mcp_cleanup_failed", server));
+            }
         }
         processes.clear();
         for service in services.iter_mut() {
-            service
-                .close()
-                .await
-                .map_err(|_| McpError::new("mcp_cleanup_failed", ""))?;
+            if service.close().await.is_err() && failure.is_none() {
+                failure = Some(McpError::new("mcp_cleanup_failed", ""));
+            }
         }
         services.clear();
-        Ok(())
+        failure.map_or(Ok(()), Err)
     }
 
     /// Page explicitly instead of using the SDK's accumulating list_all_tools.

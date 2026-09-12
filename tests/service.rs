@@ -278,6 +278,122 @@ fn final_steps(count: usize, delay: Duration) -> Vec<ScriptStep> {
 }
 
 #[tokio::test]
+async fn mcp_submission_queue_retry_and_rejection_do_not_start_processes() {
+    let fixture = Fixture::new();
+    let marker = fixture.0.join("mcp-starts");
+    let config = CONFIG
+        .replace("max_active_runs = 2", "max_active_runs = 1")
+        .replace("max_queued_runs = 2", "max_queued_runs = 1")
+        .replace(
+            "tools = [\"read_file\"]",
+            "tools = [\"read_file\", \"mcp__fixture__echo\"]",
+        );
+    let config = format!(
+        "{config}\n[[mcp.servers]]\nid = 'fixture'\ncommand = ['{}', '--start-marker', '{}']\n",
+        env!("CARGO_BIN_EXE_mcp-fixture"),
+        marker.display()
+    );
+    let harness = Harness::new(&config, final_steps(1, Duration::from_secs(30))).await;
+    assert!(
+        !marker.exists(),
+        "service startup must attach declarations only"
+    );
+    let first = harness.create("alice", "first", freeform("first")).await;
+    timeout(WATCHDOG, async {
+        while harness.client.captured_requests().unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let retry = harness.create("alice", "first", freeform("first")).await;
+    assert_eq!(retry["run_id"], first["run_id"]);
+    let queued = harness.create("alice", "queued", freeform("queued")).await;
+    let rejected = harness
+        .send(harness.create_request("alice", "overflow", freeform("overflow")))
+        .await;
+    assert_eq!(rejected.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(std::fs::read_to_string(&marker).unwrap().lines().count(), 1);
+    for run in [&queued, &first] {
+        let id = run["run_id"].as_str().unwrap();
+        let response = harness
+            .send(harness.request(
+                "alice",
+                "POST",
+                &format!("/v1/runs/{id}/cancel"),
+                Body::empty(),
+            ))
+            .await;
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+    }
+    for run in [&queued, &first] {
+        assert_eq!(
+            harness
+                .terminal("alice", run["run_id"].as_str().unwrap())
+                .await["phase"],
+            "cancelled"
+        );
+    }
+    assert_eq!(harness.client.captured_requests().unwrap().len(), 1);
+    harness.close().await;
+    assert_eq!(std::fs::read_to_string(&marker).unwrap().lines().count(), 1);
+}
+
+#[tokio::test]
+async fn mcp_preparation_failure_is_an_admitted_pollable_terminal_run() {
+    let config = CONFIG.replace(
+        "tools = [\"read_file\"]",
+        "tools = [\"read_file\", \"mcp__fixture__absent\"]",
+    );
+    let config = format!(
+        "{config}\n[[mcp.servers]]\nid = 'fixture'\ncommand = ['{}']\n",
+        env!("CARGO_BIN_EXE_mcp-fixture")
+    );
+    let harness = Harness::new(&config, []).await;
+    let run = harness
+        .create("alice", "failed-preparation", freeform("run"))
+        .await;
+    let terminal = harness
+        .terminal("alice", run["run_id"].as_str().unwrap())
+        .await;
+    assert_eq!(terminal["phase"], "failed");
+    assert_eq!(terminal["terminal_reason"], "mcp_tool_absent");
+    assert!(harness.client.captured_requests().unwrap().is_empty());
+    let id = run["run_id"].as_str().unwrap();
+    let response = harness
+        .send(harness.request(
+            "alice",
+            "GET",
+            &format!("/v1/runs/{id}/export"),
+            Body::empty(),
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let snapshot = decode(response).await;
+    assert!(snapshot["events"][1].get("replay").is_none());
+    let response = harness
+        .storage
+        .client()
+        .execute(
+            kinesin::storage::Command::Events {
+                owner_id: "alice".into(),
+                run_id: id.into(),
+                after: None,
+                limit: 20,
+            },
+            tokio::time::Instant::now() + Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+    let kinesin::storage::Response::Events(events) = response else {
+        panic!("events")
+    };
+    assert_eq!(events[1].data["mcp_status"], "failed");
+    assert!(events[1].data.get("replay").is_none());
+    harness.close().await;
+}
+
+#[tokio::test]
 async fn every_route_authenticates_before_body_or_storage_and_rejects_ambiguous_credentials() {
     let harness = Harness::new(CONFIG, []).await;
     let id = uuid::Uuid::new_v4();
