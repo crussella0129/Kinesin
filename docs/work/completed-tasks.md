@@ -173,4 +173,4 @@
 - **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
 - **Completed:** 2026-09-12T00:52:00Z
 - **Files modified:** src/config.rs
-- **Commit:** PENDING
+- **Commit:** `166ecdd482bc071929f27a9858e76f5b4da54700`
