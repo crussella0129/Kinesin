@@ -302,6 +302,12 @@ async fn create(
         resources: state.resources.get(model).ok_or_else(unavailable)?.clone(),
         authority,
     };
+    // Discover and attach MCP tools before admission — the same choke point the
+    // CLI uses — so MCP tools are available over the service, not silently dropped.
+    let job = job
+        .discover_mcp(&state.config)
+        .await
+        .map_err(|_| backend_error("mcp discovery failed"))?;
     // Ownership has transferred to the controller before this first await. A
     // dropped/timed-out HTTP future cannot abandon a committed admission.
     let mut pending = state

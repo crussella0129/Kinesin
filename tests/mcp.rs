@@ -386,6 +386,31 @@ async fn e2e_mcp_echo_run_and_replay() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_large_result_replays_consistently() {
+    // A result that overflows the byte cap must still replay: the observation is
+    // bounded so its *encoded* form fits the cap the replay validator enforces.
+    // Regression for the envelope-aware bounding in map_result.
+    let big = "y".repeat(4000);
+    let config = config_text(&["mcp__fixture__echo"], 512, "replay", &[]);
+    let case = run_case(
+        &config,
+        vec![
+            batch(vec![tool_call(
+                "t0",
+                "mcp__fixture__echo",
+                json!({ "text": big }),
+            )]),
+            ModelReply::Answer("done".into()),
+        ],
+    )
+    .await;
+    assert_eq!(case.observation()["truncated"], true);
+    let report = replay(&case.snapshot.run, &case.snapshot.events)
+        .expect("a large-result MCP run replays consistently");
+    assert_eq!(report.consistency, "consistent");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn mcp_missing_allowlisted_tool_fails_start() {
     // The fixture does not advertise `absent`, so discovery refuses the run.
     let fixture = Fixture::new();

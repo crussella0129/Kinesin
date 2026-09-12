@@ -635,16 +635,11 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     serde_json::from_value(finished.data["replay"]["observation"].clone())
                         .map_err(|_| error("replay_tool_input_missing", Some(finished.seq)))?;
                 let args = TypedToolArgs::parse(&call.arguments);
-                let tool = match call.name.as_str() {
-                    "read_file" => Some(ToolName::ReadFile),
-                    "list_files" => Some(ToolName::ListFiles),
-                    "search_files" => Some(ToolName::SearchFiles),
-                    "write_file" => Some(ToolName::WriteFile),
-                    "edit_file" => Some(ToolName::EditFile),
-                    "delete_file" => Some(ToolName::DeleteFile),
-                    "move_file" => Some(ToolName::MoveFile),
-                    _ => None,
-                };
+                // Mirror the live dispatch exactly (`ToolName::from_wire`, which
+                // recognizes every compiled tool including `run_command`). A
+                // narrower match here would classify a recorded run_command call as
+                // `unknown_tool` and diverge from the recorded `executed` dispatch.
+                let tool = ToolName::from_wire(&call.name);
                 // Recognize an MCP tool from the frozen discovered set — never a
                 // live reconnect — and mirror the live denial ladder so the recorded
                 // dispatch classification validates consistently.

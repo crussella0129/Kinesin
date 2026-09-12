@@ -24,6 +24,18 @@ use crate::tools::{ToolError, ToolResult, ToolStatus};
 /// answers fails run start with a defined error instead of hanging it.
 pub const MCP_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// An overall deadline for discovering all of a run's MCP servers, so run start
+/// cannot block for `server count × MCP_STARTUP_TIMEOUT` when several servers are
+/// slow — connects run concurrently under this single bound.
+pub const MCP_DISCOVERY_DEADLINE: Duration = Duration::from_secs(20);
+
+/// Caps on the untrusted, server-supplied tool metadata that is frozen into the
+/// run authority (and journaled) and embedded verbatim in every model request. A
+/// server cannot bloat the journal or push requests past the model's request
+/// budget with an oversized schema or description.
+pub const MAX_MCP_SCHEMA_BYTES: usize = 16 * 1024;
+pub const MAX_MCP_DESCRIPTION_BYTES: usize = 4 * 1024;
+
 /// One discovered MCP tool, frozen into the run authority. `input_schema` is the
 /// server-advertised JSON Schema, emitted verbatim to the model and used to
 /// validate a call's arguments; it is untrusted data, not authority.
@@ -91,27 +103,40 @@ impl McpClientPool {
         needed: &HashSet<String>,
         timeout: Duration,
     ) -> Result<Self, McpError> {
-        let mut clients = BTreeMap::new();
+        // Connect every needed server concurrently, so run-start latency is the
+        // slowest server's handshake, not the sum across servers.
+        let mut connects = Vec::with_capacity(needed.len());
         for id in needed {
             let server = servers
                 .iter()
                 .find(|s| &s.id == id)
                 .ok_or_else(|| McpError::new("mcp_server_undeclared", id))?;
-            let (exe, args) = server
-                .command
-                .split_first()
-                .ok_or_else(|| McpError::new("mcp_command_empty", id))?;
-            let mut command = tokio::process::Command::new(exe);
-            command.args(args);
-            let transport = TokioChildProcess::new(command)
-                .map_err(|_| McpError::new("mcp_spawn_failed", id))?;
-            let client = tokio::time::timeout(timeout, ().serve(transport))
-                .await
-                .map_err(|_| McpError::new("mcp_initialize_timeout", id))?
-                .map_err(|_| McpError::new("mcp_initialize_failed", id))?;
-            clients.insert(server.id.clone(), client);
+            connects.push(Self::connect_one(server, timeout));
         }
+        let clients = futures_util::future::try_join_all(connects)
+            .await?
+            .into_iter()
+            .collect();
         Ok(Self { clients })
+    }
+
+    async fn connect_one(
+        server: &McpServer,
+        timeout: Duration,
+    ) -> Result<(String, RunningService<RoleClient, ()>), McpError> {
+        let (exe, args) = server
+            .command
+            .split_first()
+            .ok_or_else(|| McpError::new("mcp_command_empty", &server.id))?;
+        let mut command = tokio::process::Command::new(exe);
+        command.args(args);
+        let transport = TokioChildProcess::new(command)
+            .map_err(|_| McpError::new("mcp_spawn_failed", &server.id))?;
+        let client = tokio::time::timeout(timeout, ().serve(transport))
+            .await
+            .map_err(|_| McpError::new("mcp_initialize_timeout", &server.id))?
+            .map_err(|_| McpError::new("mcp_initialize_failed", &server.id))?;
+        Ok((server.id.clone(), client))
     }
 
     /// Discover the schema of each allow-listed MCP tool, listing each server's
@@ -144,15 +169,28 @@ impl McpClientPool {
                     .iter()
                     .find(|candidate| candidate.name.as_ref() == tool)
                     .ok_or_else(|| McpError::new("mcp_tool_absent", server))?;
+                // Bound the untrusted schema/description before freezing it into
+                // the run and every request, so a server cannot bloat the journal
+                // or overflow the model's request budget.
+                let description = found
+                    .description
+                    .as_ref()
+                    .map(|d| d.as_ref().to_owned())
+                    .unwrap_or_default();
+                if description.len() > MAX_MCP_DESCRIPTION_BYTES {
+                    return Err(McpError::new("mcp_description_too_large", server));
+                }
+                let input_schema = Value::Object((*found.input_schema).clone());
+                if serde_json::to_vec(&input_schema).map_or(usize::MAX, |bytes| bytes.len())
+                    > MAX_MCP_SCHEMA_BYTES
+                {
+                    return Err(McpError::new("mcp_schema_too_large", server));
+                }
                 defs.push(McpToolDef {
                     server: server.to_owned(),
                     tool: tool.to_owned(),
-                    description: found
-                        .description
-                        .as_ref()
-                        .map(|d| d.as_ref().to_owned())
-                        .unwrap_or_default(),
-                    input_schema: Value::Object((*found.input_schema).clone()),
+                    description,
+                    input_schema,
                 });
             }
         }
@@ -209,6 +247,13 @@ impl McpClientPool {
 /// Map an MCP `CallToolResult` into a bounded, untrusted `ToolResult`. Text
 /// content is concatenated; a non-text block is noted by kind, not inlined. The
 /// body is the server's own text — data, never trusted — and mints no evidence.
+///
+/// The body is bounded exactly like a compiled tool's result: `max_bytes` is
+/// first clamped to `MAX_TOOL_BYTES`, and the JSON **envelope** overhead is
+/// reserved so the *encoded* `ToolResult` — not just the raw body — stays within
+/// the cap the replay validator enforces (`encoded().len() <= max.min(8192)`).
+/// Bounding only the raw body would let a large server result exceed that cap and
+/// break deterministic replay.
 fn map_result(result: CallToolResult, max_bytes: usize) -> ToolResult {
     let mut text = String::new();
     for block in &result.content {
@@ -224,40 +269,30 @@ fn map_result(result: CallToolResult, max_bytes: usize) -> ToolResult {
             _ => text.push_str("[non-text content]"),
         }
     }
-    let (body, truncated) = bound(text, max_bytes);
-    if result.is_error.unwrap_or(false) {
-        ToolResult {
-            status: ToolStatus::Error,
-            body,
-            truncated,
-            error: Some(ToolError {
-                code: "mcp_tool_error".into(),
-                message: "The MCP tool reported an error".into(),
-            }),
-            evidence_id: None,
-        }
-    } else {
-        ToolResult {
-            status: ToolStatus::Ok,
-            body,
-            truncated,
-            error: None,
-            evidence_id: None,
-        }
-    }
-}
-
-/// Truncate `text` to at most `max` bytes on a UTF-8 boundary, reporting whether
-/// it was shortened, so a large server payload cannot exceed the tool-result cap.
-fn bound(text: String, max: usize) -> (String, bool) {
-    if text.len() <= max {
-        return (text, false);
-    }
-    let mut end = max;
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    (text[..end].to_owned(), true)
+    let error = result.is_error.unwrap_or(false).then(|| ToolError {
+        code: "mcp_tool_error".into(),
+        message: "The MCP tool reported an error".into(),
+    });
+    let mut mapped = ToolResult {
+        status: if error.is_some() {
+            ToolStatus::Error
+        } else {
+            ToolStatus::Ok
+        },
+        body: String::new(),
+        truncated: false,
+        error,
+        evidence_id: None,
+    };
+    // Reserve the envelope (the encoded result with an empty body) so the body's
+    // *escaped* length fits the remaining budget, mirroring the compiled tools.
+    let limit = max_bytes.min(crate::tools::MAX_TOOL_BYTES);
+    let overhead = mapped.encoded().map(|e| e.len()).unwrap_or(limit);
+    let kept = crate::tools::escaped_prefix(&text, limit.saturating_sub(overhead));
+    mapped.truncated = kept.len() < text.len();
+    mapped.body = kept.to_owned();
+    debug_assert!(mapped.encoded().map(|e| e.len()).unwrap_or(usize::MAX) <= limit);
+    mapped
 }
 
 /// Validate a call's raw JSON arguments against an MCP tool's discovered input
@@ -311,14 +346,30 @@ mod tests {
     }
 
     #[test]
-    fn bound_truncates_on_a_char_boundary() {
-        let (kept, truncated) = bound("hello".into(), 32);
-        assert_eq!(kept, "hello");
-        assert!(!truncated);
-        // A multi-byte char straddling the cap is dropped whole, never split.
-        let (kept, truncated) = bound("aé".into(), 2);
-        assert_eq!(kept, "a");
-        assert!(truncated);
+    fn map_result_bounds_encoded_result_within_cap() {
+        use rmcp::model::TextContent;
+        // A large server result is bounded so the *encoded* ToolResult (body +
+        // JSON envelope) fits the cap the replay validator enforces — not just the
+        // raw body, which would overflow the envelope and break replay.
+        let big = "x".repeat(10_000);
+        let mapped = map_result(
+            CallToolResult::success(vec![ContentBlock::Text(TextContent::new(big))]),
+            256,
+        );
+        assert!(mapped.truncated);
+        let encoded = mapped.encoded().unwrap();
+        assert!(
+            encoded.len() <= 256,
+            "encoded result {} exceeds the cap",
+            encoded.len()
+        );
+        // A small result is kept whole and not marked truncated.
+        let small = map_result(
+            CallToolResult::success(vec![ContentBlock::Text(TextContent::new("hi"))]),
+            8192,
+        );
+        assert!(!small.truncated);
+        assert_eq!(small.body, "hi");
     }
 
     #[test]

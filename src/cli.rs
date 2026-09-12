@@ -420,42 +420,11 @@ impl Startup {
         self.job_continued(submission, None)
     }
 
-    /// If the job's allow-list names MCP tools, connect to their operator-declared
-    /// servers, discover the tools' schemas, freeze them into the authority, and
-    /// attach the live pool to the job's resources — all before submission, so the
-    /// journaled authority carries the frozen set and the run can dispatch. A run
-    /// with no MCP tools is returned unchanged, spawning nothing.
+    /// Discover and attach the run's MCP tools before submission. Delegates to the
+    /// shared `Job::discover_mcp` choke point so the CLI and the loopback service
+    /// prepare MCP identically.
     async fn prepare_mcp(&self, job: Job) -> Result<Job, String> {
-        let needed = crate::mcp::needed_servers(&job.authority.workspace().tools);
-        if needed.is_empty() {
-            return Ok(job);
-        }
-        let Job {
-            authority,
-            client,
-            resources,
-            display,
-        } = job;
-        let pool = crate::mcp::McpClientPool::connect(
-            self.config.mcp_servers(),
-            &needed,
-            crate::mcp::MCP_STARTUP_TIMEOUT,
-        )
-        .await
-        .map_err(|error| error.to_string())?;
-        let tools = pool
-            .discover(
-                &authority.workspace().tools,
-                crate::mcp::MCP_STARTUP_TIMEOUT,
-            )
-            .await
-            .map_err(|error| error.to_string())?;
-        Ok(Job {
-            authority: authority.with_mcp_tools(tools),
-            client,
-            resources: resources.with_mcp(std::sync::Arc::new(pool)),
-            display,
-        })
+        job.discover_mcp(&self.config).await
     }
 
     fn job_continued(
