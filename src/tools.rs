@@ -7,13 +7,13 @@ use std::time::Duration;
 
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
-use command_group::AsyncCommandGroup;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::{ToolName, validate_id, validate_relative_path};
+use crate::process::{OwnedProcess, scrub_environment};
 
 pub const MAX_TOOL_BYTES: usize = 8_192;
 pub const MAX_VISITED_ENTRIES: usize = 256;
@@ -1021,6 +1021,27 @@ impl CommandRunner {
         if let Err((code, message)) = validate_command(argv, &self.allowed) {
             return ToolResult::failure(ToolStatus::Denied, code, message);
         }
+        if max_output < 256 {
+            return ToolResult::failure(
+                ToolStatus::Error,
+                "invalid_limit",
+                "Tool result budget must be at least 256 bytes.",
+            );
+        }
+        if cancel.is_cancelled() {
+            return ToolResult::failure(
+                ToolStatus::Error,
+                "cancelled",
+                "Command cancelled before spawn.",
+            );
+        }
+        if timeout.is_zero() {
+            return ToolResult::failure(
+                ToolStatus::Error,
+                "timed_out",
+                "Command deadline elapsed before spawn.",
+            );
+        }
         let mut command = tokio::process::Command::new(&argv[0]);
         command
             .args(&argv[1..])
@@ -1031,16 +1052,7 @@ impl CommandRunner {
         // Scrub the environment: nothing the operator process holds reaches the
         // child. Restore only what a process needs to resolve and start — PATH
         // everywhere, plus the few variables a Windows child needs to run at all.
-        command.env_clear();
-        if let Some(path) = std::env::var_os("PATH") {
-            command.env("PATH", path);
-        }
-        #[cfg(windows)]
-        for key in ["SystemRoot", "SystemDrive", "PATHEXT", "TEMP", "TMP"] {
-            if let Some(value) = std::env::var_os(key) {
-                command.env(key, value);
-            }
-        }
+        scrub_environment(&mut command);
         // Defense in depth on Linux: confine the child's filesystem (Landlock)
         // and deny network syscalls (seccomp), applied in the child via pre_exec.
         // Mandatory — if the kernel cannot enforce it, refuse rather than run the
@@ -1049,7 +1061,7 @@ impl CommandRunner {
         if let Err((code, message)) = sandbox_linux::arm(&mut command, &self.root, &argv[0]) {
             return ToolResult::failure(ToolStatus::Error, code, message);
         }
-        let mut child = match command.group_spawn() {
+        let mut child = match OwnedProcess::spawn(&mut command) {
             Ok(child) => child,
             Err(_) => {
                 return ToolResult::failure(
@@ -1064,31 +1076,40 @@ impl CommandRunner {
         // drained (so a chatty child never blocks on a full pipe) but retains at
         // most `cap` bytes; the combined result is then held to `cap` as well.
         let cap = max_output.min(MAX_COMMAND_OUTPUT_BYTES);
-        let stdout = child.inner().stdout.take();
-        let stderr = child.inner().stderr.take();
-        let out = tokio::spawn(read_capped(stdout, cap));
-        let err = tokio::spawn(read_capped(stderr, cap));
+        let stdout = child.take_stdout();
+        let stderr = child.take_stderr();
+        let out = CommandReader(tokio::spawn(read_capped(stdout, cap)));
+        let err = CommandReader(tokio::spawn(read_capped(stderr, cap)));
         let outcome = tokio::select! {
             biased;
-            () = cancel.cancelled() => {
-                let _ = child.kill().await;
-                Err("cancelled")
-            }
-            () = tokio::time::sleep(timeout) => {
-                let _ = child.kill().await;
-                Err("timed_out")
-            }
-            status = child.wait() => Ok(status),
+            () = cancel.cancelled() => Err("cancelled"),
+            () = tokio::time::sleep(timeout) => Err("timed_out"),
+            status = child.wait_leader() => Ok(status),
         };
+        // A successful leader may have left descendants behind. Retain tree
+        // ownership and stop them before recording any terminal tool result.
+        if child.terminate_and_wait().await.is_err() {
+            return ToolResult::failure(
+                ToolStatus::Error,
+                "cleanup_failed",
+                "Command process cleanup failed; its outcome is not confirmed.",
+            );
+        }
         // After a kill the pipes close, so the readers reach EOF; collect what they
         // saw, bounded so a descendant that keeps a pipe open cannot hang the run.
-        let (raw_stdout, out_truncated) = join_reader(out).await;
-        let (raw_stderr, err_truncated) = join_reader(err).await;
+        let ((raw_stdout, out_truncated), (raw_stderr, err_truncated)) =
+            tokio::join!(join_reader(out), join_reader(err));
         let (stdout_bytes, stderr_bytes, combined_truncated) =
             combine_capped(raw_stdout, raw_stderr, cap);
         let truncated = out_truncated || err_truncated || combined_truncated;
         match outcome {
-            Ok(Ok(status)) => command_result(status, &stdout_bytes, &stderr_bytes, truncated),
+            Ok(Ok(status)) => command_result(
+                status,
+                &stdout_bytes,
+                &stderr_bytes,
+                truncated,
+                max_output.min(MAX_TOOL_BYTES),
+            ),
             Ok(Err(_)) => ToolResult::failure(
                 ToolStatus::Error,
                 "wait_failed",
@@ -1237,6 +1258,14 @@ mod sandbox_linux {
 /// Grace for the reader tasks to finish after the child is awaited or killed.
 const COMMAND_READER_GRACE: Duration = Duration::from_secs(5);
 
+struct CommandReader(tokio::task::JoinHandle<(Vec<u8>, bool)>);
+
+impl Drop for CommandReader {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// Read a child stream to EOF, retaining only the first `cap` bytes. Reading
 /// continues past the cap so the pipe drains and the child does not block; only
 /// the retained prefix is kept, and the boolean reports whether more existed.
@@ -1272,11 +1301,11 @@ async fn read_capped<R: tokio::io::AsyncRead + Unpin + Send + 'static>(
 
 /// Await a reader task under a bounded grace, aborting it if a lingering
 /// descendant keeps the pipe open so the command can never hang the run.
-async fn join_reader(mut handle: tokio::task::JoinHandle<(Vec<u8>, bool)>) -> (Vec<u8>, bool) {
-    match tokio::time::timeout(COMMAND_READER_GRACE, &mut handle).await {
+async fn join_reader(mut handle: CommandReader) -> (Vec<u8>, bool) {
+    match tokio::time::timeout(COMMAND_READER_GRACE, &mut handle.0).await {
         Ok(Ok(value)) => value,
         _ => {
-            handle.abort();
+            handle.0.abort();
             (Vec::new(), true)
         }
     }
@@ -1299,17 +1328,60 @@ fn combine_capped(stdout: Vec<u8>, stderr: Vec<u8>, cap: usize) -> (Vec<u8>, Vec
 /// Shape a completed command's exit status and captured output into a result. A
 /// command that ran and exited — even non-zero — is a completed tool call (`Ok`);
 /// its exit code rides in the body for the model to read.
-fn command_result(status: ExitStatus, stdout: &[u8], stderr: &[u8], truncated: bool) -> ToolResult {
-    let mut result = ToolResult::success(None);
-    result.truncated = truncated;
-    result.body = serde_json::to_string(&json!({
-        "exit_code": status.code(),
-        "success": status.success(),
-        "stdout": String::from_utf8_lossy(stdout),
-        "stderr": String::from_utf8_lossy(stderr),
-        "truncated": truncated,
-    }))
-    .expect("fixed command result shape");
+fn command_result(
+    status: ExitStatus,
+    stdout: &[u8],
+    stderr: &[u8],
+    truncated: bool,
+    limit: usize,
+) -> ToolResult {
+    let stdout = String::from_utf8_lossy(stdout);
+    let stderr = String::from_utf8_lossy(stderr);
+    let shape = |out: &str, err: &str, truncated| {
+        let mut result = ToolResult::success(None);
+        result.truncated = truncated;
+        result.body = serde_json::to_string(&json!({
+            "exit_code": status.code(), "success": status.success(),
+            "stdout": out, "stderr": err, "truncated": truncated,
+        }))
+        .expect("fixed command result shape");
+        result
+    };
+    let full = shape(&stdout, &stderr, truncated);
+    if full.encoded().expect("fixed result shape").len() <= limit {
+        return full;
+    }
+    // Measure the actual doubly encoded JSON envelope, including replacement
+    // characters for invalid UTF-8. Search prefixes on character boundaries;
+    // preserve the status fields and give stdout the first share of the budget.
+    let prefix = |text: &str, bytes: usize| {
+        let mut end = bytes.min(text.len());
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        end
+    };
+    let candidate = |bytes: usize| {
+        let out = prefix(&stdout, bytes);
+        let err = prefix(&stderr, bytes.saturating_sub(stdout.len()));
+        shape(&stdout[..out], &stderr[..err], true)
+    };
+    let (mut low, mut high) = (0, stdout.len() + stderr.len());
+    while low < high {
+        let middle = low + (high - low).div_ceil(2);
+        if candidate(middle)
+            .encoded()
+            .expect("fixed result shape")
+            .len()
+            <= limit
+        {
+            low = middle;
+        } else {
+            high = middle - 1;
+        }
+    }
+    let result = candidate(low);
+    debug_assert!(result.encoded().expect("fixed result shape").len() <= limit);
     result
 }
 

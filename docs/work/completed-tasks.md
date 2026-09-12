@@ -223,3 +223,10 @@
 - **Completed:** 2026-09-12T15:15:20.6988646Z
 - **Files modified:** src/model.rs, src/runner.rs, tests/model_protocol.rs, tests/runner_tools.rs, tests/cli_inspect.rs
 - **Commit:** `30c1c13b5e236dad18dfef1027295fc813d32db7`
+
+## T-004 (sprint 10)
+- **Description:** Introduced shared owned process groups/Windows Jobs with suspended assignment, awaited normal cleanup and synchronous drop fallback; commands now avoid pre-cancelled spawn and fit the full nested JSON envelope, including escaping and invalid UTF8. Twelve command tests passed on Windows, targeted rustfmt and clippy passed. Linux enforcement is verified under T-005; no Windows AppContainer claim.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:15:38.4038221Z
+- **Files modified:** src/process.rs, src/tools.rs, src/lib.rs, Cargo.toml, src/bin/cmd-fixture.rs, tests/command_tool.rs
+- **Commit:** PENDING

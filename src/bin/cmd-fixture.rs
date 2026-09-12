@@ -47,6 +47,30 @@ fn main() {
                 let _ = err.write_all(&vec![b'e'; n]);
                 let _ = err.flush();
             }
+            "--emit-invalid-utf8" => {
+                let n: usize = value(&mut i).parse().unwrap_or(0);
+                let mut out = std::io::stdout();
+                let _ = out.write_all(&vec![0xff; n]);
+                let _ = out.flush();
+            }
+            "--write-file" => {
+                let path = value(&mut i);
+                let content = value(&mut i);
+                if std::fs::write(path, content).is_err() {
+                    exit_code = 23;
+                }
+            }
+            "--wait-file" => {
+                let path = value(&mut i);
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                while std::fs::metadata(&path).is_err() {
+                    if std::time::Instant::now() >= deadline {
+                        exit_code = 24;
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
             "--print-cwd" => {
                 let cwd = std::env::current_dir().unwrap_or_default();
                 let mut out = std::io::stdout();
@@ -66,8 +90,8 @@ fn main() {
             }
             "--spawn-grandchild" => {
                 let marker = value(&mut i);
-                // Re-exec ourselves as a detached grandchild that keeps writing.
-                // group_spawn places it in the same group/job, so killing the
+                // Re-exec ourselves as a grandchild that keeps writing.
+                // It inherits the process group/job, so killing the
                 // group must stop it too.
                 let exe = std::env::current_exe().expect("current exe");
                 let _ = std::process::Command::new(exe)
