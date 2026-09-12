@@ -5,6 +5,14 @@ independent intent-only pass completed. Findings refer to the pre-repair dev hea
 
 ## INT-0008: partially executed, completion overclaimed
 
+The original research-survey criterion is satisfied by the retained
+[sprint 4 research report](../../s4/sprint-research/research-report.md): it
+compares llama.cpp RPC, vLLM, Tailscale, LiteLLM and Ollama, with alternatives
+and a recommended uniform backend seam. This criterion concerns the recorded
+survey, not proof that its selected confidentiality policy was correct. The
+address-privacy inference and deployment completion claim require the repairs
+below; preserving that history does not endorse those conclusions.
+
 The same `ModelConfig`/`Koil` client supports local and remote origins without
 runner changes (`src/config.rs:651`, `src/model.rs:403`, `src/runner.rs:237`).
 Request preparation keeps the destination separate from model decision bytes;

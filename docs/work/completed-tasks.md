@@ -279,3 +279,10 @@
 - **Completed:** 2026-09-12T16:05:30Z
 - **Files modified:** Cargo.toml, Cargo.lock, deny.toml, README.md, docs/SUMMARY.md, docs/cli.md, docs/configuration.md, docs/live-evaluation.md, docs/loop-and-tools.md, docs/security.md, docs/roadmap.md, docs/threat-model.md, docs/supply-chain.md, docs/intents/INT-0007-managed-model-process.md, docs/intents/INT-0026-session-context-continuity.md, docs/intents/INT-0027-encrypted-remote-deployment.md, docs/sprints/s10/sprint-tests/remote-deployment.md
 - **Commit:** `e84d1700ac44bc79ad06f750c4325edafbd129c7`
+
+## T-011 (sprint 10)
+- **Description:** Completed the integrated repair and verification boundary, including independent process-ID, private-verifier, MCP-frame and x32 review fixes. Windows local full suite passed 303 tests; canonical CI 34704378309 on f3e3d0ff066eccbccf0d8e4e592031d9715c2b05 passed Windows 303 and Ubuntu 315 tests, format/clippy and dependency gates. A diagnostic-only assertion change then passed its affected Windows test and full clippy. Final documentation review repaired 27 historical links, one omitted survey-criterion disposition and a stale deployment condition. Two real nighthawk checks and disconnected pure replay passed. Failed mounted-WSL/native-cache and disk-full attempts are retained as environment limits, not passes. Formal TEST critique, completion transitions and the one-PR checkpoint remain enforced by the following TEST/Loop phase gates and their report/meta evidence.
+- **Intent:** [INT-0021](../intents/INT-0021-harness-contract-review.md), [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T16:24:10.4892797Z
+- **Files modified:** tests/cli_inspect.rs; docs/sprints/s10/sprint-tests/{unit-tests,integration-tests,e2e-tests,integration-review}.md; docs/sprints/s10/sprint-research/transport-mcp-audit.md; docs/sprints/s1/sprint-research/research-report.md; docs/sprints/s2/sprint-research/research-report.md; docs/sprints/s3/sprint-research/research-report.md; docs/roadmap.md; docs/work ledgers. Source review fixes and sprint meta are recorded in preceding reachable commit f3e3d0f.
+- **Commit:** PENDING

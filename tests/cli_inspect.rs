@@ -748,7 +748,13 @@ temperature = 0.0
         .find(|event| event.kind == "tool_finished" && event.data["tool"] == "run_command")
         .expect("the command effect is journalled");
     assert_eq!(finished.data["dispatch"], "executed");
-    assert_eq!(finished.data["classification"], "ok");
+    assert_eq!(
+        finished.data["classification"],
+        "ok",
+        "command effect failed: {}; CLI stderr: {}",
+        finished.data,
+        String::from_utf8_lossy(&run.stderr)
+    );
     let observation: Value = serde_json::from_str(
         finished.data["replay"]["observation"]["body"]
             .as_str()

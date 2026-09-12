@@ -17,15 +17,15 @@ contracts. Non-goals: unbounded history; a strategy that mutates evidence.
 ## 2. Existing Code Survey
 | File | Relevance | Notes |
 |------|-----------|-------|
-| [src/core.rs](src/core.rs) | high | `RunState { messages: Vec<Message>, … }` (l.144), the pure transition owner. A group is an assistant `tool_calls` message (l.352) followed by ordered `Role::Tool` results (l.380). Compaction belongs here so it is pure and deterministic. |
-| [src/runner.rs](src/runner.rs) | high | Enforces the limit at three sites (l.691, l.861, l.1147), each `stop(Stopped, "history_bytes_limit")`; `history_exceeds` (l.1160) serializes and compares. These stops become compaction calls. |
-| [src/replay.rs](src/replay.rs) | high | Mirrors the same check and stop (l.587, l.742, l.762) with its own `history_exceeds` (l.887). Replay recomputes state, so it must invoke the identical pure compaction or its fingerprints diverge. |
-| [src/model.rs](src/model.rs) | high | `conversation_json` (l.98) and `prepare` (l.131) build the request whose `sha256` is the replay fingerprint; the compacted message list flows through here unchanged. |
-| [src/config.rs](src/config.rs) | high | `max_history_bytes` (l.187, default 65536). A compaction policy + ceiling (floor of preserved turns / max compactions) is added here. |
-| [src/policy.rs](src/policy.rs) | medium | Rejects an initial conversation already over budget (l.373); compaction never applies to the initial two messages. |
-| [src/verification.rs](src/verification.rs) | medium | Resolves cited `evidence_id`s for checked acceptance; a dropped evidence-bearing result would change a verdict, so these results must be preserved. |
-| [tests/runner_journal.rs](tests/runner_journal.rs) | medium | Where the boundary/preserved-group/checked-run integration tests will live. |
-| [tests/replay.rs](tests/replay.rs) | medium | Must still pass unchanged, proving replay reproduces a compacted run's fingerprints. |
+| [src/core.rs](../../../../src/core.rs) | high | `RunState { messages: Vec<Message>, … }` (l.144), the pure transition owner. A group is an assistant `tool_calls` message (l.352) followed by ordered `Role::Tool` results (l.380). Compaction belongs here so it is pure and deterministic. |
+| [src/runner.rs](../../../../src/runner.rs) | high | Enforces the limit at three sites (l.691, l.861, l.1147), each `stop(Stopped, "history_bytes_limit")`; `history_exceeds` (l.1160) serializes and compares. These stops become compaction calls. |
+| [src/replay.rs](../../../../src/replay.rs) | high | Mirrors the same check and stop (l.587, l.742, l.762) with its own `history_exceeds` (l.887). Replay recomputes state, so it must invoke the identical pure compaction or its fingerprints diverge. |
+| [src/model.rs](../../../../src/model.rs) | high | `conversation_json` (l.98) and `prepare` (l.131) build the request whose `sha256` is the replay fingerprint; the compacted message list flows through here unchanged. |
+| [src/config.rs](../../../../src/config.rs) | high | `max_history_bytes` (l.187, default 65536). A compaction policy + ceiling (floor of preserved turns / max compactions) is added here. |
+| [src/policy.rs](../../../../src/policy.rs) | medium | Rejects an initial conversation already over budget (l.373); compaction never applies to the initial two messages. |
+| [src/verification.rs](../../../../src/verification.rs) | medium | Resolves cited `evidence_id`s for checked acceptance; a dropped evidence-bearing result would change a verdict, so these results must be preserved. |
+| [tests/runner_journal.rs](../../../../tests/runner_journal.rs) | medium | Where the boundary/preserved-group/checked-run integration tests will live. |
+| [tests/replay.rs](../../../../tests/replay.rs) | medium | Must still pass unchanged, proving replay reproduces a compacted run's fingerprints. |
 
 ## 3. External Sources
 - [Kinesin paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) — records the file-pointer (programmatic tool-result) alternative and why it was rejected for weak local backbones; supports a drop/summary strategy over pointers.

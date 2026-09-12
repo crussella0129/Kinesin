@@ -22,16 +22,16 @@ turns (that would break immutability).
 ## 2. Existing Code Survey
 | File | Relevance | Notes |
 |------|-----------|-------|
-| [src/model.rs](src/model.rs) | high | `prepare` (l.167) builds the request body; it sets no `cache_prompt`. This is where the flag is added and where the request `sha256` (replay fingerprint) is computed. |
-| [src/runner.rs](src/runner.rs) | high | Calls `model::prepare(state.messages(), …)` each model turn; the conversation grows by appending, so consecutive requests share a growing prefix — the within-run reuse opportunity. Compaction (`compact_state`) mutates the prefix, invalidating cache beyond the drop point. |
-| [src/dispatch.rs](src/dispatch.rs) | high | `ModelDispatcher::acquire` (l.86) grants a per-backend-origin permit but tracks no llama-server slot id, so there is no run→slot affinity today; the server's auto prefix-match is what reuses a slot. |
-| [src/cli.rs](src/cli.rs) | medium | `run_session` (l.1106): each session turn is a fresh Freeform run with `continues` (the prior answer, framed). The only cross-turn stable prefix is the system-instructions message. |
-| [src/core.rs](src/core.rs) | medium | `RunState.messages` is the growing conversation; the prefix-extension property (turn K messages are a prefix of turn K+1) is what makes reuse possible, and drop-oldest compaction is the one thing that breaks it. |
-| [src/config.rs](src/config.rs) | medium | `ModelConfig` (l.146): `base_url`, `verified_slots`; a `cache_prompt` toggle (default on) would live here. |
-| [src/replay.rs](src/replay.rs) | medium | Recomputes `prepare` and compares `request_sha256`; adding `cache_prompt` deterministically shifts the fingerprint, so replay stays consistent for new captures but the recorded live fixtures shift. |
-| [tests/live_evaluation.rs](tests/live_evaluation.rs) | high | Holds `#[ignore]`d live tests against a manually started `127.0.0.1:8080` model (`pinned_live_task_cards`, l.437). The prompt-eval-time measurement belongs here. |
-| [tests/model_protocol.rs](tests/model_protocol.rs) | medium | Asserts exact prepared request bytes; a `cache_prompt` field shifts those assertions. |
-| [tests/fixtures/live/*.request.json](tests/fixtures/live) | medium | `context-boundary`, `context-overflow`, `greeting-with-tools` request fixtures encode expected bytes; they gain `cache_prompt` (as the stream fixtures did in sprint 0). |
+| [src/model.rs](../../../../src/model.rs) | high | `prepare` (l.167) builds the request body; it sets no `cache_prompt`. This is where the flag is added and where the request `sha256` (replay fingerprint) is computed. |
+| [src/runner.rs](../../../../src/runner.rs) | high | Calls `model::prepare(state.messages(), …)` each model turn; the conversation grows by appending, so consecutive requests share a growing prefix — the within-run reuse opportunity. Compaction (`compact_state`) mutates the prefix, invalidating cache beyond the drop point. |
+| [src/dispatch.rs](../../../../src/dispatch.rs) | high | `ModelDispatcher::acquire` (l.86) grants a per-backend-origin permit but tracks no llama-server slot id, so there is no run→slot affinity today; the server's auto prefix-match is what reuses a slot. |
+| [src/cli.rs](../../../../src/cli.rs) | medium | `run_session` (l.1106): each session turn is a fresh Freeform run with `continues` (the prior answer, framed). The only cross-turn stable prefix is the system-instructions message. |
+| [src/core.rs](../../../../src/core.rs) | medium | `RunState.messages` is the growing conversation; the prefix-extension property (turn K messages are a prefix of turn K+1) is what makes reuse possible, and drop-oldest compaction is the one thing that breaks it. |
+| [src/config.rs](../../../../src/config.rs) | medium | `ModelConfig` (l.146): `base_url`, `verified_slots`; a `cache_prompt` toggle (default on) would live here. |
+| [src/replay.rs](../../../../src/replay.rs) | medium | Recomputes `prepare` and compares `request_sha256`; adding `cache_prompt` deterministically shifts the fingerprint, so replay stays consistent for new captures but the recorded live fixtures shift. |
+| [tests/live_evaluation.rs](../../../../tests/live_evaluation.rs) | high | Holds `#[ignore]`d live tests against a manually started `127.0.0.1:8080` model (`pinned_live_task_cards`, l.437). The prompt-eval-time measurement belongs here. |
+| [tests/model_protocol.rs](../../../../tests/model_protocol.rs) | medium | Asserts exact prepared request bytes; a `cache_prompt` field shifts those assertions. |
+| [tests/fixtures/live/*.request.json](../../../../tests/fixtures/live) | medium | `context-boundary`, `context-overflow`, `greeting-with-tools` request fixtures encode expected bytes; they gain `cache_prompt` (as the stream fixtures did in sprint 0). |
 
 ## 3. External Sources
 - [llama.cpp server README](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) — `cache_prompt` (reuse the KV cache of a matching prefix; default varies by version), automatic slot selection by longest common prefix, and the `timings.prompt_ms`/`prompt_n` fields used to measure prompt-evaluation time.

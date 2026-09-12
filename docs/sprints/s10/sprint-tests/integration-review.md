@@ -22,3 +22,29 @@ Linux metadata/same-user process limitations, trusted MCP executable non-escape,
 Windows AppContainer absence, source-replacement/lease semantics, comprehensive
 descriptor/credential inventory, and the proposed continuity/deployment work.
 Final whole-suite, CI and formal TEST-critic evidence belong in the test report.
+
+The final documentation audit found 27 historical research links that still
+used repository-root paths relative to their document directory. Only their
+destinations were corrected. It also added the omitted explicit disposition for
+INT-0008's historical research-survey criterion and replaced a stale roadmap
+condition after nighthawk became available. All original criteria, 27 chapters,
+20 OWASP risk rows and native/build ownership/cadence were independently checked;
+proposed capabilities retain their limits.
+
+A full WSL run with command fixtures built on `/mnt/c` failed the CLI command
+observation: the correctly resolved ELF returned EACCES during confined spawn,
+although it executed outside confinement. The diagnostic case exited 101 and
+was not accepted as a passing Linux run. The test assertion now includes its
+synthetic journal observation and CLI stderr. The final verification uses a
+persistent Linux-native target directory and records explicit command status
+files, while retaining all mandatory sandbox checks. That attempt failed during
+compilation with SIGBUS/EIO (exit 135) after host storage exhaustion; no tests ran
+and clippy was not reached. No runtime denial was relaxed to accommodate the
+Windows-mounted build directory, and no WSL-wide restart or recovery was performed.
+The successful native Ubuntu CI run supplies complete Linux verification.
+
+The host Windows assertion-only rebuild initially reported disk-full error 112.
+Removing only the duplicate sprint-created `target/linux-s10` directory freed
+approximately 5 GiB; the affected test and all-target/all-feature clippy then
+passed. The full Windows suite had already passed locally and in CI. Diagnostic
+logs remain locally ignored; none of these failed attempts are counted as passes.

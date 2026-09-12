@@ -108,8 +108,8 @@ current revision. Their earlier roadmap and assurance evidence stays linked.
    high-impact autonomous tools. Fencing and explicit approval address different
    failure modes and need separate tests.
 4. Complete INT-0023/0025's data/credential lifecycle and INT-0016 observability.
-   Run INT-0027 when a second model host is provisioned; do not block honest
-   local progress by counting absent deployment evidence as passed.
+   Extend INT-0027 from the verified nighthawk configuration to its remaining
+   deployment and capacity criteria; preserve the scope of the existing proof.
 5. Add skills (INT-0006), managed inference (INT-0007) and remote MCP (INT-0020)
    as measured workloads justify them, preserving their prerequisite boundaries.
 6. Add signed journal authenticity (INT-0014) with an explicit deployment-key
