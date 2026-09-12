@@ -202,3 +202,10 @@
 - **Completed:** 2026-09-12T05:20:50Z
 - **Files modified:** src/replay.rs
 - **Commit:** `4c9b2c2630da64049480034186870930b09f40d9`
+
+## T-007 (sprint 9)
+- **Description:** in-repo fixture MCP server + integration tests. Added `src/bin/mcp-fixture.rs` — a stdio MCP server built on the same rmcp SDK (guaranteeing the handshake) exposing `echo` (verbatim) and `poison` (prompt-injection text in both its description and result), plus a `--hang` mode for the discovery-timeout test. Enabled rmcp `server`/`transport-io`/`macros` features and named `schemars` directly (all already in the tree via rmcp — no new crates; `cargo deny`/`audit` stay green: 262 deps, 0 vulns). `tests/mcp.rs` drives real runs against the fixture via the scripted-model harness: `mcp_approved_call_bounded_no_evidence`, `mcp_result_truncated_at_byte_cap`, `mcp_unapproved_call_denied`, `mcp_poison_description_and_result_are_data` (injection is data — no owned.txt, allow-list unchanged), `mcp_missing_allowlisted_tool_fails_start`, `mcp_discovery_timeout_fails_start` (C-003), and `e2e_mcp_echo_run_and_replay` (replay reproduces consistent without reconnecting — T-006).
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T05:41:45Z
+- **Files modified:** Cargo.toml, Cargo.lock, src/bin/mcp-fixture.rs, tests/mcp.rs
+- **Commit:** PENDING
