@@ -174,3 +174,10 @@
 - **Completed:** 2026-09-12T00:52:00Z
 - **Files modified:** src/config.rs
 - **Commit:** `166ecdd482bc071929f27a9858e76f5b4da54700`
+
+## T-003 (sprint 9)
+- **Description:** added the `mcp` module (`src/mcp.rs`): `McpToolDef { server, tool, description, input_schema }` (the frozen tool record), `McpClientPool` with `connect` (spawn+`initialize` each needed operator-declared server over the official rmcp v3.3.0 `TokioChildProcess` stdio transport, bounded by `MCP_STARTUP_TIMEOUT`) and `discover` (list each server's tools once, extract the allow-listed tools' schemas, error on an absent tool or a list/connect timeout — C-003), plus `needed_servers`. Froze the discovered set into the run: `mcp_tools: Vec<McpToolDef>` on both `RunAuthority` (with `mcp_tools()`/`with_mcp_tools`) and `FrozenContext`, each `#[serde(default, skip_serializing_if = "Vec::is_empty")]` so a non-MCP run's frozen bytes and pre-feature journals stay byte-identical (replay parity). Added a per-run `mcp` pool field + `with_mcp` builder to `RunResources`, `Config::mcp_servers()`, and the CLI discovery-before-submit step (`Startup::prepare_mcp`) wired into the single, interactive-session, and batch run paths. Test `non_mcp_authority_omits_mcp_tools_while_added_ones_freeze`; non-MCP replay parity confirmed by the full replay suite staying green.
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T01:08:08Z
+- **Files modified:** Cargo.toml, Cargo.lock, src/mcp.rs, src/lib.rs, src/policy.rs, src/replay.rs, src/runner.rs, src/config.rs, src/cli.rs
+- **Commit:** PENDING

@@ -190,6 +190,11 @@ struct FrozenContext {
     prior: Option<crate::policy::PriorAnswer>,
     submission_sha256: String,
     input_sources: Vec<InputSource>,
+    /// Mirrors `RunAuthority.mcp_tools`; `skip_serializing_if` keeps a non-MCP
+    /// run's frozen bytes (and pre-feature journals) byte-identical, so the
+    /// `json!(frozen) == authority` replay-parity check still holds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    mcp_tools: Vec<crate::mcp::McpToolDef>,
 }
 impl AssessmentContext for FrozenContext {
     fn owner(&self) -> &str {

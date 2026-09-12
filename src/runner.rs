@@ -34,6 +34,10 @@ pub struct RunResources {
     /// Present only for workspaces whose operator granted `run_command` with an
     /// allow-list, so a run without that grant has no command runner to reach.
     command_runners: Arc<BTreeMap<String, Arc<CommandRunner>>>,
+    /// Present only for a run that allow-lists MCP tools: the live stdio sessions
+    /// discovered and opened at run start, held for the run. Per-run, not shared
+    /// across the config's models like the other backends.
+    mcp: Option<Arc<crate::mcp::McpClientPool>>,
     dispatcher: Option<Arc<ModelDispatcher>>,
     pub concurrency: ConcurrencyConfig,
 }
@@ -48,9 +52,17 @@ impl RunResources {
             workspaces: Arc::new(BTreeMap::new()),
             writers: Arc::new(BTreeMap::new()),
             command_runners: Arc::new(BTreeMap::new()),
+            mcp: None,
             dispatcher: None,
             concurrency,
         }
+    }
+
+    /// Attach a per-run MCP client pool (trusted startup / run preparation only).
+    /// The pool is discovered and opened before admission and lives for the run.
+    pub fn with_mcp(mut self, pool: Arc<crate::mcp::McpClientPool>) -> Self {
+        self.mcp = Some(pool);
+        self
     }
 
     /// Trusted startup only. Run inputs can select aliases, never open roots.
@@ -164,6 +176,7 @@ impl RunResources {
                         workspaces: workspaces.clone(),
                         writers: writers.clone(),
                         command_runners: command_runners.clone(),
+                        mcp: None,
                         dispatcher: Some(dispatcher.clone()),
                         concurrency: concurrency.clone(),
                     },

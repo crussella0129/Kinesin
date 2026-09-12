@@ -180,6 +180,12 @@ pub struct RunAuthority {
     prior: Option<PriorAnswer>,
     submission_sha256: String,
     input_sources: Vec<InputSource>,
+    /// The MCP tools discovered at run start for this run's allow-listed MCP
+    /// entries, frozen so the model request and replay reproduce identically
+    /// without reconnecting. Empty (and omitted from the serialized authority)
+    /// for a run with no MCP tools, so a non-MCP run's frozen bytes are unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    mcp_tools: Vec<crate::mcp::McpToolDef>,
 }
 
 impl RunAuthority {
@@ -231,6 +237,17 @@ impl RunAuthority {
     }
     pub fn allows_tool(&self, tool: &ToolRef) -> bool {
         self.workspace.tools.contains(tool)
+    }
+    /// The MCP tools discovered and frozen for this run.
+    pub fn mcp_tools(&self) -> &[crate::mcp::McpToolDef] {
+        &self.mcp_tools
+    }
+    /// Attach the tools discovered at run start, before the authority is frozen
+    /// into the journal. Called once by the runner after discovery; the pure
+    /// authorize path never performs I/O, so the frozen set is set here.
+    pub fn with_mcp_tools(mut self, tools: Vec<crate::mcp::McpToolDef>) -> Self {
+        self.mcp_tools = tools;
+        self
     }
 }
 
@@ -426,6 +443,7 @@ pub(crate) fn authorize_with_prior(
         prior,
         submission_sha256,
         input_sources,
+        mcp_tools: Vec::new(),
     })
 }
 
@@ -666,6 +684,28 @@ mod tests {
             limits: None,
             capture: None,
         }
+    }
+
+    #[test]
+    fn non_mcp_authority_omits_mcp_tools_while_added_ones_freeze() {
+        let fixture = Fixture::new();
+        let config = fixture.parse(BASE).unwrap();
+        let authority = config.authorize_local(freeform()).unwrap();
+        // A run with no MCP tools serializes with no `mcp_tools` key, so its
+        // frozen bytes (and any pre-feature journal) are byte-identical — the
+        // replay-parity equality still holds.
+        let bare = serde_json::to_value(&authority).unwrap();
+        assert!(bare.get("mcp_tools").is_none());
+        // Discovery attaches the frozen set, which then serializes.
+        let frozen = authority.with_mcp_tools(vec![crate::mcp::McpToolDef {
+            server: "docs".into(),
+            tool: "grep".into(),
+            description: "search the docs".into(),
+            input_schema: serde_json::json!({"type":"object"}),
+        }]);
+        assert_eq!(frozen.mcp_tools().len(), 1);
+        let json = serde_json::to_value(&frozen).unwrap();
+        assert_eq!(json["mcp_tools"][0]["tool"], "grep");
     }
 
     #[test]

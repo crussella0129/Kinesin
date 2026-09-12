@@ -420,6 +420,44 @@ impl Startup {
         self.job_continued(submission, None)
     }
 
+    /// If the job's allow-list names MCP tools, connect to their operator-declared
+    /// servers, discover the tools' schemas, freeze them into the authority, and
+    /// attach the live pool to the job's resources — all before submission, so the
+    /// journaled authority carries the frozen set and the run can dispatch. A run
+    /// with no MCP tools is returned unchanged, spawning nothing.
+    async fn prepare_mcp(&self, job: Job) -> Result<Job, String> {
+        let needed = crate::mcp::needed_servers(&job.authority.workspace().tools);
+        if needed.is_empty() {
+            return Ok(job);
+        }
+        let Job {
+            authority,
+            client,
+            resources,
+            display,
+        } = job;
+        let pool = crate::mcp::McpClientPool::connect(
+            self.config.mcp_servers(),
+            &needed,
+            crate::mcp::MCP_STARTUP_TIMEOUT,
+        )
+        .await
+        .map_err(|error| error.to_string())?;
+        let tools = pool
+            .discover(
+                &authority.workspace().tools,
+                crate::mcp::MCP_STARTUP_TIMEOUT,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        Ok(Job {
+            authority: authority.with_mcp_tools(tools),
+            client,
+            resources: resources.with_mcp(std::sync::Arc::new(pool)),
+            display,
+        })
+    }
+
     fn job_continued(
         &self,
         submission: Submission,
@@ -662,6 +700,7 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
                 (Some((mut submission, allow_unchecked)), None) => {
                     let prior = resolve_continuation(&storage.client(), &mut submission).await?;
                     let job = startup.job_continued(submission, prior)?;
+                    let job = startup.prepare_mcp(job).await?;
                     run_single(&handle, job, allow_unchecked).await
                 }
                 (None, Some(reader)) => run_batch(&handle, &startup, reader, &interrupted).await,
@@ -1152,6 +1191,17 @@ async fn run_session(
                 continue;
             }
         };
+        let job = match startup.prepare_mcp(job).await {
+            Ok(job) => job,
+            Err(error) => {
+                emit(OutputLine::Error {
+                    index: None,
+                    reason: error,
+                })
+                .await?;
+                continue;
+            }
+        };
         let run_id = job.authority.run_id().to_owned();
         code = run_single(handle, job, true).await?;
         previous = Some(run_id);
@@ -1249,6 +1299,21 @@ async fn run_batch(
             parsed.and_then(|item| Ok((startup.job(item.submission)?, item.allow_unchecked)));
         let (job, allow_unchecked) = match prepared {
             Ok(prepared) => prepared,
+            Err(reason) => {
+                aggregate = aggregate_exit(aggregate, 1);
+                if let Err(error) = emit(OutputLine::Error {
+                    index: Some(index),
+                    reason,
+                })
+                .await
+                {
+                    output_failed = Some(error);
+                }
+                continue;
+            }
+        };
+        let job = match startup.prepare_mcp(job).await {
+            Ok(job) => job,
             Err(reason) => {
                 aggregate = aggregate_exit(aggregate, 1);
                 if let Err(error) = emit(OutputLine::Error {

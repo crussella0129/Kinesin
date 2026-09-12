@@ -878,6 +878,10 @@ impl Config {
     pub fn workspaces(&self) -> &[WorkspaceConfig] {
         &self.workspaces
     }
+    /// The operator-declared MCP servers; empty when none are configured.
+    pub fn mcp_servers(&self) -> &[McpServer] {
+        self.mcp.as_ref().map_or(&[], |mcp| &mcp.servers)
+    }
     pub fn tasks(&self) -> &[TaskProfile] {
         &self.tasks
     }
