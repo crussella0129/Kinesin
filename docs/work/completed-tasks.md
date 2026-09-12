@@ -258,3 +258,10 @@
 - **Completed:** 2026-09-12T15:45:43Z
 - **Files modified:** src/tools.rs
 - **Commit:** `2eda32dfac8407e26bd526b7d817b3b86996cbd4`
+
+## T-008 (sprint 10)
+- **Description:** Enforced HTTPS outside loopback with separate public opt-in (shared config source committed in T-005, HTTPS fixture in T-003), documented authenticated-loopback forwarding and replaced the same-host LAN probe with actual checked two-host/replay validation. Windows config 27 and model protocol 17 tests passed; live checked nighthawk run and corrected actual-session cache observation passed on capture v3, followed by offline live-evaluation 2 tests and affected clippy/rustfmt. Measured reuse in both extension modes, with no causal flag-speedup claim. Exact deployment, hashes and observations are in remote-deployment.md.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:49:05Z
+- **Files modified:** tests/live_evaluation.rs, docs/configuration.md, docs/integration.md, docs/sprints/s10/sprint-tests/remote-deployment.md; shared prerequisites src/config.rs and tests/runner_tools.rs recorded in T-005/T-003
+- **Commit:** PENDING

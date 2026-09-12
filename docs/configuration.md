@@ -11,6 +11,25 @@ All filesystem paths are relative to the configuration file's directory unless
 absolute. Workspace roots and the private state directory are disjoint. Model
 destinations are approved profiles, not URLs chosen by prompts.
 
+Only loopback model origins may use HTTP. Every non-loopback origin requires
+HTTPS, including RFC1918, CGNAT/Tailscale and IPv6 unique-local addresses. Private
+address classification does not establish encryption. Public destinations also
+require the separate `allow_public_endpoints = true` opt-in. IPv4-mapped IPv6
+addresses follow the embedded IPv4 classification. Redirects and ambient HTTP
+proxies remain disabled.
+
+An operator-managed, authenticated SSH tunnel may expose a remote loopback model
+server at a local loopback URL. In that setup SSH supplies network encryption;
+Kinesin cannot infer tunnel identity or deployment confinement from the URL.
+Record the actual peer, listener bindings and rejected direct access when
+validating a deployment. See [remote integration](integration.md#add-a-machine-uniform-local-and-remote-backends).
+
+`cache_prompt = true` emits the llama.cpp cache request extension. Setting it
+to false omits the field for server compatibility; it does not force the server
+to disable caching. The pinned b6500 server may reuse the prefix in either
+case. Measure actual evaluated/cached tokens before attributing a timing change
+to that flag.
+
 The initial instruction source remains the explicit top-level `instructions`
 value. Do not automatically discover or execute instructions from ancestor
 directories, `AGENTS.md`, or `CONTEXT.md` inside a tool workspace. Those files

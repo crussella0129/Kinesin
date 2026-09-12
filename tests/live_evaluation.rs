@@ -326,8 +326,11 @@ async fn evaluate(card: &Card, root: &Path, live: bool) -> Value {
             assert_eq!(delivered, observation["data"]["replay"]["observation"]);
         }
     }
+    let replay_consistency = kinesin::replay::replay(&result, &events)
+        .map(|report| report.consistency)
+        .unwrap_or_else(|error| error.to_string());
     json!({
-        "card":card.id, "live":live, "run_id":result.run_id,
+        "card":card.id, "live":live, "run_id":result.run_id, "replay_consistency": replay_consistency,
         "prompt":authority.prompt(), "operator_instructions":authority.instructions(), "config_sha256":sha256(text.as_bytes()),
         "sources":card.files.iter().map(|(path,body)|json!({"path":path,"body":body,"sha256":sha256(body.as_bytes())})).collect::<Vec<_>>(),
         "request_measurements":events.iter().filter(|e|e.kind=="model_planned").map(|e|e.data.clone()).collect::<Vec<_>>(),
@@ -706,9 +709,19 @@ async fn actual_session_cache_request_contract() {
 async fn actual_session_cache_timing_measurement() {
     let machine =
         std::env::var("KINESIN_BENCH_MACHINE").expect("record machine/hardware provenance");
+    // false omits the extension; it does not send cache_prompt:false. Warm the
+    // server and alternate order, then report observed reuse without inventing
+    // an uncached control or interpreting a cold-start outlier as flag benefit.
+    for enabled in [false, true] {
+        actual_cache_session(enabled, true).await;
+    }
     let mut samples = Vec::new();
-    for _ in 0..3 {
-        for enabled in [false, true] {
+    for pair in 0..6 {
+        for enabled in if pair % 2 == 0 {
+            [false, true]
+        } else {
+            [true, false]
+        } {
             samples.push(actual_cache_session(enabled, true).await);
         }
     }
@@ -724,72 +737,66 @@ async fn actual_session_cache_timing_measurement() {
             .collect();
         timings.iter().sum::<f64>() / timings.len() as f64
     };
-    let uncached_ms = mean(false);
-    let cached_ms = mean(true);
+    let omitted_ms = mean(false);
+    let enabled_ms = mean(true);
+    let reuse_observed_in_both_modes = samples.iter().all(|sample| {
+        let observation = &sample["observations"][1];
+        observation["timings"]["cache_n"]
+            .as_u64()
+            .is_some_and(|cached| cached > 0)
+            && observation["timings"]["prompt_n"]
+                .as_u64()
+                .zip(observation["usage"]["prompt_tokens"].as_u64())
+                .is_some_and(|(evaluated, total)| evaluated < total)
+    });
     let report = json!({"machine": machine, "os": std::env::consts::OS,
         "arch": std::env::consts::ARCH, "samples": samples,
-        "uncached_second_turn_mean_ms": uncached_ms, "cached_second_turn_mean_ms": cached_ms,
-        "scope": "Shared system prefix in actual sessions; full-history and concurrent-slot guarantees remain unverified"});
+        "omitted_flag_second_turn_mean_ms": omitted_ms, "enabled_flag_second_turn_mean_ms": enabled_ms,
+        "reuse_observed_in_both_modes": reuse_observed_in_both_modes,
+        "control": "Field omitted versus explicitly true; no explicit cache-disabled control",
+        "scope": "Actual shared-prefix reuse; no causal flag speedup, full-history or concurrent-slot guarantee"});
     let path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/cache-session-measurement.json");
     std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
     eprintln!("Actual session cache measurement: {}", path.display());
     assert!(
-        cached_ms < uncached_ms,
-        "measured workload did not establish a prompt-evaluation reduction"
+        reuse_observed_in_both_modes,
+        "pinned backend did not report shared-prefix reuse in both measured modes"
     );
 }
 
-/// INT-0008 (T-002) headline (live, manual): the same pinned `llama-server`,
-/// reached over the host's real non-loopback address (LAN or tailnet), answers
-/// identically to the loopback baseline — proving "attach to another machine"
-/// is the same operation as "attach to localhost." That a Kinesin config admits
-/// the non-loopback (private/overlay) address is covered by the config unit
-/// tests (`origin_accepts_private_and_overlay_http`); this records reachability
-/// and answer-equivalence over that address. Run manually; not a CI gate.
+/// Run actual checked tools and replay against an operator-verified remote
+/// deployment forwarded to localhost:8080. The companion provenance is supplied
+/// by host/listener/tunnel checks; this test alone cannot prove network topology.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the pinned local model reachable at both 127.0.0.1:8080 and the host's LAN/tailnet address"]
-async fn attach_to_non_loopback_backend() {
-    // Discover the host's primary non-loopback IPv4 without sending anything.
-    let probe = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
-    probe.connect("8.8.8.8:80").unwrap();
-    let ip = probe.local_addr().unwrap().ip();
-    assert!(
-        !ip.is_loopback(),
-        "no non-loopback interface available to test"
+#[ignore = "requires an authenticated remote SSH forward and KINESIN_REMOTE_PROVENANCE JSON path"]
+async fn secure_two_host_model_serving() {
+    let provenance_path = std::env::var("KINESIN_REMOTE_PROVENANCE")
+        .expect("record independent host, listener and authenticated tunnel checks");
+    let provenance: Value =
+        serde_json::from_slice(&std::fs::read(provenance_path).unwrap()).unwrap();
+    assert_eq!(provenance["transport"], "tailscale-ssh-local-forward");
+    assert_eq!(provenance["local_endpoint"], "http://127.0.0.1:8080");
+    assert_eq!(provenance["remote_bind"], "127.0.0.1:18080");
+    assert_eq!(provenance["direct_model_access_rejected"], true);
+    assert_ne!(provenance["client_host"], provenance["server_host"]);
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("validation-output")
+        .join(format!("secure-two-host-{}", uuid::Uuid::new_v4()));
+    let result = evaluate(&cards().remove(0), &root, true).await;
+    let report = json!({"provenance": provenance, "checked_run": result,
+        "scope": "One pinned two-host deployment over authenticated SSH; broader model accuracy and remote MCP authorization are separate claims"});
+    std::fs::write(
+        root.join("report.json"),
+        serde_json::to_vec_pretty(&report).unwrap(),
+    )
+    .unwrap();
+    eprintln!(
+        "Secure two-host measurement: {}",
+        root.join("report.json").display()
     );
-    let remote = format!("http://{ip}:8080");
-
-    let client = reqwest::Client::new();
-    async fn ask(client: &reqwest::Client, base: &str) -> String {
-        let body = json!({
-            "model": "pinned",
-            "messages": [{"role": "user", "content": "Reply with exactly one word: ready"}],
-            "max_tokens": 8, "temperature": 0.0
-        });
-        let text = client
-            .post(format!("{base}/v1/chat/completions"))
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&body).unwrap())
-            .send()
-            .await
-            .expect("server reachable at this address")
-            .text()
-            .await
-            .expect("response body");
-        let value: Value = serde_json::from_str(&text).expect("response is JSON");
-        value["choices"][0]["message"]["content"]
-            .as_str()
-            .expect("content string")
-            .trim()
-            .to_string()
-    }
-
-    let baseline = ask(&client, "http://127.0.0.1:8080").await;
-    let over_lan = ask(&client, &remote).await;
-    eprintln!("attach: loopback={baseline:?}  non-loopback({remote})={over_lan:?}");
-    assert_eq!(
-        baseline, over_lan,
-        "the same server via loopback and its non-loopback address must answer identically"
-    );
+    assert_eq!(report["checked_run"]["phase"], "completed");
+    assert_eq!(report["checked_run"]["acceptance"], "passed");
+    assert_eq!(report["checked_run"]["replay_consistency"], "consistent");
+    assert!(report["checked_run"]["tool_calls"].as_u64().unwrap() > 0);
 }
