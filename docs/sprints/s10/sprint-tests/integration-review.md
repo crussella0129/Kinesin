@@ -42,6 +42,9 @@ compilation with SIGBUS/EIO (exit 135) after host storage exhaustion; no tests r
 and clippy was not reached. No runtime denial was relaxed to accommodate the
 Windows-mounted build directory, and no WSL-wide restart or recovery was performed.
 The successful native Ubuntu CI run supplies complete Linux verification.
+After space was available and Ubuntu was observed stopped, a fresh `/bin/true`
+invocation started successfully with exit zero; the interrupted build remains
+failed evidence, without a host-wide WSL restart.
 
 The host Windows assertion-only rebuild initially reported disk-full error 112.
 Removing only the duplicate sprint-created `target/linux-s10` directory freed
