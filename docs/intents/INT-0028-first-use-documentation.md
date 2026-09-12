@@ -2,12 +2,12 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0028
-- **State:** active
+- **State:** realized
 - **Work evidence:** [sprint 11 build plan](../sprints/s11/sprint-plans/build-plan.md)
-- **Completion evidence:** none
-- **Code evidence:** none
+- **Completion evidence:** [T-001 entry/documentation](../work/completed-tasks.md#t-001-sprint-11), [T-002 platform verification](../work/completed-tasks.md#t-002-sprint-11)
+- **Code evidence:** [default product](../../Cargo.toml), [CLI help](../../src/cli.rs), [entry regression](../../tests/cli_inspect.rs), [starter configuration](../../kinesin.example.toml)
 - **Test evidence:** [sprint 11 test report](../sprints/s11/sprint-tests/test-report.md)
-- **Documentation evidence:** none
+- **Documentation evidence:** [README entry](../../README.md#start-here), [Windows/Linux usage guide](../getting-started.md), [CLI reference](../cli.md), [configuration reference](../configuration.md)
 
 ## Intent
 Enable an operator with a checkout to install or launch the actual Kinesin CLI,
@@ -47,3 +47,4 @@ broader capabilities require explicit configuration.
 - 2026-09-12: created as `proposed` for the user's Windows/Linux usage sprint.
 - 2026-09-12: `proposed → planned`; the requested usage sprint selects the bounded entry/documentation and platform-verification tasks.
 - 2026-09-12: `planned → active`; the independently reviewed plan is locked and the entry/documentation work begins.
+- 2026-09-12: `active → realized`; completed entry and platform tasks, successful Windows/Ubuntu CI, native Windows/Debian walkthroughs, PowerShell 5.1 setup/help, preserved repeat setup, disconnected replay and clean independent TEST review satisfy this bounded usage intent. Fresh machine provisioning and release installation remain explicitly unexecuted rather than implicit acceptance claims.
