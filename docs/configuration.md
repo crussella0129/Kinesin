@@ -1,10 +1,16 @@
 # Configuration and limits
 
-For an executable setup sequence, use [getting started](getting-started.md).
-The tracked [`kinesin.example.toml`](../kinesin.example.toml) is the root-relative
-starter: copy it to `kinesin.toml` in the directory where you create `workspace`
-and private `state`. The older examples under `examples/` use `../workspace` and
-`../state` instead; moving a configuration changes the base for relative paths.
+Bare terminal `kinesin` creates or loads per-user settings and selects a working
+folder; see [getting started](getting-started.md#where-settings-live). The selected
+root changes only for that session. Existing saved model/tool choices are preserved.
+Explicit `--config PATH`, JSON sessions and piped input use the fixed profile path.
+
+The tracked [`kinesin.example.toml`](../kinesin.example.toml) is a root-relative,
+read-only checked-task example: copy it to `kinesin.toml` where you create
+`workspace` and private `state` for that workflow. The older examples under
+`examples/` use `../workspace` and `../state` instead; moving a configuration changes
+the base for relative paths. The interactive personal profile additionally grants
+search, directory creation, file creation/replacement and editing.
 
 ## One operator-controlled source
 

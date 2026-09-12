@@ -519,6 +519,94 @@ async fn control_capture_rejects_shifted_timing_and_old_or_missing_arbitration()
 }
 
 #[tokio::test]
+async fn directory_creation_capture_replays_without_repeating_the_mutation() {
+    let fixture = Fixture::new();
+    let config = Config::parse(
+        &CONFIG.replace(
+            "tools = [\"read_file\", \"list_files\"]",
+            "tools = [\"read_file\", \"list_files\", \"create_directory\"]",
+        ),
+        &fixture.root.join("kinesin.toml"),
+    )
+    .unwrap();
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "make folder called test 1".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let owner_id = authority.owner().to_owned();
+    let run_id = authority.run_id().to_owned();
+    let path = fixture.root.join("state/kinesin.sqlite");
+    let storage = tokio::task::spawn_blocking(move || Storage::start(path, QueueLimits::default()))
+        .await
+        .unwrap()
+        .unwrap();
+    let store = storage.client();
+    let resources = RunResources::from_config(&config)
+        .unwrap()
+        .remove("local")
+        .unwrap();
+    let model = ModelClient::scripted([
+        ModelReply::ToolCalls {
+            content: None,
+            calls: vec![ToolCall {
+                id: "mkdir-1".into(),
+                name: "create_directory".into(),
+                arguments: r#"{"path":"test 1"}"#.into(),
+            }],
+        }
+        .into(),
+        ModelReply::Answer("Created test 1.".into()).into(),
+    ]);
+    admit(&authority, &store, None).await.unwrap();
+    let run = run_admitted(
+        authority,
+        model,
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .unwrap();
+    let Response::Events(events) = store
+        .execute(
+            Command::Events {
+                owner_id,
+                run_id,
+                after: None,
+                limit: 100,
+            },
+            Instant::now() + Duration::from_secs(2),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("event page");
+    };
+    storage.shutdown().await.unwrap();
+    let directory = fixture.root.join("workspace/test 1");
+    assert!(
+        directory.is_dir(),
+        "the captured live effect must have executed"
+    );
+    std::fs::remove_dir(&directory).unwrap();
+    let report = replay(&run, &events).unwrap();
+    assert_eq!(report.consistency, "consistent");
+    assert_eq!(report.tool_observations, 1);
+    assert_eq!(report.acceptance_status, "unchecked");
+    assert!(
+        !directory.exists(),
+        "replay must not create the directory again"
+    );
+}
+
+#[tokio::test]
 async fn checked_capture_replays_after_workspace_and_controller_are_removed() {
     let captured = capture(
         true,

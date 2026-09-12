@@ -13,6 +13,7 @@ resolver = "3"
 
 [dependencies]
 axum = "0.8.9"
+cap-fs-ext = "4.0.3"
 cap-std = "4.0.3"
 eventsource-stream = "0.2.3"
 futures-util = "0.3.32"

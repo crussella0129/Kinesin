@@ -97,6 +97,7 @@ pub enum ToolName {
     ListFiles,
     ReadFile,
     SearchFiles,
+    CreateDirectory,
     WriteFile,
     EditFile,
     DeleteFile,
@@ -110,6 +111,7 @@ impl ToolName {
             Self::ListFiles => "list_files",
             Self::ReadFile => "read_file",
             Self::SearchFiles => "search_files",
+            Self::CreateDirectory => "create_directory",
             Self::WriteFile => "write_file",
             Self::EditFile => "edit_file",
             Self::DeleteFile => "delete_file",
@@ -125,7 +127,12 @@ impl ToolName {
     pub fn is_mutating(self) -> bool {
         matches!(
             self,
-            Self::WriteFile | Self::EditFile | Self::DeleteFile | Self::MoveFile | Self::RunCommand
+            Self::CreateDirectory
+                | Self::WriteFile
+                | Self::EditFile
+                | Self::DeleteFile
+                | Self::MoveFile
+                | Self::RunCommand
         )
     }
 
@@ -144,6 +151,7 @@ impl ToolName {
             "list_files" => Self::ListFiles,
             "read_file" => Self::ReadFile,
             "search_files" => Self::SearchFiles,
+            "create_directory" => Self::CreateDirectory,
             "write_file" => Self::WriteFile,
             "edit_file" => Self::EditFile,
             "delete_file" => Self::DeleteFile,
@@ -529,7 +537,14 @@ pub struct BoundedConfig;
 
 impl BoundedConfig {
     pub fn load(path: &Path) -> Result<Config, String> {
-        let file = File::open(path).map_err(|_| "cannot open configuration")?;
+        let file = File::open(path).map_err(|error| match error.kind() {
+            std::io::ErrorKind::NotFound => format!(
+                "configuration not found at {path:?}; pass --config PATH to an existing configuration, or follow docs/getting-started.md to create one"
+            ),
+            _ => format!(
+                "cannot open configuration at {path:?}; check that the path is a readable file and that you have permission to open it"
+            ),
+        })?;
         if !file
             .metadata()
             .map_err(|_| "cannot inspect configuration")?
@@ -1324,6 +1339,19 @@ mod tests {
     }
 
     #[test]
+    fn missing_configuration_reports_the_attempted_path_and_setup_action() {
+        let fixture = Fixture::new();
+        let missing = fixture.root.join("missing config.toml");
+        let error = BoundedConfig::load(&missing).unwrap_err();
+        assert!(error.starts_with("configuration not found at "));
+        assert!(error.contains(&format!("{missing:?}")));
+        assert!(error.contains("--config PATH"));
+        assert!(error.contains("docs/getting-started.md"));
+        assert!(!missing.exists());
+        assert!(!fixture.root.join("state").exists());
+    }
+
+    #[test]
     fn config_resolves_relative_to_its_location_without_creating_state() {
         let fixture = Fixture::new();
         let config = fixture.parse(BASE).unwrap();
@@ -1346,6 +1374,7 @@ mod tests {
             "list_files",
             "read_file",
             "search_files",
+            "create_directory",
             "write_file",
             "edit_file",
             "delete_file",
@@ -1362,6 +1391,44 @@ mod tests {
         );
         // An unknown bare name is rejected rather than silently accepted.
         assert!(ToolRef::parse("teleport").is_err());
+    }
+
+    #[test]
+    fn create_directory_is_an_explicit_mutation_and_barred_from_checked_tasks() {
+        let directory = ToolRef::parse("create_directory").unwrap();
+        assert_eq!(directory, ToolRef::Compiled(ToolName::CreateDirectory));
+        assert!(directory.is_mutating());
+        assert!(!directory.mints_evidence());
+        let fixture = Fixture::new();
+        let config = fixture
+            .parse(&format!("{BASE}{TASK}").replace(
+                "tools = [\"read_file\"]",
+                "tools = [\"read_file\", \"create_directory\"]",
+            ))
+            .unwrap();
+        assert_eq!(
+            config
+                .authorize_local(Submission::Checked {
+                    task: "practice-fields".into(),
+                    model: "local".into(),
+                    limits: None,
+                    capture: None,
+                })
+                .unwrap_err(),
+            "a checked task workspace cannot enable a write tool"
+        );
+        assert!(
+            config
+                .authorize_local(Submission::Freeform {
+                    workspace: "practice".into(),
+                    model: "local".into(),
+                    continues: None,
+                    prompt: "make folder called test 1".into(),
+                    limits: None,
+                    capture: None,
+                })
+                .is_ok()
+        );
     }
 
     #[test]

@@ -1,18 +1,19 @@
 # Install and use Kinesin
 
-Kinesin is a terminal application. There is no desktop window to open. You run
-the `kinesin` executable; it connects to a model server that you start separately.
-The model can run on this computer or another machine such as nighthawk.
+Install the command once, then run `kinesin` from any folder. Its terminal entry
+introduces the session and asks which folder to work in. First use also saves
+your model connection; later launches reuse those settings and still let you
+choose the working folder. A running model server is required for answers.
 
-Choose [Windows PowerShell](#windows-powershell) or [Linux](#linux), then complete
-[model connection](#start-or-connect-a-model-server) and [first use](#your-first-run).
-Commands use the development branch `dev`; an existing checkout can be used in
-place of cloning again. The Rust compiler is needed to build/install from source,
-not each time you run an already-built executable. Allow several GiB for builds.
+Choose the [Windows installation](#windows-powershell) or [Linux installation](#linux),
+then follow [your first session](#your-first-session). The
+[explicit example workflow](#explicit-configurations-and-checked-tasks) is for
+fixed profiles and automation; normal interactive use does not require a
+`kinesin.toml` in each project.
 
 ## Windows PowerShell
 
-### 1. Prerequisites and checkout
+### Prerequisites and checkout
 
 If `cargo --version` and `git --version` already work, keep your existing tools.
 Otherwise install Git for Windows and Rust through the official
@@ -48,39 +49,9 @@ This builds and starts **kinesin**, then prints usage and exits successfully.
 Help does not need a configuration or model. The `--` separates Cargo options
 from Kinesin options. The first build can take several minutes.
 
-### 2. Prepare configuration and example data
+### Install the command
 
-Run this block from the repository root. It copies the starter configuration
-and creates the state/workspace only when missing. Existing files and directory
-permissions are preserved; review an existing `kinesin.toml` instead of assuming
-it contains the starter settings.
-
-```powershell
-if (-not (Test-Path -LiteralPath '.\state')) {
-    New-Item -ItemType Directory -Path '.\state' | Out-Null
-    $operatorSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-    icacls '.\state' /inheritance:r /grant:r "*${operatorSid}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not restrict the new state directory.' }
-}
-if (-not (Test-Path -LiteralPath '.\workspace')) {
-    New-Item -ItemType Directory -Path '.\workspace' | Out-Null
-}
-if (-not (Test-Path -LiteralPath '.\kinesin.toml')) {
-    Copy-Item -LiteralPath '.\kinesin.example.toml' -Destination '.\kinesin.toml'
-}
-if (-not (Test-Path -LiteralPath '.\workspace\project.txt')) {
-    @('project=Kinesin', 'language=Rust') | Set-Content -LiteralPath '.\workspace\project.txt' -Encoding ascii
-}
-```
-
-The new state directory grants access to your account, SYSTEM and Administrators.
-The CLI does not automatically repair or audit existing ACLs. Keep configuration
-and state outside the tool workspace. This starter grants only list/read tools.
-
-### 3. Optional: make `kinesin` available by name
-
-Cloning or `cargo run` does **not** install a command on PATH. To install only
-the product executable from the checkout:
+From the checkout:
 
 ```powershell
 cargo install --locked --path . --bin kinesin
@@ -89,31 +60,31 @@ Get-Command kinesin
 kinesin --help
 ```
 
-The default install path is `C:\Users\YOUR_NAME\.cargo\bin\kinesin.exe`.
-The assignment above updates this PowerShell session. Rustup normally adds that
-directory to your user PATH for new terminals; if necessary add it through
-**Edit environment variables for your account → Path → New**, then reopen
-PowerShell. These locations assume you have not customized `CARGO_HOME` or the
-install root. `cargo install kinesin` is not the procedure: this package is not
-published to crates.io.
+Installation builds an optimized binary at
+`C:\Users\YOUR_NAME\.cargo\bin\kinesin.exe` by default. For a faster development
+installation that reuses your debug build, append `--debug` to the install
+command. Neither fixture executable is installed.
 
-To avoid installing, use `cargo run --locked -- ...`, or after building:
+Rustup normally puts this directory on PATH. The assignment above updates the
+current PowerShell session. If a new terminal still cannot find Kinesin, add
+`%USERPROFILE%\.cargo\bin` through **Edit environment variables for your account
+→ Path → New**, then reopen PowerShell. These paths assume an unmodified
+`CARGO_HOME`; a custom Cargo install root has its own `bin` directory.
+
+After installation, you can leave the checkout:
 
 ```powershell
-cargo build --locked --bin kinesin
-.\target\debug\kinesin.exe --help
+cd $HOME
+kinesin
 ```
 
-PowerShell requires `'.\'` to run an executable in the current directory.
-For an optimized standalone build use `cargo build --locked --release --bin
-kinesin`, then `.\target\release\kinesin.exe`. Installing uses a release build
-by default; it can take longer than the initial debug build.
-For a quicker development install that reuses the debug build, append `--debug`
-to the `cargo install` command. This is the install profile used by the smoke checks.
+Choose a project folder when asked. You do not need to run Cargo or copy a
+configuration into that folder. During development, `cargo run --locked` in
+the checkout opens the same terminal entry.
 
 ## Linux
 
-### 1. Prerequisites and checkout
+### Prerequisites and checkout
 
 On Debian/Ubuntu, the source build needs a C/C++ compiler, Make, Git, curl and
 CA certificates. Install these if missing (this step needs an administrator):
@@ -156,60 +127,106 @@ With an existing checkout, start at `cd "$HOME/Kinesin"` and omit `git clone`.
 The repository's `rust-toolchain.toml` selects 1.96.0. For a memory-constrained
 build, prefix a Cargo command with `CARGO_BUILD_JOBS=2`.
 
-### 2. Prepare configuration and example data
+### Install the command
 
-Run this from the checkout. The subshell applies private permissions to newly
-created items without changing your shell's umask. Repeating it preserves
-existing configuration, data and directory permissions.
-
-```bash
-(
-    umask 077
-    mkdir -p state workspace
-    if [ ! -e kinesin.toml ]; then cp kinesin.example.toml kinesin.toml; fi
-    if [ ! -e workspace/project.txt ]; then
-        printf 'project=Kinesin\nlanguage=Rust\n' > workspace/project.txt
-    fi
-)
-```
-
-New directories are mode 700 and new files mode 600. Inspect existing state
-permissions separately; the CLI does not change them for you. Configuration
-and state remain outside the tool workspace.
-
-### 3. Optional: install the command
+From the checkout:
 
 ```bash
 cargo install --locked --path . --bin kinesin
 export PATH="$HOME/.cargo/bin:$PATH"
 command -v kinesin
 kinesin --help
+cd "$HOME"
+kinesin
 ```
 
-The default executable is `$HOME/.cargo/bin/kinesin`. Rustup normally arranges
-PATH for future shells; sourcing `$HOME/.cargo/env` fixes the current shell.
-Customized `CARGO_HOME`/install roots use their own `bin` directory. No sudo is
-needed for a user installation.
-Append `--debug` for a quicker development install using the existing debug
-build; the documented smoke checks use this profile. Omit it for the default
-optimized release installation.
+The default binary is `$HOME/.cargo/bin/kinesin`. Source `$HOME/.cargo/env`
+or add that directory to your shell's PATH for future sessions if necessary.
+Custom `CARGO_HOME` or installation roots change the binary location.
 
-Without installation, use `cargo run --locked -- ...`, or:
+Append `--debug` for a faster development install that reuses the debug build.
+Use a native Linux filesystem for builds. `CARGO_BUILD_JOBS=2` can reduce build
+memory pressure on Nighthawk. The same installed command opens the folder
+selector on Debian; no Windows path or checkout-local configuration is needed.
 
-```bash
-cargo build --locked --bin kinesin
-./target/debug/kinesin --help
+## Your first session
+
+Run:
+
+```text
+kinesin
 ```
 
-Use `--release` when building an optimized executable at
-`./target/release/kinesin`. Run Linux builds on a native Linux filesystem; the
-sprint 10 WSL experiment recorded confined command execution failing from a
-Windows-mounted build directory. This starter does not grant command execution.
+The welcome screen asks for a **working folder**, displaying the current
+directory as the default. Press Enter to use it or enter another existing
+project-folder path. Relative paths resolve from where you launched Kinesin;
+paths containing spaces are supported. Invalid selections are explained and
+asked again. Select a project folder rather than your entire home directory:
+Kinesin keeps private settings/history under your home and does not expose them
+as workspace files.
+
+On first use, provide the **model server URL** and **served model ID**. The defaults
+are `http://127.0.0.1:8080` and `kinesin-qwen25-coder-7b`, matching the
+[Nighthawk connection](#use-the-existing-nighthawk-model) below. Press Enter to
+accept each only when that is the server you are using.
+
+The session shows the actual folder, model and permitted actions. The personal
+profile initially allows listing, reading, searching, creating folders, writing
+files and editing files. It does not grant arbitrary command execution. File
+paths in your requests refer to the selected folder.
+
+For example:
+
+```text
+> make a folder called test 1
+> list the files in this folder
+```
+
+You see tool activity and the model's readable answer. Folder creation must be a
+real tool operation inside the chosen folder; the model's claim alone is not
+verification. An existing folder is reported without replacement. Parent folders
+must already exist. No command shell is needed to create a directory.
+
+| Session command | Use |
+| --- | --- |
+| `/help` | Show available session commands |
+| `/status` | Inspect the latest run and its acceptance status |
+| `/permissions` | Show the configured tools and command grants |
+| `/new` or `/clear` | Start a new thread of requests |
+| `/exit` | Leave the session |
+
+Ctrl+C cancels and stops the session. Each request is journaled as an immutable
+run. Current follow-ups carry the previous answer, not a full conversation
+transcript. A freeform result has no independent acceptance checker; that is
+shown under `/status` and is distinct from an execution failure.
+
+### Where settings live
+
+| Platform | Personal settings | Private journal |
+| --- | --- | --- |
+| Windows | `%APPDATA%\Kinesin\settings.toml` | `%LOCALAPPDATA%\Kinesin\state\kinesin.sqlite` |
+| Linux | `$XDG_CONFIG_HOME/kinesin/settings.toml`, default `~/.config/kinesin/settings.toml` | `$XDG_STATE_HOME/kinesin/kinesin.sqlite`, default `~/.local/state/kinesin/kinesin.sqlite` |
+
+Setup creates new private directories/files and preserves existing settings and
+permissions. The selected folder is applied to the current session without
+rewriting the saved profile. Edit the personal TOML to change the model or tool
+grants for later sessions. The configured model server is started separately.
+
+### Explicit and machine entry
+
+`kinesin --config PATH` uses that profile's configured workspace and skips the
+folder selector. It does not silently enlarge that profile's permissions.
+
+`kinesin --json --config PATH` emits session JSON Lines for automation.
+Piped input skips setup prompts and uses an explicit configuration or the
+current directory's `kinesin.toml`; it does not unexpectedly enter a setup wizard.
+One-shot, batch, inspect/export/replay and service commands keep their structured
+interfaces. There is no `kinesin run` subcommand.
 
 ## Start or connect a model server
 
 Kinesin does not contain model weights or start `llama-server`. Keep the model
-server running in another terminal while using the harness. The starter expects:
+server running in another terminal while using the harness. The first-run defaults and explicit example use:
 
 | Setting | Required value for the supplied example |
 | --- | --- |
@@ -220,8 +237,9 @@ server running in another terminal while using the harness. The starter expects:
 
 `local` is the **configuration alias**, used by `--model local`. The longer
 `model_id` is the server's API identity. Calling an alias `local` does not require
-the GPU to be on this computer. Edit your copied `kinesin.toml` if using another
-verified endpoint; changing its name alone does not establish compatibility.
+the GPU to be on this computer. Enter your endpoint and model ID during first-run setup, or update your personal
+settings when changing models. Explicit example configurations can still be edited
+separately. Changing an alias alone does not establish compatibility.
 
 ### Use the existing nighthawk model
 
@@ -258,16 +276,18 @@ be enabled on the host and allowed by your tailnet policy; sharing a tailnet alo
 does not configure SSH access. A direct `http://nighthawk:18080` URL is neither
 the intended listener nor accepted by Kinesin's remote-origin policy.
 
-If Kinesin itself runs on nighthawk, no tunnel is needed. Set the copied
-configuration's `base_url` to `http://127.0.0.1:18080`, or launch the server with
-`--port 8080` to use the starter unchanged. Check health with:
+If Kinesin itself runs on nighthawk, no tunnel is needed. Enter
+`http://127.0.0.1:18080` at the first-use **Model server URL** prompt, or set
+`base_url` to that address in your [personal settings](#where-settings-live).
+For an explicit profile, change its `base_url` instead. Alternatively, launch
+the server with `--port 8080` to use the default URL unchanged. Check health with:
 
 ```bash
 curl --fail http://127.0.0.1:18080/health
 ```
 
 That checks the retained deployment's port 18080. If you instead launched with
-`--port 8080`, use `curl --fail http://127.0.0.1:8080/health` and keep the starter URL.
+`--port 8080`, use `curl --fail http://127.0.0.1:8080/health` and keep the default URL.
 
 ### Supply a model on another computer
 
@@ -303,53 +323,82 @@ recorded exchanges and [deployment evidence](sprints/s10/sprint-tests/remote-dep
 for the tested GPU allocation. Direct non-loopback model URLs require HTTPS;
 an authenticated SSH forward supplies encryption between loopback endpoints.
 
-## Your first run
+## Explicit configurations and checked tasks
 
-Return to the checkout containing your `kinesin.toml`. These Cargo commands work
-in both PowerShell and Bash:
+The tracked `kinesin.example.toml` is intentionally a **read-only example** for
+the `practice-fields` checker. It is not the normal interactive profile.
+Use it when you want fixed configuration, JSON automation or the following
+checked-task example. Keep its private state and configuration outside its
+workspace. An explicit profile must grant `create_directory` to create folders;
+read/list permission alone cannot do so.
 
-```text
-cargo run --locked -- --workspace practice --model local --prompt "Say hello" --allow-unchecked
-```
+### Windows example setup
 
-Successful output is one JSON line containing `kind: "run"`, `phase: "completed"`,
-`acceptance_status: "unchecked"`, `task_accepted: false`, and the answer in
-`result`. The text itself varies. `--allow-unchecked` permits exit 0 for that
-completed freeform result; it does not turn it into checked acceptance. Read the
-exit status with `$LASTEXITCODE` in PowerShell or `echo $?` in Bash.
-
-For an interactive session:
-
-```text
-cargo run --locked
-```
-
-Wait for the `> ` prompt, type `What does project.txt say?`, and press Enter.
-Each entry creates a separate immutable run. Only the previous answer is carried
-into the next entry, not the complete conversation history. End with Ctrl+C.
-The session requires exactly one workspace and one model in the configuration.
-
-If you installed the command, replace `cargo run --locked --` with `kinesin`:
-
-```text
-kinesin --workspace practice --model local --prompt "Say hello" --allow-unchecked
-kinesin
-```
-
-Bare `kinesin` reads **the current directory's** `kinesin.toml`; installation does
-not make it search your checkout or home directory. From another directory:
+Run this block from the repository root. It copies the starter configuration
+and creates the state/workspace only when missing. Existing files and directory
+permissions are preserved; review an existing `kinesin.toml` instead of assuming
+it contains the starter settings.
 
 ```powershell
-kinesin --config "$HOME\Kinesin\kinesin.toml"
+if (-not (Test-Path -LiteralPath '.\state')) {
+    New-Item -ItemType Directory -Path '.\state' | Out-Null
+    $operatorSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    icacls '.\state' /inheritance:r /grant:r "*${operatorSid}:(OI)(CI)F" '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not restrict the new state directory.' }
+}
+if (-not (Test-Path -LiteralPath '.\workspace')) {
+    New-Item -ItemType Directory -Path '.\workspace' | Out-Null
+}
+if (-not (Test-Path -LiteralPath '.\kinesin.toml')) {
+    Copy-Item -LiteralPath '.\kinesin.example.toml' -Destination '.\kinesin.toml'
+}
+if (-not (Test-Path -LiteralPath '.\workspace\project.txt')) {
+    @('project=Kinesin', 'language=Rust') | Set-Content -LiteralPath '.\workspace\project.txt' -Encoding ascii
+}
 ```
+
+The new state directory grants access to your account, SYSTEM and Administrators.
+The CLI does not automatically repair or audit existing ACLs. Keep configuration
+and state outside the tool workspace. This starter grants only list/read tools.
+
+### Linux example setup
+
+Run this from the checkout. The subshell applies private permissions to newly
+created items without changing your shell's umask. Repeating it preserves
+existing configuration, data and directory permissions.
 
 ```bash
-kinesin --config "$HOME/Kinesin/kinesin.toml"
+(
+    umask 077
+    mkdir -p state workspace
+    if [ ! -e kinesin.toml ]; then cp kinesin.example.toml kinesin.toml; fi
+    if [ ! -e workspace/project.txt ]; then
+        printf 'project=Kinesin\nlanguage=Rust\n' > workspace/project.txt
+    fi
+)
 ```
 
-All paths inside TOML resolve relative to that file, so the configured workspace
-and state still work. There is **no `kinesin run` subcommand**: a single run uses
-flags directly, and bare `kinesin` opens the session.
+New directories are mode 700 and new files mode 600. Inspect existing state
+permissions separately; the CLI does not change them for you. Configuration
+and state remain outside the tool workspace.
+
+### One-shot example
+
+After the explicit example setup and model connection:
+
+```text
+kinesin --config kinesin.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
+```
+
+This command emits a JSON line. `phase: completed` and
+`acceptance_status: unchecked` mean execution finished without an independent
+checker; `task_accepted: false` does not by itself mean the operation failed.
+The answer is in `result.candidate`. `--allow-unchecked` permits exit 0 for that
+freeform result. For the same explicit profile with readable interaction:
+
+```text
+kinesin --config kinesin.toml
+```
 
 ### Check a file task and replay it
 
@@ -399,13 +448,15 @@ See [Cargo's install rules](https://doc.rust-lang.org/cargo/commands/cargo-insta
 
 | Symptom | Meaning and fix |
 | --- | --- |
-| PowerShell says `kinesin` is not recognized / Bash says command not found | It is not installed on this shell's PATH. Use Cargo from the checkout, the explicit built path, or the install/PATH steps above. |
-| Cargo cannot determine which binary to run | Your checkout predates the default-run fix. Use `cargo run --bin kinesin -- --help`; update your checkout when ready. |
-| Cannot load `kinesin.toml` | Create it using the setup block, run from its directory, or supply its absolute path with `--config`. |
-| Workspace cannot be resolved | Create the configured directory; remember TOML paths are relative to the config file. |
-| Model connection/readiness failure | Start the model and, if remote, the SSH forward; check `/health`, model alias, context and slot settings. Installing Kinesin does not start inference. |
-| Session requires exactly one model/workspace | Use a single-run command with explicit `--model`/`--workspace`, or a configuration with one of each. |
-| `run` or an unknown option is rejected | Use the exact syntax from `kinesin --help`; there is no `run` verb. |
-| Replay reports unavailable capture | The original run used metadata capture or unsupported semantics; create a new run with `--capture replay`. Export cannot manufacture missing inputs. |
-| State is already locked | Stop the other Kinesin controller/session using that same state directory first. |
-| Build fails with disk-full or compiler/linker errors | Free space for the build, check the OS prerequisites above, and retry the same command; do not interpret a failed build as an installed program. |
+| `kinesin` is not recognized / command not found | Install with `--bin kinesin` and put Cargo's `bin` directory on PATH. `cargo run` only runs a checkout build. |
+| Cargo cannot choose a binary | Update your checkout, or use `cargo run --bin kinesin`. Current Cargo defaults select the product. |
+| Cannot open an explicit configuration | Check the displayed path; create the example only for an explicit workflow, or start bare `kinesin` in a terminal for personal setup. |
+| Only `project.txt` appears, or writes are disabled | You selected the read-only example. Start bare `kinesin` for the personal folder selector, or edit the explicit profile's root and tool grants. |
+| Folder contains private settings/history | Choose a project subfolder outside Kinesin's settings/state directories. |
+| Folder already exists | Directory creation does not replace existing entries. Pick another name or use the existing directory. |
+| Model connection failure | Start the model and SSH forward if needed; check `/health`, served model identity, context and slots. |
+| Explicit session has multiple models/workspaces | Use a profile with one of each or a one-shot command selecting aliases. |
+| Unexpected JSON | Remove `--json` for human sessions. One-shot/operator commands intentionally remain structured. |
+| State is locked | Exit the other Kinesin session using that same state. |
+| Replay capture is unavailable | Select `--capture replay` when creating the original run; export cannot invent missing inputs. |
+| Compiler/linker or disk-full error | Resolve build prerequisites or disk capacity, then rerun the installation command. |

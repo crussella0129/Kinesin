@@ -8,6 +8,7 @@ pub mod dispatch;
 pub mod ingress;
 pub mod mcp;
 pub mod model;
+pub mod onboarding;
 pub mod operator;
 pub mod policy;
 pub mod private_state;

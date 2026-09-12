@@ -11,20 +11,32 @@ without opening configuration, storage, a workspace or a model connection.
 kinesin
 ```
 
-No arguments. It reads `kinesin.toml` from the working directory, then asks what
-to do. Each entry becomes its own run that cites the previous one, so a follow-up
-needs no run id and no flag:
+In a terminal, no arguments opens the introduction and working-folder selector.
+First use saves a model connection and file-tool profile in the per-user settings
+described in [getting started](getting-started.md#where-settings-live). Later
+entries keep those model/tool choices and select a folder for the current session.
+The banner makes the actual workspace, model and permissions visible. Requests
+show bounded tool activity and readable answers:
 
 ```text
-> what does project.txt say the language is?
-> and where else is that recorded?
+> make a folder called test 1
+> list the files in this folder
 ```
 
-A session takes no workspace or model alias. With one of each configured there is
-nothing to choose; with several, the operator names them in a single-run command
-instead, because guessing would silently pick an authority. `kinesin --config
-other.toml` opens a session against a different file. End it with Ctrl+C or by
-closing the input.
+A personal session profile has one workspace and one model. `kinesin --config
+other.toml` instead uses the explicitly configured workspace and skips the folder
+selector. A fixed profile with several aliases requires a single-run command
+selecting them; startup does not guess authority. Piped input also skips setup
+and loads its explicit config or the current directory's `kinesin.toml`.
+
+`/help` lists commands, `/permissions` shows tool grants, `/status` shows the last
+run and its receipt status, `/new` (or `/clear`) starts without the previous answer,
+and `/exit` leaves. Ctrl+C requests cancellation and stops the session. Successful
+freeform answers do not print UUIDs or full receipts; failures remain visible.
+
+For session JSON Lines, select `kinesin --json --config PATH`. One-shot, batch and
+operator commands keep their existing JSON interfaces. Human display escapes
+terminal control and direction-changing characters from model/tool text.
 
 Each entry is a separate immutable run in the journal, linked by the answer it
 cites. Nothing rewrites an earlier run, so `inspect` and `export` work on any
@@ -37,7 +49,7 @@ The cited answer enters as reference data with its own entry in the input
 inventory, marked as earlier model output. It is information, not instruction,
 and grants no permission.
 
-Run these commands from the repository root after the getting-started setup.
+The commands below use an explicit example configuration prepared using the guide.
 Single runs, sessions and `batch` require the verified model server. Configuration paths resolve
 relative to the configuration file; CLI input-file paths resolve from your current
 directory. Run execution uses the implicit local operator identity; `--owner`
@@ -102,7 +114,7 @@ including when its model adapter assembles a streamed response.
 
 ## Output and exits
 
-Single and batch commands emit JSON Lines. A run line contains `kind: "run"`, its
+Single and batch commands, and sessions with `--json`, emit JSON Lines. A run line contains `kind: "run"`, its
 one-based input `index`, `run_id`, both `phase` and `acceptance_status`, the
 `receipt`, retained `result`, derived `task_accepted`, and per-item `exit_code`.
 Batch lines are emitted as completions are drained; use the index/run ID rather
@@ -117,10 +129,17 @@ one output operation is retained outside the bounded completion set.
 
 Exit codes follow [task acceptance](verification.md#cli-and-service-meaning):
 passed checked completion 0; execution/setup failure 1; failed acceptance 2;
-unchecked/inconclusive completion 3; cancellation 130. Explicit freeform opt-in
-allows exit 0 for `completed + unchecked`, while `task_accepted` stays false.
+unchecked/inconclusive completion 3; controller cancellation 130. For one-shot
+and batch runs, explicit freeform opt-in allows exit 0 for
+`completed + unchecked`, while `task_accepted` stays false. Human and `--json`
+sessions allow unchecked completion automatically, so a successful freeform
+session returns 0 without an extra flag.
 The batch aggregate uses priority **130, 1, 2, 3, 0** and preserves individual
 outcomes. An unchecked opt-in cannot excuse a failed checked task.
+
+Before controller startup, Ctrl+C during personal setup uses the operating
+system's default termination behavior. On Windows this is native status
+`0xC000013A` (`-1073741510`), rather than the running controller's exit 130.
 
 Ctrl+C stops new admission, requests cancellation for queued/active runs, and
 joins the controller and storage writer. Results already committed keep their
@@ -157,8 +176,9 @@ Summaries contain sequence, kind, and elapsed time; they exclude raw replay inpu
 `export` writes a versioned snapshot using bounded owner-filtered pages, with
 limits of 256 events and 32 MiB. It never silently truncates a capture or overwrites
 an existing file. A storage/write failure is an error; an I/O failure can leave an
-incomplete new file, which must not be treated as a successful export. New files
-inherit their destination directory's permissions; existing ACLs are not changed.
+incomplete new file, which must not be treated as a successful export. New Unix
+files are owner-only (0600); Windows files inherit the destination directory's
+ACL. Existing files and permissions are not changed.
 Replay exports include private instructions and observed evidence. Metadata
 exports also contain private final results and receipts, and explicitly state
 that exact replay and acceptance recomputation are unavailable.

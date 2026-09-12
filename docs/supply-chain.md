@@ -70,12 +70,13 @@ and `cargo tree --locked --offline --target TARGET --edges normal,build` for
 | SQLite | `rusqlite 0.40.2` → `libsqlite3-sys 0.38.2` | `bundled` compiles native SQLite using `cc`. Rust wrappers do not make SQLite's C implementation memory-safe. Storage owns access, transactions and result conversion; engine versions/advisories remain part of review. |
 | TLS cryptography | `reqwest 0.13.4` → `rustls 0.23.44` → `aws-lc-rs 1.18.1` / `aws-lc-sys 0.45.0` | AWS-LC contains native cryptography and build tooling (`cc`, `cmake`). Rustls avoids an OpenSSL dependency but is not a claim that the complete TLS stack contains no native code. |
 | OS APIs and system libraries | `windows-sys`, Windows safe-wrapper crates, `libc`, `rustix` | Platform FFI under filesystem capabilities, networking, signals and process ownership. Review feature/target changes alongside the first-party unsafe inventory in [the threat model](threat-model.md). |
+| Capability directory traversal | `cap-fs-ext 4.0.3` with `cap-std 4.0.3` | Adds the public no-follow directory-open API used by directory creation. One new lockfile package; existing capability primitives and platform dependencies are reused. |
 | Other target/feature branches | `ring 0.17.14`, JNI/platform verifier branches, `sqlite-wasm-rs` and wasm-bindgen | Present in all-platform metadata/lock resolution; the reviewed Windows/Linux default runtime graphs select AWS-LC and libsqlite3-sys, not ring or Wasm SQLite. Recompute the graph before claiming a different target or feature is supported. |
 
 The custom-build inventory for the two reviewed target graphs includes:
 
 - Native/platform setup: `aws-lc-rs`, `aws-lc-sys`, `libsqlite3-sys`,
-  `cap-primitives`, `cap-std`, `getrandom`, `io-extras`, both resolved
+  `cap-fs-ext`, `cap-primitives`, `cap-std`, `getrandom`, `io-extras`, both resolved
   `io-lifetimes` versions, and `libc`; Windows also includes
   `windows_x86_64_msvc`, while Linux includes `rustix`.
 - Compiler/configuration/data setup: `httparse`, `icu_normalizer_data`,

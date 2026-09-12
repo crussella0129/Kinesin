@@ -19,10 +19,12 @@ use crate::runner::RunResources;
 use crate::scheduler::{Controller, ControllerHandle, Job, PendingRun};
 use crate::storage::{Command, Event, QueueLimits, Response, RunRecord, Storage, StorageClient};
 
+mod presentation;
+
 pub const USAGE: &str = "Kinesin - bounded local harness
 
 Usage:
-  kinesin [--config PATH]
+  kinesin [--config PATH] [--json]
   kinesin [--config PATH] --workspace ALIAS --model ALIAS --prompt TEXT [--allow-unchecked] [--capture MODE]
   kinesin [--config PATH] --task ALIAS --model ALIAS [--capture MODE]
   kinesin batch --config PATH --input PATH
@@ -36,7 +38,9 @@ Usage:
   kinesin --help | -h
 
 Bare kinesin starts an interactive session. Each entry continues the previous answer.
-Sessions and one-shot runs default to kinesin.toml in the current working directory.
+Sessions show readable answers; --json selects JSONL receipts and provisional deltas.
+Interactive startup offers a working folder and uses saved user settings.
+Piped/JSON sessions and one-shot runs default to kinesin.toml in the current working directory.
 Use --config PATH to select another configuration file. Aliases come from that file.
 Capture MODE is metadata or replay; replay capture retains private inputs and outputs.
 Help must be used alone and does not load configuration or start a model.";
@@ -81,6 +85,8 @@ pub enum CliCommand {
     /// and no flag.
     Session {
         config: PathBuf,
+        json: bool,
+        explicit_config: bool,
     },
     Run(RunCommand),
     Batch(BatchCommand),
@@ -106,6 +112,8 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, Str
     let Some(first) = args.next() else {
         return Ok(CliCommand::Session {
             config: PathBuf::from(DEFAULT_CONFIG),
+            json: false,
+            explicit_config: false,
         });
     };
     let command = first.into_string().map_err(|_| USAGE)?;
@@ -244,10 +252,18 @@ fn parse_default(
 ) -> Result<CliCommand, String> {
     let mut values = BTreeMap::new();
     let mut allow_unchecked = false;
+    let mut json = false;
     let mut flags = std::iter::once(OsString::from(first_flag)).chain(rest);
     for _ in 0..16 {
         let Some(flag) = flags.next() else { break };
         let flag = flag.into_string().map_err(|_| "flag must be UTF-8")?;
+        if flag == "--json" {
+            if json {
+                return Err("duplicate --json".into());
+            }
+            json = true;
+            continue;
+        }
         if flag == "--allow-unchecked" {
             if allow_unchecked {
                 return Err("duplicate --allow-unchecked".into());
@@ -277,6 +293,7 @@ fn parse_default(
     if flags.next().is_some() {
         return Err("too many arguments".into());
     }
+    let explicit_config = values.contains_key("--config");
     let config = values
         .remove("--config")
         .map(PathBuf::from)
@@ -291,7 +308,14 @@ fn parse_default(
         if !values.is_empty() {
             return Err(USAGE.into());
         }
-        return Ok(CliCommand::Session { config });
+        return Ok(CliCommand::Session {
+            config,
+            json,
+            explicit_config,
+        });
+    }
+    if json {
+        return Err("--json is a session option; one-shot runs already emit JSON".into());
     }
     let model = take_text(&mut values, "--model")?;
     let capture = values
@@ -607,7 +631,7 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
     }
     // Startup filesystem work and writer readiness occur before entering Tokio.
     let path = match &command {
-        CliCommand::Session { config } => config,
+        CliCommand::Session { config, .. } => config,
         CliCommand::Run(command) => &command.config,
         CliCommand::Batch(command) => &command.config,
         CliCommand::Inspect(command) => &command.config,
@@ -621,7 +645,16 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
             unreachable!("command handled before startup")
         }
     };
-    let config = BoundedConfig::load(path)?;
+    let config = if let CliCommand::Session {
+        explicit_config,
+        json,
+        ..
+    } = &command
+    {
+        crate::onboarding::load_session(path, *explicit_config, *json)?
+    } else {
+        BoundedConfig::load(path)?
+    };
     if !matches!(
         command,
         CliCommand::Session { .. } | CliCommand::Run(_) | CliCommand::Batch(_)
@@ -647,13 +680,13 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
     // A continuation reads a prior run, so its job is built inside the runtime
     // where storage exists rather than before it opens.
     let (session, single, batch) = match command {
-        CliCommand::Session { .. } => (true, None, None),
+        CliCommand::Session { json, .. } => (Some(json), None, None),
         CliCommand::Run(command) => (
-            false,
+            None,
             Some((command.submission, command.allow_unchecked)),
             None,
         ),
-        CliCommand::Batch(command) => (false, None, Some(BatchReader::open(&command.input)?)),
+        CliCommand::Batch(command) => (None, None, Some(BatchReader::open(&command.input)?)),
         _ => unreachable!("operator commands handled before model startup"),
     };
     let limits = startup.config.concurrency().clone();
@@ -693,14 +726,14 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
                 }
             })
         };
-        let outcome = if session {
-            run_session(&handle, &startup, &storage.client(), &interrupted).await
+        let outcome = if let Some(json) = session {
+            run_session(&handle, &startup, &storage.client(), &interrupted, json).await
         } else {
             match (single, batch) {
                 (Some((mut submission, allow_unchecked)), None) => {
                     let prior = resolve_continuation(&storage.client(), &mut submission).await?;
                     let job = startup.job_continued(submission, prior)?;
-                    run_single(&handle, job, allow_unchecked).await
+                    run_single(&handle, job, allow_unchecked, None).await
                 }
                 (None, Some(reader)) => run_batch(&handle, &startup, reader, &interrupted).await,
                 _ => Err("invalid prepared command".into()),
@@ -1017,14 +1050,18 @@ fn encoded_size(value: &impl Serialize, limit: usize) -> Result<usize, String> {
 }
 fn write_snapshot_new(path: &PathBuf, snapshot: &Snapshot) -> Result<(), String> {
     // Never truncate a destination selected by the operator. Existing ACLs are
-    // left alone; new-file permissions inherit from the chosen private folder.
-    let file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(
-            |_| "cannot create export; destination must be a new file in an existing folder",
-        )?;
+    // left alone; new Unix files are owner-only and Windows inherits the
+    // descriptor of the operator-selected private folder.
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options.open(path).map_err(
+        |_| "cannot create export; destination must be a new file in an existing folder",
+    )?;
     let mut writer = LimitedWriter {
         inner: std::io::BufWriter::new(file),
         bytes: 0,
@@ -1042,7 +1079,10 @@ async fn run_single(
     handle: &ControllerHandle,
     mut job: Job,
     allow_unchecked: bool,
+    human_store: Option<&StorageClient>,
 ) -> Result<u8, String> {
+    let json = human_store.is_none();
+    let mut human = presentation::HumanDisplay::default();
     let run_id = job.authority.run_id().to_owned();
     let mut display = if job.authority.model().stream {
         let (observer, receiver) = crate::model::TextObserver::bounded();
@@ -1053,18 +1093,39 @@ async fn run_single(
     };
     let mut pending = handle.try_submit(job, None)?;
     pending.admitted().await?;
+    if !json {
+        emit_human("Working...\n".into()).await?;
+    }
+    let mut activity = presentation::Activity::default();
+    let mut activity_enabled = human_store.is_some();
+    let mut activity_tick = tokio::time::interval(Duration::from_millis(200));
+    activity_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let finished = pending.finished();
     tokio::pin!(finished);
     let record = loop {
         tokio::select! {
             biased;
             result=&mut finished=>break result?,
+            _=activity_tick.tick(),if activity_enabled=>{
+                activity_enabled = show_activity(human_store.expect("guarded human store"), &run_id, &mut activity, &mut human).await?;
+            }
             frame=async{display.as_mut().expect("guarded display").recv().await},if display.is_some()=>{
                 match frame {
-                    Some(text)=>emit(OutputLine::TextDelta{run_id:run_id.clone(),provisional:true,text}).await?,
+                    Some(text)=>{
+                        if json {
+                            emit(OutputLine::TextDelta{run_id:run_id.clone(),provisional:true,text}).await?;
+                        } else {
+                            emit_human(human.delta(&text)).await?;
+                        }
+                    },
                     None=>{
                         if display.as_ref().is_some_and(|receiver|receiver.is_lagged()) {
-                            emit(OutputLine::DisplayClosed{run_id:run_id.clone(),reason:"provisional_display_lagged".into()}).await?;
+                            if json {
+                                emit(OutputLine::DisplayClosed{run_id:run_id.clone(),reason:"provisional_display_lagged".into()}).await?;
+                            } else {
+                                emit_human("\n[Live display paused; waiting for the saved result.]\n".into()).await?;
+                                human.break_stream();
+                            }
                         }
                         display=None;
                     }
@@ -1072,9 +1133,51 @@ async fn run_single(
             }
         }
     };
-    let (line, code) = result_line(1, record, allow_unchecked);
-    emit(line).await?;
+    if let Some(store) = human_store {
+        // Finish the bounded activity page after settlement, including tools
+        // too quick to be observed by a live tick, before printing the answer.
+        while activity_enabled && !activity.full() {
+            let before = activity.after();
+            activity_enabled = show_activity(store, &run_id, &mut activity, &mut human).await?;
+            if activity.after() == before {
+                break;
+            }
+        }
+    }
+    let code = exit_code(&record.phase, &record.acceptance_status, allow_unchecked);
+    if json {
+        let (line, _) = result_line(1, record, allow_unchecked);
+        emit(line).await?;
+    } else {
+        emit_human(human.finished(&record)).await?;
+    }
     Ok(code)
+}
+
+async fn show_activity(
+    store: &StorageClient,
+    run_id: &str,
+    activity: &mut presentation::Activity,
+    human: &mut presentation::HumanDisplay,
+) -> Result<bool, String> {
+    if activity.full() {
+        return Ok(false);
+    }
+    let page = tokio::time::timeout(
+        Duration::from_secs(1),
+        event_page(store, run_id, activity.after(), 64),
+    )
+    .await;
+    let Ok(Ok(events)) = page else {
+        emit_human(human.activity("[Live activity unavailable; waiting for the saved result.]\n"))
+            .await?;
+        return Ok(false);
+    };
+    let text = activity.observe(events);
+    if !text.is_empty() {
+        emit_human(human.activity(&text)).await?;
+    }
+    Ok(!activity.full())
 }
 
 struct Completion {
@@ -1146,15 +1249,61 @@ async fn run_session(
     startup: &Startup,
     store: &StorageClient,
     interrupted: &CancellationToken,
+    json: bool,
 ) -> Result<u8, String> {
     let (workspace, model) = startup.session_defaults()?;
+    if !json {
+        let workspace_config = startup
+            .config
+            .workspace(&workspace)
+            .ok_or("unknown workspace")?;
+        let model_config = startup.config.model(&model).ok_or("unknown model")?;
+        emit_human(presentation::session_intro(workspace_config, model_config)).await?;
+    }
     let mut previous: Option<String> = None;
+    let mut last_run: Option<String> = None;
     let mut code = 0;
     loop {
-        let Some(prompt) = read_entry(interrupted).await? else {
-            return Ok(code);
+        let Some(prompt) = read_entry(interrupted, json).await? else {
+            return Ok(if interrupted.is_cancelled() {
+                130
+            } else {
+                code
+            });
         };
         if prompt.trim().is_empty() {
+            continue;
+        }
+        if !json && prompt.trim().starts_with('/') {
+            match prompt.trim() {
+                "/exit" | "/quit" => return Ok(code),
+                "/help" => emit_human(presentation::SESSION_HELP.into()).await?,
+                "/clear" | "/new" => {
+                    previous = None;
+                    emit_human("Previous-answer context cleared.\n\n".into()).await?;
+                }
+                "/status" => {
+                    let status = if let Some(run_id) = &last_run {
+                        presentation::run_status(&retained_run(store, run_id.clone()).await?)
+                    } else {
+                        "No runs yet.\n\n".into()
+                    };
+                    emit_human(status).await?;
+                }
+                "/permissions" => {
+                    let workspace_config = startup
+                        .config
+                        .workspace(&workspace)
+                        .ok_or("unknown workspace")?;
+                    emit_human(presentation::permissions(workspace_config)).await?;
+                }
+                _ => {
+                    emit_human(
+                        "Unknown session command. Type /help for available commands.\n\n".into(),
+                    )
+                    .await?
+                }
+            }
             continue;
         }
         let mut submission = Submission::Freeform {
@@ -1171,56 +1320,108 @@ async fn run_session(
             Ok(prior) => prior,
             Err(error) => {
                 previous = None;
-                emit(OutputLine::Error {
-                    index: None,
-                    reason: format!("cannot continue the previous entry: {error}"),
-                })
-                .await?;
+                code = 1;
+                session_error(format!("cannot continue the previous entry: {error}"), json).await?;
                 continue;
             }
         };
         let job = match startup.job_continued(submission, prior) {
             Ok(job) => job,
             Err(error) => {
-                emit(OutputLine::Error {
-                    index: None,
-                    reason: error,
-                })
-                .await?;
+                code = 1;
+                session_error(error, json).await?;
                 continue;
             }
         };
         let run_id = job.authority.run_id().to_owned();
-        code = run_single(handle, job, true).await?;
-        previous = Some(run_id);
+        code = run_single(handle, job, true, (!json).then_some(store)).await?;
+        last_run = Some(run_id.clone());
+        previous = (code == 0).then_some(run_id);
         if interrupted.is_cancelled() {
             return Ok(code);
         }
     }
 }
 
-/// Read one entry without holding a runtime thread on the console.
-async fn read_entry(interrupted: &CancellationToken) -> Result<Option<String>, String> {
+/// Read one entry without tying runtime shutdown to an uninterruptible OS read.
+/// At most one stdin reader exists: another is started only after it returned a
+/// line. If cancelled, this read-only thread can live until process teardown;
+/// the controller and journal still settle before the CLI returns its exit code.
+async fn read_entry(interrupted: &CancellationToken, json: bool) -> Result<Option<String>, String> {
     if interrupted.is_cancelled() {
         return Ok(None);
     }
-    let line = tokio::task::spawn_blocking(|| {
-        use std::io::Write;
-        let mut out = std::io::stderr();
-        let _ = out.write_all(b"> ");
-        let _ = out.flush();
-        let mut line = String::new();
-        match std::io::stdin().read_line(&mut line) {
-            Ok(0) => Ok(None),
-            Ok(_) => Ok(Some(line)),
-            Err(error) => Err(error.to_string()),
-        }
-    });
+    let (send_line, line) = tokio::sync::oneshot::channel();
+    std::thread::Builder::new()
+        .name("kinesin-console-input".into())
+        .spawn(move || {
+            let result = read_console_entry(json);
+            let _ = send_line.send(result);
+        })
+        .map_err(|_| "cannot start console reader".to_owned())?;
     tokio::select! {
         biased;
         _ = interrupted.cancelled() => Ok(None),
         joined = line => joined.map_err(|_| "console reader failed".to_owned())?,
     }
+}
+
+fn read_console_entry(json: bool) -> Result<Option<String>, String> {
+    use std::io::Write;
+    // Human output and prompts use one flushed stream, so the next prompt
+    // cannot overtake the answer. JSON keeps stdout exclusively JSONL.
+    let mut out: Box<dyn Write> = if json {
+        Box::new(std::io::stderr())
+    } else {
+        Box::new(std::io::stdout())
+    };
+    out.write_all(b"> ")
+        .and_then(|()| out.flush())
+        .map_err(|_| "CLI prompt output failed".to_owned())?;
+    read_session_line(&mut std::io::stdin().lock())
+}
+
+fn read_session_line(input: &mut impl BufRead) -> Result<Option<String>, String> {
+    let mut line = Vec::new();
+    input
+        .take((crate::config::MAX_PROMPT_BYTES + 1) as u64)
+        .read_until(b'\n', &mut line)
+        .map_err(|_| "cannot read session entry")?;
+    if line.len() > crate::config::MAX_PROMPT_BYTES {
+        return Err(
+            "session entry exceeds 16 KiB; restart the session with a shorter request".into(),
+        );
+    }
+    if line.is_empty() {
+        return Ok(None);
+    }
+    String::from_utf8(line)
+        .map(Some)
+        .map_err(|_| "session entry must be UTF-8".into())
+}
+
+async fn session_error(reason: String, json: bool) -> Result<(), String> {
+    if json {
+        emit(OutputLine::Error {
+            index: None,
+            reason,
+        })
+        .await
+    } else {
+        emit_human(format!("Kinesin: {}\n\n", presentation::safe_text(&reason))).await
+    }
+}
+
+async fn emit_human(text: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let mut output = std::io::stdout().lock();
+        output
+            .write_all(text.as_bytes())
+            .and_then(|()| output.flush())
+            .map_err(|_| "CLI output failed".to_owned())
+    })
+    .await
+    .map_err(|_| "CLI output worker failed")?
 }
 
 async fn run_batch(
@@ -1395,6 +1596,32 @@ pub fn aggregate_exit(current: u8, next: u8) -> u8 {
 mod tests {
 
     #[test]
+    fn session_input_stops_reading_at_the_prompt_bound() {
+        let oversized = vec![b'x'; crate::config::MAX_PROMPT_BYTES * 4];
+        let mut input = std::io::Cursor::new(oversized);
+        assert!(
+            read_session_line(&mut input)
+                .unwrap_err()
+                .contains("exceeds 16 KiB")
+        );
+        assert_eq!(
+            input.position(),
+            (crate::config::MAX_PROMPT_BYTES + 1) as u64
+        );
+        let mut input = std::io::Cursor::new(b"hello\r\nnext\n");
+        assert_eq!(
+            read_session_line(&mut input).unwrap().as_deref(),
+            Some("hello\r\n")
+        );
+        assert_eq!(
+            read_session_line(&mut input).unwrap().as_deref(),
+            Some("next\n")
+        );
+        assert_eq!(read_session_line(&mut input).unwrap(), None);
+        assert!(read_session_line(&mut &b"\xff\n"[..]).is_err());
+    }
+
+    #[test]
     fn the_bare_command_opens_a_session_and_continuation_needs_no_flag() {
         let args = |items: &[&str]| {
             items
@@ -1403,16 +1630,46 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         // The common entry point takes no arguments at all.
-        let CliCommand::Session { config } = parse(args(&[])).unwrap() else {
+        let CliCommand::Session {
+            config,
+            json,
+            explicit_config,
+        } = parse(args(&[])).unwrap()
+        else {
             panic!("no arguments opens a session");
         };
         assert_eq!(config, PathBuf::from(DEFAULT_CONFIG));
+        assert!(!json);
+        assert!(!explicit_config);
 
-        let CliCommand::Session { config } = parse(args(&["--config", "other.toml"])).unwrap()
+        let CliCommand::Session {
+            config,
+            json,
+            explicit_config,
+        } = parse(args(&["--config", "other.toml"])).unwrap()
         else {
             panic!("a config override still opens a session");
         };
         assert_eq!(config, PathBuf::from("other.toml"));
+        assert!(!json);
+        assert!(explicit_config);
+        assert!(matches!(
+            parse(args(&["--json"])).unwrap(),
+            CliCommand::Session { json: true, .. }
+        ));
+        assert!(parse(args(&["--json", "--json"])).is_err());
+        assert!(
+            parse(args(&[
+                "--json",
+                "--workspace",
+                "w",
+                "--model",
+                "m",
+                "--prompt",
+                "p"
+            ]))
+            .is_err()
+        );
 
         // There is no `run` verb — running is what bare `kinesin` does, so flags
         // alone are a one-shot run.

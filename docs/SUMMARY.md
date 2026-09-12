@@ -30,6 +30,7 @@
   - [INT-0026 Session continuity and model-context admission](intents/INT-0026-session-context-continuity.md)
   - [INT-0027 Verified encrypted remote-model deployment](intents/INT-0027-encrypted-remote-deployment.md)
   - [INT-0028 Runnable Windows and Linux first-use instructions](intents/INT-0028-first-use-documentation.md)
+  - [INT-0029 Interactive entry and workspace operations](intents/INT-0029-interactive-entry-and-workspaces.md)
 - [The roadmap](roadmap.md)
 - [Threat model & assurance](threat-model.md)
 - [Supply-chain policy](supply-chain.md)

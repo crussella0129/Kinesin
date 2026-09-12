@@ -1,5 +1,20 @@
 //! Console cancellation without inheriting a launcher's Windows Ctrl+C ignore flag.
 
+/// First-use prompts run before the controller and asynchronous signal listener.
+/// Restore the operating system's default cancellation behavior during that
+/// stage, when there is no live run or journal requiring settlement.
+pub fn enable_setup_ctrl_c() -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::Console::SetConsoleCtrlHandler;
+        // SAFETY: this changes only the current process's inherited ignore flag.
+        if unsafe { SetConsoleCtrlHandler(None, 0) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
 /// Register the listener before enabling signal delivery. Some Windows launchers
 /// create children with Ctrl+C ignored; adding a handler does not clear that
 /// separate, inherited attribute.

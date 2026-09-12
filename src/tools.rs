@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
+use cap_fs_ext::DirExt;
 use cap_std::ambient_authority;
 use cap_std::fs::Dir;
 use serde::{Deserialize, Serialize};
@@ -407,7 +408,8 @@ impl WorkspaceReader {
             // A read capability cannot write or run. The runner routes a write to
             // the separate WorkspaceWriter and a command to the CommandRunner;
             // reaching here with either is a routing fault.
-            ToolName::WriteFile
+            ToolName::CreateDirectory
+            | ToolName::WriteFile
             | ToolName::EditFile
             | ToolName::DeleteFile
             | ToolName::MoveFile
@@ -753,6 +755,7 @@ impl WorkspaceWriter {
     /// whose arguments its shape check already validated for this variant.
     pub fn execute(&self, name: ToolName, args: &TypedToolArgs) -> ToolResult {
         match name {
+            ToolName::CreateDirectory => self.create_directory(&args.path),
             ToolName::WriteFile => {
                 self.write_file(&args.path, args.content.as_deref().unwrap_or(""))
             }
@@ -769,6 +772,48 @@ impl WorkspaceWriter {
                 "not_a_write_tool",
                 "This capability only writes.",
             ),
+        }
+    }
+
+    /// Create exactly one directory under an existing workspace parent. Each
+    /// parent component is opened without following links and retained as a
+    /// capability before moving to the next component. The final mkdir cannot
+    /// replace an existing file, directory, or link; any existing name is an
+    /// explicit error, so a retry cannot claim it created someone else's entry.
+    pub fn create_directory(&self, path: &str) -> ToolResult {
+        if validate_relative_path(path).is_err() {
+            return ToolResult::failure(
+                ToolStatus::Denied,
+                "invalid_path",
+                "Use a supported relative workspace path for a new directory.",
+            );
+        }
+        let (parent_path, name) = path.rsplit_once('/').unwrap_or((".", path));
+        let mut parent = match self.root.try_clone() {
+            Ok(parent) => parent,
+            Err(error) => return io_failure(error.kind()),
+        };
+        if parent_path != "." {
+            for component in parent_path.split('/') {
+                parent = match parent.open_dir_nofollow(component) {
+                    Ok(parent) => parent,
+                    Err(error) => return io_failure(error.kind()),
+                };
+            }
+        }
+        match parent.create_dir(name) {
+            Ok(()) => {
+                let mut result = ToolResult::success(None);
+                result.body = serde_json::to_string(&json!({ "created_directory": path }))
+                    .expect("fixed directory result shape");
+                result
+            }
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => ToolResult::failure(
+                ToolStatus::Error,
+                "already_exists",
+                "A file, directory, or symbolic link already exists at this path; nothing was changed.",
+            ),
+            Err(error) => io_failure(error.kind()),
         }
     }
 
@@ -2102,6 +2147,140 @@ mod tests {
         assert_eq!(capped.status, ToolStatus::Ok);
         assert!(capped.encoded().unwrap().len() <= 1_024);
         assert!(capped.truncated);
+    }
+
+    #[test]
+    fn create_directory_preserves_spaced_names_and_existing_contents() {
+        let fixture = Fixture::new();
+        let writer = fixture.writer();
+        let args = TypedToolArgs::parse(r#"{"path":"test 1"}"#).unwrap();
+        args.shape_for(ToolName::CreateDirectory).unwrap();
+        let created = writer.execute(ToolName::CreateDirectory, &args);
+        created.assert_ok();
+        assert!(fixture.root.join("workspace/test 1").is_dir());
+        assert_eq!(created.evidence_id, None);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&created.body).unwrap(),
+            json!({"created_directory": "test 1"})
+        );
+        writer.create_directory("test 1/nested child").assert_ok();
+        fixture.write("test 1/keep.txt", "existing contents");
+        for existing in ["test 1", "test 1/keep.txt"] {
+            let refused = writer.create_directory(existing);
+            assert_eq!(refused.status, ToolStatus::Error);
+            assert_eq!(refused.error.unwrap().code, "already_exists");
+        }
+        assert_eq!(fixture.read_back("test 1/keep.txt"), "existing contents");
+        assert!(fixture.root.join("workspace/test 1/nested child").is_dir());
+    }
+
+    #[test]
+    fn create_directory_refuses_escapes_missing_parents_and_read_only_capability() {
+        let fixture = Fixture::new();
+        let writer = fixture.writer();
+        for path in [
+            "",
+            ".",
+            "..",
+            "../escape",
+            "/absolute",
+            "C:/absolute",
+            "nested/../escape",
+            "nested//child",
+            "nested\\child",
+            "NUL",
+            "trailing ",
+            "trailing.",
+        ] {
+            let refused = writer.create_directory(path);
+            assert_eq!(refused.status, ToolStatus::Denied, "{path}");
+            assert_eq!(refused.error.unwrap().code, "invalid_path", "{path}");
+        }
+        let refused = writer.create_directory("missing/child");
+        assert_eq!(refused.error.unwrap().code, "not_found");
+        assert!(!fixture.root.join("workspace/missing").exists());
+        fixture.write("file-parent", "keep");
+        assert_ne!(
+            writer.create_directory("file-parent/child").status,
+            ToolStatus::Ok
+        );
+        assert_eq!(fixture.read_back("file-parent"), "keep");
+        let denied = fixture.reader().execute(
+            ToolName::CreateDirectory,
+            "not granted",
+            MAX_TOOL_BYTES,
+            None,
+        );
+        assert_eq!(denied.status, ToolStatus::Denied);
+        assert_eq!(denied.error.unwrap().code, "not_a_write_capability");
+        assert!(!fixture.root.join("workspace/not granted").exists());
+        for arguments in [
+            r#"{"path":"new","content":"ignored"}"#,
+            r#"{"path":"new","to":"ignored"}"#,
+            r#"{"path":"new","query":"ignored"}"#,
+        ] {
+            assert!(
+                TypedToolArgs::parse(arguments)
+                    .unwrap()
+                    .shape_for(ToolName::CreateDirectory)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn create_directory_never_follows_parent_or_leaf_links() {
+        let fixture = Fixture::new();
+        let workspace = fixture.root.join("workspace");
+        let outside = fixture.root.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        for (target, link) in [
+            (outside.clone(), workspace.join("escape")),
+            (workspace.join("nested"), workspace.join("internal-link")),
+            (outside.join("missing"), workspace.join("dangling-link")),
+        ] {
+            #[cfg(windows)]
+            let created = std::os::windows::fs::symlink_dir(&target, &link);
+            #[cfg(unix)]
+            let created = std::os::unix::fs::symlink(&target, &link);
+            if let Err(error) = created {
+                #[cfg(windows)]
+                if error.raw_os_error() == Some(1314) {
+                    eprintln!(
+                        "UNAVAILABLE: directory link confinement test lacks OS symlink privilege: {error}"
+                    );
+                    return;
+                }
+                panic!("cannot prepare directory symlink fixture: {error}");
+            }
+        }
+        let writer = fixture.writer();
+        for path in [
+            "escape/child",
+            "internal-link/child",
+            "dangling-link/child",
+            "escape",
+            "internal-link",
+            "dangling-link",
+        ] {
+            assert_ne!(
+                writer.create_directory(path).status,
+                ToolStatus::Ok,
+                "{path}"
+            );
+        }
+        assert_eq!(std::fs::read_dir(outside).unwrap().count(), 0);
+        assert_eq!(
+            std::fs::read_dir(workspace.join("nested")).unwrap().count(),
+            0
+        );
+        for path in ["escape", "internal-link", "dangling-link"] {
+            assert!(
+                std::fs::symlink_metadata(workspace.join(path))
+                    .unwrap()
+                    .is_symlink()
+            );
+        }
     }
 
     #[test]

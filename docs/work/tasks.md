@@ -1,5 +1,7 @@
 # Agent Tasks (Persistent Backlog)
 
+- [ ] T-108 (backlog) [intent: INT-0029]: Complete the user-requested interactive entry repair following merged PR 11 — touches: onboarding; CLI presentation; directory tool; installation and platform verification; usage docs
+
 
 - [ ] T-101 (backlog) [intent: INT-0019]: Plan and verify mandatory Windows AppContainer/LPAC isolation alongside owned Jobs — touches: src/process.rs; src/tools.rs; tests/command_tool.rs; Windows isolation tests; docs/security.md
 - [ ] T-102 (backlog) [intent: INT-0026]: Define session continuity and model token admission, then test branching and mixed-owner slot reassignment with actual prepared requests — touches: src/cli.rs; src/policy.rs; src/model.rs; src/replay.rs; tests/live_evaluation.rs

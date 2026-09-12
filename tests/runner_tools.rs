@@ -663,6 +663,73 @@ async fn cancellation_while_waiting_for_tool_capacity_does_not_start_a_read_or_n
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn create_directory_requires_a_grant_and_records_its_real_effect() {
+    for granted in [false, true] {
+        let fixture = Fixture::new(&[]);
+        let source = if granted {
+            CONFIG.replace(
+                "tools = [\"read_file\"]",
+                "tools = [\"read_file\", \"create_directory\"]",
+            )
+        } else {
+            CONFIG.to_owned()
+        };
+        let config = fixture.config(&source);
+        let authority = config
+            .authorize_local(Submission::Freeform {
+                workspace: "practice".into(),
+                model: "local".into(),
+                continues: None,
+                prompt: "make folder called test 1".into(),
+                limits: None,
+                capture: Some(CaptureMode::Replay),
+            })
+            .unwrap();
+        let storage = fixture.storage().await;
+        let store = storage.client();
+        let client = ModelClient::scripted(
+            [
+                batch(vec![call("d1", "create_directory", r#"{"path":"test 1"}"#)]),
+                ModelReply::Answer("Finished the attempt.".into()),
+            ]
+            .into_iter()
+            .map(Into::into),
+        );
+        // Construct resources from the actual grants: a read-only workspace
+        // receives no writer, and an allowed directory tool receives one.
+        let resources = RunResources::from_config(&config)
+            .unwrap()
+            .remove("local")
+            .unwrap();
+        admit(&authority, &store, None).await.unwrap();
+        let record = run_admitted(
+            authority.clone(),
+            client,
+            store.clone(),
+            resources,
+            CancellationToken::new(),
+            Instant::now(),
+        )
+        .await
+        .unwrap();
+        let events = events(&store, &authority).await;
+        storage.shutdown().await.unwrap();
+        assert_eq!(fixture.root.join("workspace/test 1").is_dir(), granted);
+        let effect = events
+            .iter()
+            .find(|event| event.kind == "tool_finished" && event.data["tool"] == "create_directory")
+            .expect("directory attempt is journalled");
+        assert_eq!(
+            effect.data["dispatch"],
+            if granted { "executed" } else { "denied" }
+        );
+        assert!(effect.data.get("evidence_id").is_none_or(Value::is_null));
+        assert_eq!(record.phase, "completed");
+        assert_eq!(record.acceptance_status, "unchecked");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_freeform_run_writes_a_file_and_records_the_effect() {
     let write_config = CONFIG.replace(
         "tools = [\"read_file\"]",

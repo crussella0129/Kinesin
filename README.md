@@ -6,48 +6,54 @@ A Rust agent harness with explicit authority and bounded resources.
 
 ## Start here
 
-Kinesin is a **terminal application**. Cloning this repository does not install
-a `kinesin` command on PATH, and Kinesin does not start its own model server.
-The [complete getting-started guide](docs/getting-started.md) provides separate
-[Windows PowerShell](docs/getting-started.md#windows-powershell) and
-[Linux](docs/getting-started.md#linux) instructions, including prerequisites,
-configuration, private state, a first prompt and an existing nighthawk deployment.
+Install Kinesin once, then type **`kinesin` from any folder**. The terminal entry
+introduces the assistant and asks which project folder to work in. First use
+also saves your model connection. Sessions show the selected folder, model,
+permitted actions, tool activity and readable answers.
 
-Already have Rust and this checkout? Confirm the CLI starts:
+From an existing checkout with Rust installed:
 
 **Windows PowerShell**
 
 ```powershell
 cd "$HOME\Kinesin"
-cargo run --locked -- --help
+cargo install --locked --path . --bin kinesin
+$env:Path = "$HOME\.cargo\bin;$env:Path"
+kinesin
 ```
 
 **Linux**
 
 ```bash
 cd "$HOME/Kinesin"
-cargo run --locked -- --help
+cargo install --locked --path . --bin kinesin
+export PATH="$HOME/.cargo/bin:$PATH"
+kinesin
 ```
 
-`cargo run` now selects the `kinesin` executable automatically. Help works
-without a model or configuration. Next, follow the guide to copy
-[`kinesin.example.toml`](kinesin.example.toml) to `kinesin.toml`, prepare its
-`workspace` and private `state`, and start or connect the model server. Then:
+For a faster development installation, append `--debug` to the install command.
+`cargo run --locked` from the checkout opens the same entry point, and
+`kinesin --help` needs no configuration or model. Cloning alone does not install
+the command. See the [Windows and Linux guide](docs/getting-started.md) for build
+prerequisites, persistent PATH and the complete first session.
+
+Choose a working folder at the prompt, then ask for work there:
 
 ```text
-cargo run --locked -- --workspace practice --model local --prompt "Say hello" --allow-unchecked
-cargo run --locked
+> make a folder called test 1
+> list the files in this folder
 ```
 
-The first command runs one prompt; the second opens the interactive `> ` session.
-There is no `run` subcommand. `kinesin.toml` is read from the current directory,
-or selected explicitly with `--config PATH`. The guide shows the expected JSON
-and how to distinguish a completed answer from checked task acceptance.
+The personal profile allows read/search, folder creation and file writing/editing
+inside that selected folder. `/help`, `/permissions`, `/status`, `/new` and `/exit`
+control the session. Model serving remains separate; the guide includes the
+[existing Nighthawk connection](docs/getting-started.md#use-the-existing-nighthawk-model).
 
-To install the program, run `cargo install --locked --path . --bin kinesin`
-from the checkout, then ensure Cargo's `bin` directory is on PATH as shown in
-the guide. After that, `kinesin --help` works from any directory; starting a
-session elsewhere still requires the correct `--config` path.
+Normal terminal entry uses private per-user settings, so projects do not need
+their own `kinesin.toml`. `--config PATH` explicitly selects a fixed profile and
+skips folder selection; `--json` exposes session receipts for automation.
+The tracked [`kinesin.example.toml`](kinesin.example.toml) remains a read-only
+checked-task example. One-shot and operator commands retain structured output.
 
 **Why are there three binaries?** `kinesin` is the product. `cmd-fixture` is a
 test child process for command execution and cleanup; `mcp-fixture` is a test
