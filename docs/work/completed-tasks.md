@@ -292,4 +292,4 @@
 - **Intent:** [INT-0028](../intents/INT-0028-first-use-documentation.md)
 - **Completed:** 2026-09-12T18:06:47Z
 - **Files modified:** Cargo.toml; src/cli.rs; tests/cli_inspect.rs; kinesin.example.toml; README.md; docs/getting-started.md; docs/cli.md; docs/configuration.md; docs/SUMMARY.md; docs/intents/INT-0028-first-use-documentation.md; docs/sprints/s11/sprint-meta.md; docs/sprints/s11/sprint-plans/{build-plan,test-plan}.md (finalization markers); docs/work ledgers.
-- **Commit:** PENDING
+- **Commit:** `c7eb088ad104d381853ede5d2288c8d97e663aa2`
