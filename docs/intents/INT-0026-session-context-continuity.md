@@ -6,7 +6,7 @@
 - **Work evidence:** none
 - **Completion evidence:** none
 - **Code evidence:** none
-- **Test evidence:** none
+- **Test evidence:** [sprint 10 partial live observation](../sprints/s10/sprint-tests/remote-deployment.md#faithful-session-cache-observation); broader criteria remain unverified
 - **Documentation evidence:** none
 
 ## Intent
@@ -25,8 +25,7 @@ INT-0002 owns byte compaction and INT-0004 claims session caching, but neither f
 Continue carrying only the preceding candidate without specifying losses (insufficient for a general session contract); persist unrestricted transcript history (violates resource bounds).
 
 ## Consequences
-Requires a bounded continuation format and compatibility evidence. Actual live session measurements remain outstanding until the required model is available.
+Requires a bounded continuation format and compatibility evidence. Sprint 10 measured real shared-prefix reuse on a provisioned model. Omitting cache_prompt leaves backend defaults in effect; an explicit disabled-cache control, full-history continuity, token-window admission and concurrent-slot evidence remain outstanding.
 
 ## Transition history
 - 2026-09-12: created as `proposed` following the sprint 10 intent-first review and implementation audit.
-

@@ -272,3 +272,10 @@
 - **Completed:** 2026-09-12T16:01:45Z
 - **Files modified:** src/cli.rs, src/scheduler.rs, src/service.rs, src/runner.rs, src/replay.rs, src/policy.rs, src/mcp.rs, src/mcp/transport.rs, src/bin/mcp-fixture.rs, tests/mcp.rs, tests/service.rs
 - **Commit:** `e584d9e15f15399b6e0a365a16de74f02c0c9eee`
+
+## T-009 (sprint 10)
+- **Description:** Made duplicate violations blocking with five exact reviewed exceptions, removed unused process dependencies/features and pruned 13 lockfile packages (249 remain). Full deny and audit passed (1,243 advisories, no vulnerabilities); removing the base64 exemption in an isolated temporary policy failed with exit 2. Refreshed all LLM/ASI risk mappings, native/build inventory and cargo-vet decision, roadmap, platform/MCP/transport limits and accurate CLI examples. Linked scoped remote/cache evidence without realizing broader proposed intents. Book validation confirms 27 chapters; documentation checks and current Windows format/all-target clippy/full tests pass.
+- **Intent:** [INT-0021](../intents/INT-0021-harness-contract-review.md), [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T16:05:30Z
+- **Files modified:** Cargo.toml, Cargo.lock, deny.toml, README.md, docs/SUMMARY.md, docs/cli.md, docs/configuration.md, docs/live-evaluation.md, docs/loop-and-tools.md, docs/security.md, docs/roadmap.md, docs/threat-model.md, docs/supply-chain.md, docs/intents/INT-0007-managed-model-process.md, docs/intents/INT-0026-session-context-continuity.md, docs/intents/INT-0027-encrypted-remote-deployment.md, docs/sprints/s10/sprint-tests/remote-deployment.md
+- **Commit:** PENDING

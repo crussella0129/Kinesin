@@ -50,8 +50,10 @@ to INT-0008, which owns the remote-endpoint half.
 Reintroduces `Command`/`Child`, readiness, and owned-cleanup ownership the
 attach profile deliberately deferred; a new failure surface (spawn failure,
 crash, restart policy) that must map to defined run outcomes; interacts with the
-scheduler's admission gate. Must reuse `command-group` tree-kill rather than a
-second cleanup path.
+scheduler's admission gate. Reuse the shared `OwnedProcess` group/Windows Job
+lifecycle implementation introduced in sprint 10, extending it only where
+managed model ownership requires separately tested behavior.
 
 ## Transition history
 - 2026-09-11: created as `proposed`.
+- 2026-09-12: proposed implementation guidance updated to the shared owned-process primitive after the unused command-group dependency was removed; capability remains proposed.

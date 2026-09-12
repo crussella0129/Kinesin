@@ -96,7 +96,7 @@ not a universal request field.
 The intended invocation is:
 
 ```text
-cargo run -- run --config kinesin.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
+cargo run -- --config kinesin.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
 ```
 
 Read filesystem CLI paths with `args_os` or a suitable CLI parser. Prompt text
@@ -162,7 +162,7 @@ language=Rust
 The intended checked invocation is:
 
 ```text
-cargo run -- run --config kinesin.toml --task practice-fields --model local
+cargo run -- --config kinesin.toml --task practice-fields --model local
 ```
 
 The profile fixes the workspace and generates the extraction instruction and

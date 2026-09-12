@@ -3,7 +3,7 @@ name = "kinesin"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
-# The reference implementation is not published to crates.io.
+# The harness is not published to crates.io.
 publish = false
 
 # Do not inherit an unrelated ancestor manifest.
@@ -13,19 +13,15 @@ resolver = "3"
 [dependencies]
 axum = "0.8.9"
 cap-std = "4.0.3"
-command-group = { version = "5.0.1", default-features = false, features = ["with-tokio"] }
 eventsource-stream = "0.2.3"
 futures-util = "0.3.32"
 getrandom = "0.4.3"
 hyper = { version = "1.11.1", features = ["server", "http1"] }
 hyper-util = { version = "0.1.20", features = ["server", "http1", "tokio", "service"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "stream"] }
-# client + child-process for reaching operator-declared servers over stdio;
-# server + transport-io + macros build the in-repo `mcp-fixture` test server.
-# These extra features enable already-present deps (schemars, pastey, rmcp-macros,
-# uuid, tokio/tokio-util) and pull no new crates, so the supply-chain gate is
-# unaffected.
-rmcp = { version = "3", features = ["client", "transport-child-process", "server", "transport-io", "macros"] }
+# The client uses bounded AsyncRwTransport with our owned process lifecycle.
+# server + transport-io + macros also build the in-repo `mcp-fixture` server.
+rmcp = { version = "3", features = ["client", "server", "transport-io", "macros"] }
 rusqlite = { version = "0.40.2", features = ["backup", "bundled"] }
 # Already in the tree via rmcp's server feature; named directly so the
 # mcp-fixture test server can derive JsonSchema for its tool arguments. No new

@@ -34,10 +34,21 @@ allow = [
 ]
 
 [bans]
-multiple-versions = "warn"      # duplicate versions are noise, not a failure
+multiple-versions = "deny"
 wildcards = "deny"              # a wildcard version requirement is unpinned risk
 allow = []
 deny = []
+# Reviewed against Cargo.lock, 2026-09-12. Only these exact nodes are exempt
+# from duplicate detection; every other duplicate is an error. Review/remove
+# stale exceptions whenever the requiring dependency changes. No skip-tree.
+# The license/advisory/source checks still apply to skipped nodes.
+skip = [
+    { crate = "base64@=0.22.1", reason = "reqwest/hyper-util use 0.22; rmcp 3.3 uses 0.23. Remove when their major-version requirements converge." },
+    { crate = "hashbrown@=0.16.1", reason = "rusqlite's wasm graph uses rsqlite-vfs 0.1 and hashbrown 0.16; hashlink/indexmap require 0.17. Keep the all-platform policy explicit." },
+    { crate = "io-lifetimes@=2.0.4", reason = "cap-primitives uses fs-set-times 0.20, which needs io-lifetimes 2; cap-std/io-extras use 3. Remove after the fs-set-times transition." },
+    { crate = "syn@=2.0.119", reason = "synstructure/tracing-attributes use syn 2; rmcp and current serde/tokio derives use syn 3. Proc-macro internals are separate." },
+    { crate = "windows-sys@=0.52.0", reason = "cap-primitives' fs-set-times/io-extras/winx graph uses windows-sys 0.52; Kinesin/Tokio use 0.61. Remove after those safe-wrapper dependencies migrate." },
+]
 
 [sources]
 unknown-registry = "deny"

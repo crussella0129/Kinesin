@@ -108,3 +108,11 @@ full synthetic cache requests, candidates, timings and hashes are in
 `target/cache-session-measurement.json`. Those runtime artifacts are ignored;
 this chapter preserves the bounded reviewable measurements. Final cleanup and
 whole-sprint results are recorded in the test report.
+
+The owned model process was stopped after verifying its executable identity,
+and the exact SSH forward process was closed. Remote inspection confirmed no
+model listener remained. A subsequent checked CLI run returned exit 1,
+`failed + inconclusive`, reason `model_connection_failed`, no accepted task and
+no tool observations. Export and offline replay of that five-event failure
+were consistent. The staged runtime/model files remain available for later
+validation; no background model service or tunnel was retained.

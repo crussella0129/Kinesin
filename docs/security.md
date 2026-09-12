@@ -129,17 +129,24 @@ tools in checked runs.
 **`delete_file` and `move_file` complete the file-mutation set, same capability.**
 Delete removes only a regular file, refusing a directory or a symbolic link so it
 cannot remove curated structure or follow a link outside the root; a missing file
-is an error. Move renames a regular file and refuses a destination that already
-exists, so it never silently overwrites. Both run through the same
+is an error. Move publishes a hard link with atomic no-replace semantics and
+then removes the source. An existing or concurrently created destination is
+preserved. Hard links must be supported on the same filesystem. If source
+cleanup fails, the explicit `move_source_cleanup_failed` outcome reports
+`destination_created = true` and `source_cleanup = failed`. This is not an atomic
+two-name rename; concurrent source replacement and stale edits remain part of
+[INT-0010](intents/INT-0010-cross-agent-write-coordination.md). Both run through the same
 `WorkspaceWriter` and the same checked-run bar.
 
-**Still deferred, and gated the same way.** Shell or command execution is the
-remaining surface, and the largest. Shell execution especially is a
-different trust class: arbitrary process spawning, argument-vector construction,
-output bounding, and its own timeout and reconciliation. Each earns its place
-against a demonstrated task, with its own effect-specific authority and confirm
-policy, before it is built. See [decisions](decisions.md) and the
-[roadmap](https://github.com/crussella0129/building-an-agent-harness/blob/main/roadmap.md).
+**Command execution is an explicit freeform capability.** `run_command` requires
+an operator allow-list of executable names and uses separate argv elements,
+without invoking a shell to interpret them. Commands receive a scrubbed
+environment. Encoded stdout/stderr, execution time and tool concurrency are
+bounded. Pre-cancelled calls never spawn. Normal completion, timeout and
+cancellation terminate the owned group/Windows Job and await the direct child;
+drop supplies a kill fallback. Unix orphan zombie reaping belongs to the OS.
+This lifecycle ownership does not itself confine a process's filesystem or
+network access; the platform boundaries below apply.
 
 ## Filesystem tools from their first implementation
 
@@ -330,7 +337,19 @@ not a user-authorization mechanism.
 ## Future external tools and hostile code
 
 MCP adapts into the same policy gate. Approve server identities and tool names;
-bound discovery and results. Treat metadata as external input: a server's
+bound discovery and results. Configuration attaches only server declarations.
+Processes start after durable admission under an active controller slot, with
+the run's cancellation/deadline and a separate startup deadline. Rejected,
+queued-cancelled and idempotent-repeat submissions cannot start an extra server.
+The acknowledged startup event freezes bounded schemas before model dispatch;
+metadata capture keeps only their digest/count/status while replay capture
+retains their untrusted bytes. Live and replay dispatch independently require
+both a frozen definition and the run's grant. Normal shutdown precedes terminal
+commit; the outer owner also awaits cleanup after unexpected execution/journal
+errors. Storage failure may require startup recovery because a failed journal
+cannot acknowledge a new terminal record.
+
+Treat metadata as external input: a server's
 read-only annotation is not proof that its implementation is read-only. MCP
 roots communicate boundaries; enforcement still belongs in the implementation.
 [MCP tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools),
@@ -348,17 +367,28 @@ CPU/memory/process/output resources, and verified process-tree cleanup.
 `Command::env_clear` followed by explicit required variables helps prevent
 credential inheritance. [Rust Command](https://doc.rust-lang.org/std/process/struct.Command.html#method.env_clear)
 
-On Linux, select an established sandbox and verify its filesystem, network, and
-resource restrictions. Landlock support varies by kernel ABI; rights outside a
-ruleset's handled set are not denied by that ruleset. A mandatory isolation mode
-must refuse launch when a required protection is unavailable. Port restrictions
-alone do not select an allowed remote host.
+Linux commands require fully enforced Landlock ABI v3 rights and seccomp before
+exec; partial/unsupported enforcement refuses launch. Workspace content access
+is granted through the configured root, with narrowly documented runtime
+exceptions for system binaries/libraries, `/etc/ld.so.cache`, `/etc/localtime`,
+and the exact selected executable. Config/state cannot overlap broad runtime
+grants. `/proc` is not granted. Non-stdio inherited descriptors are closed on
+exec. Seccomp denies network creation, io_uring, group/session escape and
+namespace creation; clone3 returns ENOSYS so ordinary thread/process creation
+can use its inspected fallback.
+
+This tier restricts the handled content operations, including truncation; it
+does not provide universal hostile-code isolation. Landlock does not mediate
+all filesystem metadata operations such as chmod/chown, and same-user process
+interactions remain a residual boundary. Comprehensive embedding/descriptor
+inventory remains [INT-0025](intents/INT-0025-secrets-and-egress.md). Commands
+that require other ambient runtime paths may fail closed.
 [Kernel Landlock documentation](https://docs.kernel.org/userspace-api/landlock.html)
 
-On Windows, AppContainer/LPAC can provide resource isolation, while Job Objects
-provide process-group lifecycle and resource controls. Job membership alone does
-not establish the required file/network sandbox. Test the actual deployment's
-denied operations before enabling an execution tool.
+Windows commands currently have Job lifecycle ownership and scrubbed environment,
+without AppContainer filesystem/network isolation. AppContainer/LPAC remains
+[INT-0019](intents/INT-0019-windows-command-sandboxing.md). Job membership alone
+does not establish a file/network sandbox.
 [AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer),
 [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)
 

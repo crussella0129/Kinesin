@@ -6,7 +6,7 @@
 - **Work evidence:** none
 - **Completion evidence:** none
 - **Code evidence:** none
-- **Test evidence:** none
+- **Test evidence:** [sprint 10 scoped two-host observation](../sprints/s10/sprint-tests/remote-deployment.md); broader deployment criteria remain unverified
 - **Documentation evidence:** none
 
 ## Intent
@@ -25,8 +25,7 @@ INT-0008's recorded realization admits private plaintext and demonstrates one ho
 Infer encryption from address ranges (rejected); build a new VPN in the harness (INT-0009 owns that separate decision).
 
 ## Consequences
-Requires a provisioned second host and recorded deployment proof. INT-0022 repairs the client policy now; this chapter stays proposed until deployment acceptance is demonstrated.
+Sprint 10 provisioned a second host and recorded a checked run, pure replay, loopback binding, authenticated SSH forwarding and rejected direct access. INT-0022 repairs client policy. This chapter stays proposed pending the broader deployment contract, including invalid-identity and route-ownership failure cases across supported configurations.
 
 ## Transition history
 - 2026-09-12: created as `proposed` following the sprint 10 intent-first review and implementation audit.
-

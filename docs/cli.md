@@ -45,8 +45,8 @@ port 8080. Follow [the recorded server startup](model-preflight.md#reproduce-the
 or edit your copied example to match the separately verified endpoint.
 
 ```text
-cargo run -- run --config examples/file-task.toml --task practice-fields --model local
-cargo run -- run --config examples/first-turn.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
+cargo run -- --config examples/file-task.toml --task practice-fields --model local
+cargo run -- --config examples/first-turn.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
 cargo run -- batch --config examples/file-task.toml --input examples/batch.jsonl
 ```
 

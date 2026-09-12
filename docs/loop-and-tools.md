@@ -134,19 +134,20 @@ The real request includes this in its `tools` array, with the other chat fields.
 Use typed structs with unknown-field rejection and a shared lexical path
 validator. Do not write a general JSON Schema engine for a fixed tool set.
 
-Seven tools are offered. The first three only read; `write_file`, `edit_file`,
-`delete_file`, and `move_file` change the workspace and are gated separately (see
-below and [security](security.md)).
+Eight compiled tools are offered, alongside explicitly allow-listed MCP tools.
+The first three only read; file mutations and command execution are gated
+separately (see below and [security](security.md)).
 
 | Tool | Arguments | Returns | Mints evidence |
 |------|-----------|---------|----------------|
-| `read_file` | `path` | A bounded UTF-8 prefix of one file | **Yes** |
+| `read_file` | `path` | A bounded UTF-8 prefix of one file | Checked runs only |
 | `list_files` | `path` | A bounded nonrecursive listing | No |
 | `search_files` | `path`, `query`, optional `case_sensitive` | Matching file names and one-based line numbers below `path` | No |
 | `write_file` | `path`, `content` | Bytes written; replaces one file atomically | No |
 | `edit_file` | `path`, `find`, `replace` | Bytes written; replaces one unique passage | No |
 | `delete_file` | `path` | Removes one regular file | No |
-| `move_file` | `path`, `to` | Renames one file; never overwrites | No |
+| `move_file` | `path`, `to` | Publishes a destination without replacement, then removes the source | No |
+| `run_command` | `command`, `args` | Bounded encoded stdout/stderr and exit outcome | No |
 
 `search_files` exists because listing and reading alone cannot answer "which
 file mentions this" without walking the tree one directory at a time, spending
@@ -161,7 +162,9 @@ the forgiving mode is the default and exactness is the deliberate request. Case
 folding decides the match only; a reported line is always the file's own bytes.
 See the [paper review](https://github.com/crussella0129/building-an-agent-harness/blob/main/paper-review.md) for the measurement behind this.
 
-**Only `read_file` mints evidence, and that is a deliberate boundary.** A
+**Only checked-run `read_file` observations mint evidence.** Unchecked reads
+remain ordinary tool data and do not consume the verifier inventory or protect
+otherwise eligible groups from compaction. A
 listing and a search both return partial views of the workspace. If a search
 hit could be cited, a candidate could claim a field equals a value it never
 observed completely. The acceptance contract compares a claimed value against a
@@ -194,9 +197,14 @@ than the editable bound rather than truncating it, and is atomic.
 
 `delete_file` removes one **regular** file. A directory or a symbolic link is
 refused, so it never removes curated structure or reaches outside the root, and a
-missing file is an error rather than a silent success. `move_file` renames one
-regular file, and the destination must not already exist, so a move never
-silently overwrites another file. Both share the writer's capability and guards.
+missing file is an error rather than a silent success. `move_file` atomically
+publishes a hard link only when the destination is absent, then removes the
+source. A concurrent destination wins without being overwritten. The operation
+requires hard-link support on one filesystem; it is not an atomic two-name
+rename. If source cleanup fails, `move_source_cleanup_failed` reports that the
+destination was created and source cleanup failed. Concurrent source replacement
+still requires the proposed lease/fencing contract. Both tools share the writer's
+capability and guards.
 
 A **checked** task cannot enable any mutating tool. If a run could edit a file it
 then reads, it could plant the value a criterion checks and cite its own change as
@@ -314,13 +322,37 @@ Statuses are `ok`, `error`, or `denied`. Use stable error codes and bounded
 helpful text. Do not expose service filesystem paths or credentials in errors.
 Truncation must describe what the model actually received; never imply the
 entire file was read if only a prefix was available.
-For actual successful observations, the runner can add `evidence_id`, a unique
+For actual successful checked-run reads, the runner can add `evidence_id`, a unique
 reference inside this run. Its envelope bytes count toward the same result cap.
 Only runner-owned records can resolve that reference. The checker also verifies
 resource identity, status, completeness, and the claimed value; a citation alone
 does not pass. See [task acceptance](verification.md#runner-owned-evidence).
 
 ## Budgets and context
+
+Local MCP tools use operator-declared stdio executables. Their descriptions and
+results remain untrusted data, and dispatch requires both a frozen discovered
+definition and the run's independent tool grant. Schema checking currently
+requires an object and advertised required keys; it is not a general JSON
+Schema validator. MCP tools never mint evidence and cannot be enabled in checked
+runs.
+
+Jobs carry declarations without starting processes. The admitted active runner
+prepares its own server pool, records the frozen schemas before model dispatch,
+and awaits process cleanup before normal terminal acknowledgement. Discovery
+failures and cancellation have recorded outcomes; pure replay consumes the
+frozen observations without reconnecting.
+
+Protocol input is bounded before JSON decoding: 256 KiB per frame, 16 MiB and
+4,096 frames per server session. Initialization, notifications and requests all
+count toward that independent frame limit; a noisy server can reach it before
+the run's tool-call budget. Discovery permits at most eight servers, 64 allowed tools,
+16 pages and 1,024 advertised tools per server, with a 64 KiB total frozen
+metadata envelope. Each description/schema has its own 4/16 KiB cap. Cyclic
+cursors and duplicate advertised names fail. The model and tool result budgets
+apply separately. Server processes receive a scrubbed environment and no
+inherited stderr channel; owned descendants are terminated during awaited
+cleanup. Operator-trusted servers must not deliberately escape that ownership.
 
 Per-run limits are defined in [configuration](configuration.md); shared capacities
 are in [performance](performance.md). A run's absolute deadline includes queueing,

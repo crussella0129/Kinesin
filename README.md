@@ -2,17 +2,18 @@
 
 [![Rust checks](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml?query=branch%3Adev)
 
-A small Rust runtime for agents with explicit authority and bounded resources.
+A Rust agent harness with explicit authority and bounded resources.
 
 Kinesin gives a model context, interprets its proposed tool calls, decides which
 may run, records outcomes, and controls how the run ends. It also controls how
 many runs may compete for model, filesystem, memory, and storage resources.
 
-**This is the reference implementation.** The Rust CLI and interactive session,
-concurrent controller, read and write file tools, checker, journal, replay,
-streaming, and authenticated loopback service run locally. The
-[validation ledger](docs/build-validation.md) separates passing proofs from
-model-quality failures and deployment gates that remain unproven. The handwritten
+The Rust CLI and interactive session, concurrent controller, read and write file
+tools, argv commands, local MCP tool servers, checker, journal, replay, streaming,
+and authenticated loopback service run locally. The [roadmap](docs/roadmap.md) and
+[threat model](docs/threat-model.md) distinguish delivered mechanisms from open
+capabilities and evidence. The [validation ledger](docs/build-validation.md)
+retains earlier proofs, model-quality failures and deployment limits. The handwritten
 **build guide that teaches how to construct this from scratch lives in its own
 repository**:
 [building-an-agent-harness](https://github.com/crussella0129/building-an-agent-harness).
@@ -22,8 +23,9 @@ is a candidate: scoped tasks pass only after an independent checker verifies
 their frozen contract. Freeform answers remain explicitly unchecked. See
 [task acceptance](docs/verification.md) and the [adversarial review](docs/adversarial-review.md).
 
-The destination is **concurrent agents for one operator, followed by a shared
-service**. Security, low latency, scalability, and minimality are equal design
+Concurrent independent runs and an owner-scoped loopback service are implemented.
+Model-spawned subagents and non-loopback service exposure remain separate work.
+Security, low latency, scalability, and minimality are equal design
 goals. Minimality means a small number of necessary mechanisms you can explain,
 rather than the fewest dependencies or source files.
 
@@ -38,12 +40,12 @@ rather than the fewest dependencies or source files.
 - To build the runtime yourself by hand, follow the separate
   [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md#before-you-start).
 
-## What the first complete release does
+## What the harness does
 
 It accepts a bounded batch of independent tasks, runs them concurrently, and
 gives each task its own conversation, workspace authority, budgets, cancellation,
-and result. It begins with three read-only file tools plus a bounded write/edit/delete/move
-set, and one llama.cpp adapter.
+and result. It provides read/list/search, write/edit/delete/move, bounded argv
+commands and operator-declared local MCP tools through a llama.cpp adapter.
 Streaming makes useful text visible sooner; partial tool arguments never execute.
 
 Tests use scripted models. Benchmarks distinguish the runtime's overhead from
@@ -51,25 +53,26 @@ model inference. Capacity limits prevent an overload from becoming an unbounded
 queue. Private state stores outcomes, with full replay capture explicitly selected.
 
 ```text
-CLI / later authenticated API
+CLI / authenticated loopback API
              |
       admission + scheduler
              |
       one runner per run ----------> approved model endpoint
         |          |                   via pooled async HTTP
-        |          +-> capability-scoped file tools
+        |          +-> scoped files / argv commands / local MCP
         +-> bounded storage inbox -> SQLite owner thread
 ```
 
 The existing names remain useful: **K-Core** is the pure decision logic,
-**Koil** is the model adapter, and **Kineserve** is optional model-process
-supervision. They are responsibilities, not three mandatory daemons.
+**Koil** names the model-adapter responsibility. **Kineserve** managed model
+supervision and the separate Koil encrypted-overlay project remain proposed;
+the current harness attaches to an externally started model endpoint.
 
 ## Main choices
 
 - One Cargo package with a thin binary and library modules.
-- Synchronous owned types and fake events first; Tokio and async reqwest when
-  networking begins.
+- Owned decision types and deterministic fixtures; Tokio and pooled async reqwest
+  for runtime effects.
 - Trusted compiled tool handlers receive a narrow `WorkspaceReader` backed by
   `cap-std`, not permission to open arbitrary operating-system paths. Writes use a
   separate `WorkspaceWriter`, built only where an operator granted a write tool.
@@ -80,8 +83,15 @@ supervision. They are responsibilities, not three mandatory daemons.
   replay data. Operational metrics do not contain prompts.
 - No automatic external-effect retry or crash resume. Those require semantics
   beyond an event log.
-- A later single-controller shared service adds authentication, authorization,
-  per-owner quotas, and fair scheduling before network exposure.
+- The single-controller service enforces authentication, owner scope, per-owner
+  quotas and fair scheduling. Its listener remains loopback-only.
+
+Linux commands use mandatory Landlock/seccomp restrictions, with metadata and
+same-user process limits described in the threat model. Windows Jobs control
+process lifetime; Windows filesystem/network isolation remains proposed.
+Non-loopback model origins require HTTPS. Sprint 10 records a
+[real two-host checked run and actual-session cache observation](docs/sprints/s10/sprint-tests/remote-deployment.md).
+Broader deployment, context-continuity and concurrent-slot claims remain on the roadmap.
 
 See [decisions](docs/decisions.md) for alternatives and
 [security](docs/security.md) for exactly what these boundaries protect.
@@ -99,7 +109,9 @@ Kinesin/
 │   ├── model.rs         # Koil: prepare, send, decode; scripted/HTTP variants
 │   ├── config.rs        # Validated deployment settings
 │   ├── policy.rs        # Immutable RunAuthority
-│   ├── tools.rs         # Bounded capability-backed read-only handlers
+│   ├── tools.rs         # File tools, argv execution and Linux sandbox
+│   ├── process.rs       # Owned process groups/Jobs and environment defaults
+│   ├── mcp.rs           # Local stdio tools, bounded discovery and calls
 │   ├── verification.rs  # Frozen task contracts, evidence, pure acceptance checks
 │   ├── storage.rs       # Transactional events, status, owner-scoped queries
 │   ├── scheduler.rs     # Bounded admission and resource allocation
@@ -122,8 +134,8 @@ Kinesin/
 
 ## Documentation map
 
-These describe and validate the runtime. The build guide, roadmap, working
-process, and research review moved to the separate
+These describe and validate the runtime. Its roadmap, intent chapters and sprint
+evidence live here. The handwritten learning guide lives in the separate
 [building-an-agent-harness](https://github.com/crussella0129/building-an-agent-harness)
 repository.
 
@@ -133,6 +145,9 @@ repository.
 | [loop and tools](docs/loop-and-tools.md) | Domain/protocol and tool execution contracts |
 | [configuration](docs/configuration.md) | Configuration examples and per-run limits |
 | [security](docs/security.md) | Authority, data disclosure, authentication, isolation |
+| [threat model](docs/threat-model.md) | Individual OWASP risk mappings, native interfaces and evidence limits |
+| [supply chain](docs/supply-chain.md) | Blocking dependency policy, exact exceptions, native builds and cargo-vet decision |
+| [roadmap](docs/roadmap.md) | Current state, intent ownership and remaining priorities |
 | [performance](docs/performance.md) | Shared limits, scheduling, latency targets, experiments |
 | [build validation](docs/build-validation.md) | Observed proofs and remaining release gates |
 | [live evaluation](docs/live-evaluation.md) | Checked-task results and preserved freeform failures |
