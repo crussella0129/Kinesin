@@ -236,4 +236,4 @@
 - **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
 - **Completed:** 2026-09-12T15:28:40Z
 - **Files modified:** src/mcp.rs, src/mcp/transport.rs, src/bin/mcp-fixture.rs, tests/mcp.rs
-- **Commit:** PENDING
+- **Commit:** `133aa3f992de035065963bc36bae1c16bec5d0fb`
