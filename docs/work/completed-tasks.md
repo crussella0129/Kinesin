@@ -167,3 +167,10 @@
 - **Completed:** 2026-09-12T00:46:06Z
 - **Files modified:** src/config.rs, src/policy.rs, src/runner.rs, src/replay.rs, docs/intents/INT-0005-mcp-tool-servers.md
 - **Commit:** `8d13879d67c61fac9fb38bbc84ccc9a9f78a842e`
+
+## T-002 (sprint 9)
+- **Description:** added the operator MCP server declarations — a root `[[mcp.servers]]` section (`McpConfig`/`McpServer { id, command }`) on `Config`/`ConfigFile`, and validation in `Config::parse`: unique server ids (via `unique_ids`), a non-empty command with a bare executable, a server id free of the `__` namespacing separator, and the identity gate — every `mcp__server__tool` referenced by any workspace or owner allow-list must name a declared server (else parse fails). Tests `mcp_config_accepts_declared_server_and_tool`, `mcp_config_rejects_undeclared_server`, `mcp_config_rejects_dup_or_empty`.
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T00:52:00Z
+- **Files modified:** src/config.rs
+- **Commit:** PENDING

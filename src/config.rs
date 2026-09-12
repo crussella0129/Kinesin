@@ -41,6 +41,8 @@ pub struct Config {
     service: Option<ServiceConfig>,
     #[serde(default)]
     allow_public_endpoints: bool,
+    #[serde(default)]
+    mcp: Option<McpConfig>,
     #[serde(skip)]
     config_path: PathBuf,
 }
@@ -67,6 +69,8 @@ struct ConfigFile {
     service: Option<ServiceConfig>,
     #[serde(default)]
     allow_public_endpoints: bool,
+    #[serde(default)]
+    mcp: Option<McpConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -484,6 +488,29 @@ pub struct OwnerConfig {
     pub allow_replay: bool,
 }
 
+/// Operator-declared MCP tool servers. Declaring a server here is the identity
+/// gate: only a server named here can be reached, and only a run whose allow-list
+/// also carries `mcp__<name>__<tool>` may call one of its tools. A server is a
+/// trusted local binary the operator vouches for, like the model endpoint — the
+/// harness does not sandbox it; what stays untrusted is its tool descriptions and
+/// outputs (data, never authority).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct McpConfig {
+    #[serde(default)]
+    pub servers: Vec<McpServer>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct McpServer {
+    /// The server alias used in `mcp__<name>__<tool>`. Unique across servers.
+    pub id: String,
+    /// The argv vector to launch the server over stdio; `command[0]` is the bare
+    /// executable and the rest its arguments, passed to the OS verbatim (no shell).
+    pub command: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServiceConfig {
@@ -541,6 +568,7 @@ impl Config {
             owners: raw.owners,
             service: raw.service,
             allow_public_endpoints: raw.allow_public_endpoints,
+            mcp: raw.mcp,
             config_path: PathBuf::new(),
         };
         if config.version != 1 {
@@ -669,6 +697,52 @@ impl Config {
             if let Some(tools) = &owner.tools {
                 unique_tools(tools)?;
             }
+        }
+        // MCP servers are the operator identity gate. Validate the declarations,
+        // then prove every `mcp__server__tool` any allow-list names resolves to a
+        // declared server — an MCP grant can never reference a server the operator
+        // did not vouch for, mirroring how command names must be listed.
+        let declared: HashSet<&str> = match &config.mcp {
+            Some(mcp) => {
+                unique_ids(mcp.servers.iter().map(|s| s.id.as_str()))?;
+                for server in &mcp.servers {
+                    if server.id.contains(MCP_TOOL_SEP) {
+                        return Err(
+                            "MCP server id must not contain '__', the tool-name separator".into(),
+                        );
+                    }
+                    if server
+                        .command
+                        .first()
+                        .map(String::as_str)
+                        .unwrap_or("")
+                        .is_empty()
+                    {
+                        return Err(
+                            "an MCP server must list a non-empty command with a bare executable"
+                                .into(),
+                        );
+                    }
+                }
+                mcp.servers.iter().map(|s| s.id.as_str()).collect()
+            }
+            None => HashSet::new(),
+        };
+        let references_undeclared_server = config
+            .workspaces
+            .iter()
+            .flat_map(|workspace| workspace.tools.iter())
+            .chain(
+                config
+                    .owners
+                    .iter()
+                    .filter_map(|owner| owner.tools.as_ref())
+                    .flatten(),
+            )
+            .filter_map(ToolRef::mcp)
+            .any(|(server, _)| !declared.contains(server));
+        if references_undeclared_server {
+            return Err("tool allow-list references an undeclared MCP server".into());
         }
         if let Some(service) = &mut config.service {
             if service.trusted_state_sids.len() > 8
@@ -1221,6 +1295,57 @@ mod tests {
         assert!(with_mcp.iter().any(ToolRef::is_mutating));
         let read_only = [ToolRef::Compiled(ToolName::ReadFile)];
         assert!(!read_only.iter().any(ToolRef::is_mutating));
+    }
+
+    #[test]
+    fn mcp_config_accepts_declared_server_and_tool() {
+        let fixture = Fixture::new();
+        let text = format!(
+            "{}\n[[mcp.servers]]\nid = \"docs\"\ncommand = [\"mcp-fixture\", \"--serve\"]\n",
+            BASE.replace(
+                "tools = [\"read_file\"]",
+                "tools = [\"read_file\", \"mcp__docs__grep\"]",
+            )
+        );
+        let config = fixture.parse(&text).unwrap();
+        assert!(
+            config
+                .workspace("practice")
+                .unwrap()
+                .tools
+                .contains(&ToolRef::Mcp {
+                    server: "docs".into(),
+                    tool: "grep".into(),
+                })
+        );
+    }
+
+    #[test]
+    fn mcp_config_rejects_undeclared_server() {
+        // An MCP tool whose server is not declared is refused: discovery and a
+        // server's own schema never establish authority; only an operator
+        // declaration does.
+        let fixture = Fixture::new();
+        let text = BASE.replace(
+            "tools = [\"read_file\"]",
+            "tools = [\"read_file\", \"mcp__ghost__x\"]",
+        );
+        assert!(fixture.parse(&text).is_err());
+    }
+
+    #[test]
+    fn mcp_config_rejects_dup_or_empty() {
+        let fixture = Fixture::new();
+        let dup = format!(
+            "{BASE}\n[[mcp.servers]]\nid = \"docs\"\ncommand = [\"a\"]\n[[mcp.servers]]\nid = \"docs\"\ncommand = [\"b\"]\n",
+        );
+        assert!(fixture.parse(&dup).is_err());
+        let empty = format!("{BASE}\n[[mcp.servers]]\nid = \"docs\"\ncommand = []\n");
+        assert!(fixture.parse(&empty).is_err());
+        // A server id carrying the namespacing separator is refused, so the wire
+        // name mcp__<id>__<tool> can never be ambiguous.
+        let bad_id = format!("{BASE}\n[[mcp.servers]]\nid = \"a__b\"\ncommand = [\"x\"]\n");
+        assert!(fixture.parse(&bad_id).is_err());
     }
 
     #[test]
