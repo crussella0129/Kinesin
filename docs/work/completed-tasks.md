@@ -201,4 +201,4 @@
 - **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
 - **Completed:** 2026-09-12T05:20:50Z
 - **Files modified:** src/replay.rs
-- **Commit:** PENDING
+- **Commit:** `4c9b2c2630da64049480034186870930b09f40d9`
