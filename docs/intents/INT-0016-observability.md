@@ -21,9 +21,10 @@ backend (export to the operator's collector); logging content; a bespoke telemet
 format when OTel is the field standard.
 
 ## Acceptance criteria
+- Disabled and enabled telemetry overhead are measured against a recorded baseline and an explicit acceptance bound; zero overhead is not inferred from configuration alone.
 - The runtime emits OTel traces and metrics behind an operator-configured exporter
-  (off by default); with no exporter configured, behavior and performance are
-  unchanged.
+  (off by default); with no exporter configured, behavior is unchanged and overhead
+  remains within the recorded acceptance bound.
 - No span, metric label, or log line contains a prompt, completion, tool
   argument/result, or credential — proven by a test that scans emitted telemetry.
 - Metrics cover the runtime's own overhead (queue wait, scheduler, tool dispatch,
@@ -51,3 +52,4 @@ instrumentation cost to bound; interacts with the shared-service future
 
 ## Transition history
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme C — operability).
+- 2026-09-12: proposed acceptance clarified by the intent-first sprint 10 audit; implementation remains proposed.

@@ -24,6 +24,7 @@ remote transport. Non-goals: acting as an authorization server ourselves;
 deprecated SSE transport; trusting a `read-only` annotation.
 
 ## Acceptance criteria
+- Remote credentials require authenticated confidential transport independently of address class; private/overlay addressing alone is not encryption. Destination changes and redirects cannot carry authorization to a different server.
 - An operator-approved **remote** MCP server's allow-listed tools run under the
   same per-run allow-list, bounds, and untrusted-output handling as a local
   (stdio) server, over the Streamable HTTP transport.
@@ -33,9 +34,9 @@ deprecated SSE transport; trusting a `read-only` annotation.
 - **No token passthrough:** an inbound credential presented to Kinesin is not
   forwarded to an MCP server; the harness holds a separate authorization context
   per remote server.
-- The remote endpoint honors the address-privacy policy already enforced for the
-  model endpoint (loopback/overlay/private over plain HTTP; public requires
-  `allow_public_endpoints` + HTTPS) — consistent with [INT-0008](INT-0008-remote-model-over-overlay.md).
+- The remote endpoint requires HTTPS outside loopback, including private and
+  overlay addresses; public destinations additionally require explicit operator
+  opt-in. Encrypted deployment proof is owned by [INT-0027](INT-0027-encrypted-remote-deployment.md).
 - Tests cover an approved remote call, a rejected token-audience mismatch, and the
   no-passthrough guarantee (an inbound credential never reaches the server).
 
@@ -62,3 +63,4 @@ larger attack surface than the stdio core, which is why it is gated behind it.
 
 ## Transition history
 - 2026-09-11: created as `proposed` (sprint 9 research phase; split from INT-0005, theme D — SotA capability). Carries the remote-transport + delegated-authorization scope (OAuth resource server, RFC 8707 resource indicators, no token passthrough / confused-deputy defense) moved out of INT-0005 so its stdio MVP can be realized in one sprint.
+- 2026-09-12: proposed acceptance clarified by the intent-first sprint 10 audit; implementation remains proposed.

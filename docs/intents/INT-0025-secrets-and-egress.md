@@ -13,6 +13,7 @@
 Keep credentials and private content within operator-declared data flows across model transport, local/remote MCP, command tools, diagnostic output, replay and telemetry. Non-goal: claiming operator-approved native binaries are sandboxed or that a hash hides low-entropy secrets.
 
 ## Acceptance criteria
+- Inventory pre-opened handles/descriptors in supported embedding scenarios and test synthetic private descriptors; pathname confinement alone cannot revoke existing descriptor access. No current leak is established by the sprint 10 audit, and untrusted ambient descriptor inheritance is not a supported guarantee.
 - Child processes receive a scrubbed baseline environment; any additional credential is explicit and scoped to its declared destination.
 - Origin changes, redirects and tool descriptions/results cannot transfer credentials or expand destinations.
 - Routine diagnostics and telemetry exclude credentials and content; replay export is explicit, private, owner-scoped and covered by retention.
@@ -29,4 +30,3 @@ May require explicit per-server environment configuration and migration guidance
 
 ## Transition history
 - 2026-09-12: created as `proposed` following the sprint 10 intent-first review and implementation audit.
-

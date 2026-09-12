@@ -22,6 +22,7 @@ pause/approve/deny protocol usable by a human or an outer trusted controller);
 approvals sourced from untrusted content.
 
 ## Acceptance criteria
+- Approval binds a normalized immutable action, target identity, run, expiry and single-use nonce. Changed arguments, stale/replayed approval, cancellation and replay cannot apply or broaden the approved effect.
 - An effect whose tool/impact class is configured as gated does not execute until
   an explicit approval arrives; a denial ends the effect with a defined,
   journalled outcome and never a partial application.
@@ -54,3 +55,4 @@ with INT-0010 (a paused holder must not deadlock coordination).
 
 ## Transition history
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme A — security hardening).
+- 2026-09-12: proposed acceptance clarified by the intent-first sprint 10 audit; implementation remains proposed.

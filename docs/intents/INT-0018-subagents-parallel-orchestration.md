@@ -22,6 +22,7 @@ results and, where they touch a shared workspace, through INT-0010); model-autho
 orchestration that escapes enforced authority.
 
 ## Acceptance criteria
+- Bounds cover total descendants, nesting depth and cumulative budget; parent cancellation reaches descendants, and a parent waiting at full admission capacity cannot deadlock its own children.
 - A parent run can spawn a bounded set of subagent runs with narrowed
   authority/tools/budget; total concurrency stays within configured admission and
   resource limits (no bypass).
@@ -56,3 +57,4 @@ and scheduling foundations and a real motivating task exist.
 
 ## Transition history
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme D — SotA capability); lowest priority — downstream of the scheduler, [INT-0010], and a demonstrated need.
+- 2026-09-12: proposed acceptance clarified by the intent-first sprint 10 audit; implementation remains proposed.

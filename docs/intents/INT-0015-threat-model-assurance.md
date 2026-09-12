@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0015
-- **State:** realized
+- **State:** superseded
 - **Work evidence:** [T-001 build plan](../sprints/s8/sprint-plans/build-plan.md#t-001-author-the-assurance-package)
 - **Completion evidence:** [T-001–T-002 completion log](../work/completed-tasks.md)
 - **Code evidence:** [T-002 `5b4c631` (tests/redteam.rs)](../work/completed-tasks.md)
@@ -63,3 +63,4 @@ controls to move from "gap" to "mechanism."
 - 2026-09-11: `proposed → planned`; selected for sprint 8 and linked to the build plan (T-001 docs/threat-model.md with the OWASP/NIST/CISA mapping + memory-safety statement + corpus→matrix map; T-002 tests/redteam.rs consolidating the corpus).
 - 2026-09-11: `planned → active`; sprint 8 build began (T-001).
 - 2026-09-11: `active → realized`; sprint 8 shipped `docs/threat-model.md` (versioned v1) — OWASP LLM/Agentic + NIST-control tables (mechanism/gap-with-owning-intent/residual, incl. the transport-auth/mTLS residual boundary), a CISA/NSA memory-safety statement enumerating the full unsafe/FFI surface with the no-unsafe-in-core posture, and a red-team-corpus → release-evidence-matrix map — plus `tests/redteam.rs` (ungranted-denied + content-as-data), green on both CI OSes. Recorded gaps remain owned by INT-0017 (approval gates/JIT), INT-0014 (tamper-evidence), INT-0019 (Windows sandbox); mTLS stays a documented residual boundary until non-loopback exposure is built. The package is versioned/owned, so it is superseded by a future revision rather than edited after realization.
+- 2026-09-12: `realized → superseded` by [INT-0021](INT-0021-harness-contract-review.md). The sprint 10 assurance revision completes taxonomy/native-FFI coverage and records the MCP boundary. Historical criteria and realization notes are retained as provenance, not current proof.
