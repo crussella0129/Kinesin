@@ -1,6 +1,6 @@
 //! One owner performs and records a run's effects in order.
 
-use crate::config::{CaptureMode, ConcurrencyConfig, Config, ToolName};
+use crate::config::{CaptureMode, ConcurrencyConfig, Config, ToolName, ToolRef};
 use crate::core::{self, AcceptanceStatus, Effect, ModelReply, RunPhase};
 use crate::dispatch::{ModelDispatcher, ModelPermit};
 use crate::model::{self, ModelClient, ModelOptions, TextObserver};
@@ -119,7 +119,11 @@ impl RunResources {
             config
                 .workspaces()
                 .iter()
-                .filter(|workspace| workspace.tools.contains(&ToolName::RunCommand))
+                .filter(|workspace| {
+                    workspace
+                        .tools
+                        .contains(&ToolRef::Compiled(ToolName::RunCommand))
+                })
                 .map(|workspace| {
                     (
                         workspace.id.clone(),
@@ -229,7 +233,7 @@ pub fn options(authority: &RunAuthority) -> ModelOptions {
             .workspace()
             .tools
             .iter()
-            .map(|tool| tool.as_str().to_owned())
+            .map(|tool| tool.wire_name())
             .collect(),
         constraint: None,
     }
@@ -940,11 +944,13 @@ pub async fn run_admitted_with_text(
                             "unknown_tool",
                             "Tool is not available",
                         )),
-                        Some(name) if !authority.allows_tool(name) => Some(ToolResult::failure(
-                            ToolStatus::Denied,
-                            "tool_denied",
-                            "Tool is not allowed",
-                        )),
+                        Some(name) if !authority.allows_tool(&ToolRef::Compiled(name)) => {
+                            Some(ToolResult::failure(
+                                ToolStatus::Denied,
+                                "tool_denied",
+                                "Tool is not allowed",
+                            ))
+                        }
                         Some(_) if args.is_err() => Some(ToolResult::failure(
                             ToolStatus::Denied,
                             "invalid_arguments",

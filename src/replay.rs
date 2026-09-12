@@ -7,7 +7,9 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::config::{CaptureMode, Limits, ModelConfig, ToolName, WorkspaceConfig, validate_id};
+use crate::config::{
+    CaptureMode, Limits, ModelConfig, ToolName, ToolRef, WorkspaceConfig, validate_id,
+};
 use crate::core::{self, Effect, ModelReply, RunPhase, ToolCall};
 use crate::model::{self, ModelOptions};
 use crate::policy::{InputSource, TaskContract};
@@ -230,7 +232,7 @@ impl FrozenContext {
                 .workspace
                 .tools
                 .iter()
-                .map(|tool| tool.as_str().into())
+                .map(|tool| tool.wire_name())
                 .collect(),
             constraint,
         }
@@ -259,7 +261,7 @@ impl FrozenContext {
                     .workspace
                     .tools
                     .iter()
-                    .map(|tool| tool.as_str())
+                    .map(|tool| tool.wire_name())
                     .collect::<BTreeSet<_>>()
                     .len()
                     == self.workspace.tools.len(),
@@ -306,7 +308,10 @@ impl FrozenContext {
                         && profile.checker == "file_fields_v1"
                         && profile.checker_version == 1
                         && (1..=4).contains(&profile.criteria.len())
-                        && self.workspace.tools.contains(&ToolName::ReadFile),
+                        && self
+                            .workspace
+                            .tools
+                            .contains(&ToolRef::Compiled(ToolName::ReadFile)),
                     "replay_task_identity",
                     seq,
                 )?;
@@ -646,7 +651,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                         "unknown_tool",
                         "Tool is not available",
                     )),
-                    Some(name) if !frozen.workspace.tools.contains(&name) => {
+                    Some(name) if !frozen.workspace.tools.contains(&ToolRef::Compiled(name)) => {
                         Some(ToolResult::failure(
                             ToolStatus::Denied,
                             "tool_denied",

@@ -131,6 +131,113 @@ impl ToolName {
     pub fn mints_evidence(self) -> bool {
         matches!(self, Self::ReadFile)
     }
+
+    /// Map a wire tool name to its compiled variant, or `None` if no compiled
+    /// tool bears that name. One place decides the mapping so the model-facing
+    /// name, the live dispatch, and the replay dispatch cannot drift apart.
+    pub fn from_wire(name: &str) -> Option<Self> {
+        Some(match name {
+            "list_files" => Self::ListFiles,
+            "read_file" => Self::ReadFile,
+            "search_files" => Self::SearchFiles,
+            "write_file" => Self::WriteFile,
+            "edit_file" => Self::EditFile,
+            "delete_file" => Self::DeleteFile,
+            "move_file" => Self::MoveFile,
+            "run_command" => Self::RunCommand,
+            _ => return None,
+        })
+    }
+}
+
+/// The prefix and separator that namespace an MCP tool in the allow-list and on
+/// the wire: `mcp__<server>__<tool>`.
+pub const MCP_TOOL_PREFIX: &str = "mcp__";
+const MCP_TOOL_SEP: &str = "__";
+
+/// A tool the run may invoke: a compiled tool (fixed name and schema) or a tool
+/// discovered from an operator-declared MCP server. The allow-list carries both;
+/// only the identity differs, not the gate. An MCP tool serializes as
+/// `mcp__<server>__<tool>`, so one `tools` array can mix bare compiled names with
+/// namespaced MCP names, and the namespace keeps a server's tool from colliding
+/// with a compiled name.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ToolRef {
+    Compiled(ToolName),
+    Mcp { server: String, tool: String },
+}
+
+impl ToolRef {
+    /// The wire name the model sees and a tool call carries.
+    pub fn wire_name(&self) -> String {
+        match self {
+            Self::Compiled(name) => name.as_str().to_owned(),
+            Self::Mcp { server, tool } => format!("{MCP_TOOL_PREFIX}{server}{MCP_TOOL_SEP}{tool}"),
+        }
+    }
+
+    /// A compiled tool defers to its own classification; an MCP tool is treated
+    /// as mutating, so it is barred from checked runs. The harness cannot know
+    /// whether a remote tool writes, so the conservative default protects the
+    /// acceptance contract.
+    pub fn is_mutating(&self) -> bool {
+        match self {
+            Self::Compiled(name) => name.is_mutating(),
+            Self::Mcp { .. } => true,
+        }
+    }
+
+    /// Only a compiled read mints evidence; a remote tool's output is untrusted
+    /// data, never proof that a workspace field equals a value.
+    pub fn mints_evidence(&self) -> bool {
+        match self {
+            Self::Compiled(name) => name.mints_evidence(),
+            Self::Mcp { .. } => false,
+        }
+    }
+
+    /// The MCP `(server, tool)` identity, if this is an MCP reference.
+    pub fn mcp(&self) -> Option<(&str, &str)> {
+        match self {
+            Self::Mcp { server, tool } => Some((server.as_str(), tool.as_str())),
+            Self::Compiled(_) => None,
+        }
+    }
+
+    /// Parse a wire name into a reference. A compiled name maps to its variant;
+    /// an `mcp__<server>__<tool>` name maps to an MCP reference. Any other string
+    /// is rejected, so an unknown bare name never becomes a silent MCP reference
+    /// and a malformed namespaced name never parses to an empty identity.
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        if let Some(rest) = raw.strip_prefix(MCP_TOOL_PREFIX) {
+            let (server, tool) = rest
+                .split_once(MCP_TOOL_SEP)
+                .ok_or_else(|| format!("malformed MCP tool name '{raw}'"))?;
+            if server.is_empty() || tool.is_empty() || tool.contains(MCP_TOOL_SEP) {
+                return Err(format!("malformed MCP tool name '{raw}'"));
+            }
+            return Ok(Self::Mcp {
+                server: server.to_owned(),
+                tool: tool.to_owned(),
+            });
+        }
+        ToolName::from_wire(raw)
+            .map(Self::Compiled)
+            .ok_or_else(|| format!("unknown tool '{raw}'"))
+    }
+}
+
+impl Serialize for ToolRef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.wire_name())
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse(&raw).map_err(serde::de::Error::custom)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -139,7 +246,7 @@ pub struct WorkspaceConfig {
     pub id: String,
     pub root: PathBuf,
     #[serde(default)]
-    pub tools: Vec<ToolName>,
+    pub tools: Vec<ToolRef>,
     /// Bare executable names the `run_command` tool may launch in this workspace.
     /// Empty unless the workspace grants `run_command`; a process is the largest
     /// trust surface, so nothing runs that the operator did not name here.
@@ -370,7 +477,7 @@ pub struct OwnerConfig {
     pub tasks: Vec<String>,
     /// None inherits only the selected workspace's tool set; Some intersects it.
     #[serde(default)]
-    pub tools: Option<Vec<ToolName>>,
+    pub tools: Option<Vec<ToolRef>>,
     #[serde(default)]
     pub allow_freeform: bool,
     #[serde(default)]
@@ -492,7 +599,9 @@ impl Config {
             // with nothing to run is useless, and an allow-list with no grant is a
             // silent dead letter. Each entry is a bare executable name, so no path
             // steers the launch outside PATH resolution.
-            let grants_run_command = workspace.tools.contains(&ToolName::RunCommand);
+            let grants_run_command = workspace
+                .tools
+                .contains(&ToolRef::Compiled(ToolName::RunCommand));
             if grants_run_command && workspace.commands.is_empty() {
                 return Err(
                     "a workspace granting run_command must list at least one command".into(),
@@ -613,7 +722,10 @@ impl Config {
         let workspace = self
             .workspace(&task.workspace)
             .ok_or("unknown task workspace")?;
-        if !workspace.tools.contains(&ToolName::ReadFile) {
+        if !workspace
+            .tools
+            .contains(&ToolRef::Compiled(ToolName::ReadFile))
+        {
             return Err("checked task requires read_file permission".into());
         }
         if !(1..=4).contains(&task.criteria.len()) {
@@ -749,7 +861,7 @@ fn known_aliases<'a>(
     Ok(())
 }
 
-fn unique_tools(tools: &[ToolName]) -> Result<(), String> {
+fn unique_tools(tools: &[ToolRef]) -> Result<(), String> {
     if tools.iter().collect::<HashSet<_>>().len() != tools.len() {
         return Err("duplicate tool permission".into());
     }
@@ -1042,6 +1154,73 @@ mod tests {
         assert!(!fixture.root.join("state").exists());
         assert_eq!(config.limits.max_model_turns, 12);
         assert_eq!(config.concurrency.journal_queue_bytes, 8_388_608);
+    }
+
+    #[test]
+    fn toolref_compiled_roundtrip() {
+        // A bare compiled name parses to its variant and serializes back to the
+        // same wire name, so existing tool configs behave exactly as before.
+        for name in [
+            "list_files",
+            "read_file",
+            "search_files",
+            "write_file",
+            "edit_file",
+            "delete_file",
+            "move_file",
+            "run_command",
+        ] {
+            let parsed = ToolRef::parse(name).unwrap();
+            assert!(matches!(parsed, ToolRef::Compiled(_)));
+            assert_eq!(parsed.wire_name(), name);
+        }
+        assert_eq!(
+            ToolRef::parse("read_file").unwrap(),
+            ToolRef::Compiled(ToolName::ReadFile)
+        );
+        // An unknown bare name is rejected rather than silently accepted.
+        assert!(ToolRef::parse("teleport").is_err());
+    }
+
+    #[test]
+    fn toolref_mcp_parse() {
+        let parsed = ToolRef::parse("mcp__files__grep").unwrap();
+        assert_eq!(
+            parsed,
+            ToolRef::Mcp {
+                server: "files".into(),
+                tool: "grep".into()
+            }
+        );
+        assert_eq!(parsed.wire_name(), "mcp__files__grep");
+        assert_eq!(parsed.mcp(), Some(("files", "grep")));
+        // A compiled tool mints evidence rules still hold; an MCP tool never
+        // mints evidence and is always treated as mutating (barred from checks).
+        assert!(!parsed.mints_evidence());
+        assert!(parsed.is_mutating());
+        // Malformed namespaced names are rejected, never parsed to an empty
+        // server or tool, and a nested separator does not smuggle a second name.
+        for bad in ["mcp__files", "mcp____grep", "mcp__files__", "mcp__a__b__c"] {
+            assert!(ToolRef::parse(bad).is_err(), "expected reject: {bad}");
+        }
+    }
+
+    #[test]
+    fn toolref_mcp_barred_from_checked_run() {
+        // The checked-run bar (policy::authorize) rejects any allow-list entry
+        // that is_mutating(). An MCP tool is always mutating, so a checked
+        // workspace can never enable one — the harness cannot prove a remote
+        // tool is read-only, so it may not author the value a criterion reads.
+        let with_mcp = [
+            ToolRef::Compiled(ToolName::ReadFile),
+            ToolRef::Mcp {
+                server: "files".into(),
+                tool: "grep".into(),
+            },
+        ];
+        assert!(with_mcp.iter().any(ToolRef::is_mutating));
+        let read_only = [ToolRef::Compiled(ToolName::ReadFile)];
+        assert!(!read_only.iter().any(ToolRef::is_mutating));
     }
 
     #[test]

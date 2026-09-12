@@ -160,3 +160,10 @@
 - **Completed:** 2026-09-11T22:03:43Z
 - **Files modified:** tests/redteam.rs
 - **Commit:** `14fc67a8a2f87adecc498e27d0acf18b286c19e0`
+
+## T-001 (sprint 9)
+- **Description:** generalized the tool allow-list identity to `ToolRef` (config.rs) — `Compiled(ToolName)` ∪ `Mcp { server, tool }` with string serde (`mcp__<server>__<tool>`), `wire_name`/`is_mutating` (MCP = true, barred from checked runs)/`mints_evidence` (MCP = false)/`parse`; added `ToolName::from_wire` to DRY the wire→variant map. Changed `WorkspaceConfig.tools` and the per-owner override to `Vec<ToolRef>`, generalized `allows_tool` (policy) and every allow-list call site in config/policy/runner/replay to `ToolRef` (compiled arms wrapped `ToolRef::Compiled`); existing TOML tool configs parse unchanged. Unit tests `toolref_compiled_roundtrip`, `toolref_mcp_parse`, `toolref_mcp_barred_from_checked_run`.
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T00:46:06Z
+- **Files modified:** src/config.rs, src/policy.rs, src/runner.rs, src/replay.rs, docs/intents/INT-0005-mcp-tool-servers.md
+- **Commit:** PENDING

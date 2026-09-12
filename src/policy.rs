@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::config::{
     CaptureMode, Config, Limits, MAX_PROMPT_BYTES, ModelConfig, StorageConfig, TaskProfile,
-    ToolName, WorkspaceConfig, validate_id,
+    ToolName, ToolRef, WorkspaceConfig, validate_id,
 };
 
 pub const LOCAL_OWNER: &str = "local";
@@ -229,8 +229,8 @@ impl RunAuthority {
     pub fn input_sources(&self) -> &[InputSource] {
         &self.input_sources
     }
-    pub fn allows_tool(&self, name: ToolName) -> bool {
-        self.workspace.tools.contains(&name)
+    pub fn allows_tool(&self, tool: &ToolRef) -> bool {
+        self.workspace.tools.contains(tool)
     }
 }
 
@@ -346,7 +346,11 @@ pub(crate) fn authorize_with_prior(
     if let Some(tools) = owner.and_then(|v| v.tools.as_ref()) {
         workspace.tools.retain(|tool| tools.contains(tool));
     }
-    if task.is_checked() && !workspace.tools.contains(&ToolName::ReadFile) {
+    if task.is_checked()
+        && !workspace
+            .tools
+            .contains(&ToolRef::Compiled(ToolName::ReadFile))
+    {
         return Err("checked task requires authorized read_file tool".into());
     }
     // A checked run must not be able to write. If it could edit a source, it

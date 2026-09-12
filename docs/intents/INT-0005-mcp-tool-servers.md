@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0005
-- **State:** planned
+- **State:** active
 - **Work evidence:** [sprint 9 build plan](../sprints/s9/sprint-plans/build-plan.md#t-001-generalize-the-tool-allow-list-identity-to-toolref)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -65,4 +65,5 @@ named follow-up.
 ## Transition history
 - 2026-09-08: created as `proposed`.
 - 2026-09-11: `proposed → planned`; selected for sprint 9 and linked to the build plan (T-001 `ToolRef` generalization, T-002 operator-approved `[[mcp.servers]]` + validation, T-003 `rmcp` stdio discovery frozen into the run authority, T-004 discovered-schema emission identical live/replay, T-005 live dispatch through the existing gate, T-006 replay-without-reconnect, T-007 in-repo fixture server + tests).
-- 2026-09-11: scope refined (in the sprint 9 research phase, before the state change above) — narrowed to the **local stdio, operator-approved** MVP grounded on the official `rmcp` SDK (v3.3.0). The remote (HTTP) transport, OAuth resource-server auth, RFC 8707 resource indicators, and no-token-passthrough / confused-deputy defense were **split to [INT-0020](INT-0020-remote-mcp-delegated-auth.md)** (created this phase), which carries the former "remote MCP separate authorization context / credential not forwarded" acceptance criterion. Acceptance criteria rewritten to the stdio core (two-gate approval, untrusted description+output, replay-from-frozen-schema, in-repo fixture tests); the INT-0012 sandbox relationship clarified (MCP servers are operator-trusted). Rationale/Alternatives/Consequences updated.
+- 2026-09-11: scope refined (in the sprint 9 research phase, before the state change above) — narrowed to the **local stdio, operator-approved** MVP grounded on the official `rmcp` SDK (v3.3.0).
+- 2026-09-11: `planned → active`; sprint 9 build began (T-001). The remote (HTTP) transport, OAuth resource-server auth, RFC 8707 resource indicators, and no-token-passthrough / confused-deputy defense were **split to [INT-0020](INT-0020-remote-mcp-delegated-auth.md)** (created this phase), which carries the former "remote MCP separate authorization context / credential not forwarded" acceptance criterion. Acceptance criteria rewritten to the stdio core (two-gate approval, untrusted description+output, replay-from-frozen-schema, in-repo fixture tests); the INT-0012 sandbox relationship clarified (MCP servers are operator-trusted). Rationale/Alternatives/Consequences updated.
