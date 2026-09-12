@@ -229,4 +229,4 @@
 - **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
 - **Completed:** 2026-09-12T15:15:38.4038221Z
 - **Files modified:** src/process.rs, src/tools.rs, src/lib.rs, Cargo.toml, src/bin/cmd-fixture.rs, tests/command_tool.rs
-- **Commit:** PENDING
+- **Commit:** `5c6f5aca4e49e582e84d33176adc1083f17b7475`
