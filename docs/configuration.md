@@ -1,5 +1,11 @@
 # Configuration and limits
 
+For an executable setup sequence, use [getting started](getting-started.md).
+The tracked [`kinesin.example.toml`](../kinesin.example.toml) is the root-relative
+starter: copy it to `kinesin.toml` in the directory where you create `workspace`
+and private `state`. The older examples under `examples/` use `../workspace` and
+`../state` instead; moving a configuration changes the base for relative paths.
+
 ## One operator-controlled source
 
 Use ordinary TOML with top-level instruction text. Parse into owned structs,
@@ -45,9 +51,10 @@ workspace files remains outside this design.
 
 ## First live-turn configuration
 
-This is a target example for guide step 9, not a supported file already in the
-repository. Replace the model identity and sampling settings with the values
-verified during preflight. Add later tables only when their steps are built.
+This is a minimal supported configuration for one freeform model turn. The
+complete starter above also includes read/list tools and a checked file task.
+The model alias below matches the pinned server setup in getting started; change
+its identity/capacity only to match a separately verified server.
 
 ```toml
 version = 1
@@ -77,7 +84,7 @@ tools = []
 [[models]]
 id = "local"
 base_url = "http://127.0.0.1:8080"
-model_id = "replace-with-verified-served-model-id"
+model_id = "kinesin-qwen25-coder-7b"
 context_size = 4096
 verified_slots = 1
 temperature = 0.2
@@ -110,11 +117,11 @@ change the receipt or claim task acceptance. See [exit rules](verification.md#cl
 
 ## Extend for tools and concurrency
 
-At the tool milestone, enable `list_files` and `read_file` for the practice
+To enable file tools, add `list_files` and `read_file` for the practice
 workspace, raise `max_model_turns` to the chosen loop limit, and introduce the
-tool-related limit fields below. Only then open a `WorkspaceReader` capability.
+tool-related limit fields below. Configuration constructs the scoped reader.
 
-At the concurrency milestone, add a `[concurrency]` table with the shared-limit
+To configure concurrency, add a `[concurrency]` table with the shared-limit
 names and selected values in [performance.md](performance.md). Start by testing
 one active run and no queued runs, then raise limits to the provisional concurrent
 profile. Never accept an unlimited value such as zero meaning “no limit.”
@@ -126,8 +133,8 @@ must share its limiter; another alias is not extra capacity.
 
 ## Add an explicit checked task
 
-After implementing tools and the [FileFieldsV1 checker](verification.md), append
-this profile to the configuration. First enable `read_file` for the existing
+The tools and [FileFieldsV1 checker](verification.md) are implemented. Append
+this profile to a minimal configuration, or use the complete starter. Enable `read_file` for the existing
 `practice` workspace and raise its loop limits as described above; `list_files`
 is optional for this fixed-path task. Keep profiles outside every tool root.
 

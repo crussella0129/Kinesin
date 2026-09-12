@@ -240,6 +240,48 @@ fn successful(output: Output) -> Value {
 }
 
 #[test]
+fn help_needs_no_configuration_or_state_and_rejects_extra_arguments() {
+    let root = std::env::temp_dir().join(format!("kinesin-help-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&root).unwrap();
+    for flag in ["--help", "-h"] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
+            .current_dir(&root)
+            .arg(flag)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{flag}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty());
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains("Usage:"));
+        assert!(help.contains("kinesin [--config PATH]"));
+        assert!(help.contains("kinesin.toml in the current working directory"));
+        assert!(help.contains("interactive session"));
+        assert!(std::fs::read_dir(&root).unwrap().next().is_none());
+    }
+    for args in [
+        vec!["--help", "--config", "missing.toml"],
+        vec!["-h", "--help"],
+        vec!["--config", "missing.toml", "--help"],
+    ] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
+            .current_dir(&root)
+            .args(&args)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "accepted {args:?}");
+        assert!(output.stdout.is_empty());
+        assert!(!output.stderr.is_empty());
+        assert!(std::fs::read_dir(&root).unwrap().next().is_none());
+    }
+    std::fs::remove_dir(&root).unwrap();
+}
+
+#[test]
 fn inspect_export_and_pure_replay_preserve_durable_acceptance_without_models() {
     let fixture = Fixture::new();
     let run = fixture.produce(CaptureMode::Replay, None);

@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0028
-- **State:** planned
+- **State:** active
 - **Work evidence:** [sprint 11 build plan](../sprints/s11/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -46,3 +46,4 @@ broader capabilities require explicit configuration.
 ## Transition history
 - 2026-09-12: created as `proposed` for the user's Windows/Linux usage sprint.
 - 2026-09-12: `proposed → planned`; the requested usage sprint selects the bounded entry/documentation and platform-verification tasks.
+- 2026-09-12: `planned → active`; the independently reviewed plan is locked and the entry/documentation work begins.

@@ -286,3 +286,10 @@
 - **Completed:** 2026-09-12T16:24:10.4892797Z
 - **Files modified:** tests/cli_inspect.rs; docs/sprints/s10/sprint-tests/{unit-tests,integration-tests,e2e-tests,integration-review}.md; docs/sprints/s10/sprint-research/transport-mcp-audit.md; docs/sprints/s1/sprint-research/research-report.md; docs/sprints/s2/sprint-research/research-report.md; docs/sprints/s3/sprint-research/research-report.md; docs/roadmap.md; docs/work ledgers. Source review fixes and sprint meta are recorded in preceding reachable commit f3e3d0f.
 - **Commit:** `1a383954aac7c765fb46347281f380e12e85e2ae`
+
+## T-001 (sprint 11)
+- **Description:** Selected kinesin as Cargo's default binary and added successful standalone help without configuration or state effects, including malformed-argument regression coverage. Added a root-relative starter and explicit Windows/Linux installation, PATH, private setup, external model, session, checked-task and replay instructions. Explained why process/stdio fixtures remain test support and how installation excludes them. CLI unit 8 and integration 11 tests, format and all-target/all-feature clippy passed; actual product-only installs, repeated setup preservation and model walkthroughs passed on Windows and native Debian nighthawk. Independent documentation review fixes for health-port consistency and safe temporary rustup download passed recheck. Formal platform evidence is recorded by T-002.
+- **Intent:** [INT-0028](../intents/INT-0028-first-use-documentation.md)
+- **Completed:** 2026-09-12T18:06:47Z
+- **Files modified:** Cargo.toml; src/cli.rs; tests/cli_inspect.rs; kinesin.example.toml; README.md; docs/getting-started.md; docs/cli.md; docs/configuration.md; docs/SUMMARY.md; docs/intents/INT-0028-first-use-documentation.md; docs/sprints/s11/sprint-meta.md; docs/sprints/s11/sprint-plans/{build-plan,test-plan}.md (finalization markers); docs/work ledgers.
+- **Commit:** PENDING

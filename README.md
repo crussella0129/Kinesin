@@ -4,6 +4,59 @@
 
 A Rust agent harness with explicit authority and bounded resources.
 
+## Start here
+
+Kinesin is a **terminal application**. Cloning this repository does not install
+a `kinesin` command on PATH, and Kinesin does not start its own model server.
+The [complete getting-started guide](docs/getting-started.md) provides separate
+[Windows PowerShell](docs/getting-started.md#windows-powershell) and
+[Linux](docs/getting-started.md#linux) instructions, including prerequisites,
+configuration, private state, a first prompt and an existing nighthawk deployment.
+
+Already have Rust and this checkout? Confirm the CLI starts:
+
+**Windows PowerShell**
+
+```powershell
+cd "$HOME\Kinesin"
+cargo run --locked -- --help
+```
+
+**Linux**
+
+```bash
+cd "$HOME/Kinesin"
+cargo run --locked -- --help
+```
+
+`cargo run` now selects the `kinesin` executable automatically. Help works
+without a model or configuration. Next, follow the guide to copy
+[`kinesin.example.toml`](kinesin.example.toml) to `kinesin.toml`, prepare its
+`workspace` and private `state`, and start or connect the model server. Then:
+
+```text
+cargo run --locked -- --workspace practice --model local --prompt "Say hello" --allow-unchecked
+cargo run --locked
+```
+
+The first command runs one prompt; the second opens the interactive `> ` session.
+There is no `run` subcommand. `kinesin.toml` is read from the current directory,
+or selected explicitly with `--config PATH`. The guide shows the expected JSON
+and how to distinguish a completed answer from checked task acceptance.
+
+To install the program, run `cargo install --locked --path . --bin kinesin`
+from the checkout, then ensure Cargo's `bin` directory is on PATH as shown in
+the guide. After that, `kinesin --help` works from any directory; starting a
+session elsewhere still requires the correct `--config` path.
+
+**Why are there three binaries?** `kinesin` is the product. `cmd-fixture` is a
+test child process for command execution and cleanup; `mcp-fixture` is a test
+stdio server for MCP. Tests need real separate processes to exercise those
+boundaries. You do not need to launch or install either fixture for normal use.
+The `--bin kinesin` installation above installs only the product.
+
+## What Kinesin is
+
 Kinesin gives a model context, interprets its proposed tool calls, decides which
 may run, records outcomes, and controls how the run ends. It also controls how
 many runs may compete for model, filesystem, memory, and storage resources.
@@ -31,7 +84,7 @@ rather than the fewest dependencies or source files.
 
 ## Working here
 
-- `main` is the released branch. `dev` is where sprints happen; each sprint lands
+- `main` contains reviewed source snapshots. `dev` is where sprints happen; each sprint lands
   on `main` through a pull request.
 - Read [the architecture](docs/architecture.md) for the complete shape.
 - Use [the CLI instructions](docs/cli.md) to run the product.
@@ -141,6 +194,8 @@ repository.
 
 | Document | Responsibility |
 |----------|----------------|
+| [getting started](docs/getting-started.md) | Windows/Linux installation, model setup, first run and troubleshooting |
+| [CLI reference](docs/cli.md) | Session, one-shot, batch, inspect/export/replay and service commands |
 | [architecture](docs/architecture.md) | Ownership, interfaces, deployment, scale boundary |
 | [loop and tools](docs/loop-and-tools.md) | Domain/protocol and tool execution contracts |
 | [configuration](docs/configuration.md) | Configuration examples and per-run limits |

@@ -9,7 +9,7 @@
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
 - **Summary:** Make Windows and Linux installation and first use explicit
-- **Intents:** [INT-0028](../../intents/INT-0028-first-use-documentation.md) — planned
+- **Intents:** [INT-0028](../../intents/INT-0028-first-use-documentation.md) — active
 - **Completion evidence:** (filled at Loop Phase)
 
 ## Checkpoint scope
