@@ -243,4 +243,4 @@
 - **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
 - **Completed:** 2026-09-12T15:30:05Z
 - **Files modified:** src/core.rs, src/model.rs, src/policy.rs, src/runner.rs, src/replay.rs, tests/replay.rs, tests/live_evaluation.rs, tests/runner_tools.rs
-- **Commit:** PENDING
+- **Commit:** `1f8c9a8f1be636fc37edefaa0d51e3f15a931581`
