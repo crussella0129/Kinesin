@@ -934,36 +934,71 @@ pub async fn run_admitted_with_text(
                         continue 'run;
                     }
                     let effect_id = format!("tool-{}", first_index + index);
-                    let tool = match call.name.as_str() {
-                        "read_file" => Some(ToolName::ReadFile),
-                        "list_files" => Some(ToolName::ListFiles),
-                        "search_files" => Some(ToolName::SearchFiles),
-                        "write_file" => Some(ToolName::WriteFile),
-                        "edit_file" => Some(ToolName::EditFile),
-                        "delete_file" => Some(ToolName::DeleteFile),
-                        "move_file" => Some(ToolName::MoveFile),
-                        "run_command" => Some(ToolName::RunCommand),
-                        _ => None,
+                    let tool = ToolName::from_wire(&call.name);
+                    // An MCP tool is recognized only if it is in the frozen set —
+                    // discovered at run start for an allow-listed, operator-declared
+                    // server. Discovery and a server's schema never grant authority.
+                    let mcp_def = if tool.is_none() {
+                        authority
+                            .mcp_tools()
+                            .iter()
+                            .find(|def| def.wire_name() == call.name)
+                            .cloned()
+                    } else {
+                        None
                     };
                     let args = TypedToolArgs::parse(&call.arguments);
-                    let denial = match tool {
-                        None => Some(ToolResult::failure(
-                            ToolStatus::Denied,
-                            "unknown_tool",
-                            "Tool is not available",
-                        )),
-                        Some(name) if !authority.allows_tool(&ToolRef::Compiled(name)) => {
+                    // Validate MCP arguments against the discovered schema up front,
+                    // so an invalid or unapproved MCP call is denied before any
+                    // server is contacted.
+                    let mcp_args = mcp_def.as_ref().and_then(|def| {
+                        crate::mcp::validate_args(&call.arguments, &def.input_schema)
+                    });
+                    let denial = if let Some(name) = tool {
+                        if !authority.allows_tool(&ToolRef::Compiled(name)) {
                             Some(ToolResult::failure(
                                 ToolStatus::Denied,
                                 "tool_denied",
                                 "Tool is not allowed",
                             ))
+                        } else if args.is_err() {
+                            Some(ToolResult::failure(
+                                ToolStatus::Denied,
+                                "invalid_arguments",
+                                "Tool arguments or resource path are invalid",
+                            ))
+                        } else {
+                            None
                         }
-                        Some(_) if args.is_err() => Some(ToolResult::failure(
+                    } else if mcp_def.is_some() {
+                        if mcp_args.is_none() {
+                            Some(ToolResult::failure(
+                                ToolStatus::Denied,
+                                "invalid_arguments",
+                                "Tool arguments or resource path are invalid",
+                            ))
+                        } else {
+                            None
+                        }
+                    } else if call.name.starts_with(crate::config::MCP_TOOL_PREFIX) {
+                        // A well-formed mcp__ name the run did not grant: denied, not
+                        // "unknown", and never dispatched to a server.
+                        Some(ToolResult::failure(
                             ToolStatus::Denied,
-                            "invalid_arguments",
-                            "Tool arguments or resource path are invalid",
-                        )),
+                            "tool_denied",
+                            "Tool is not allowed",
+                        ))
+                    } else {
+                        Some(ToolResult::failure(
+                            ToolStatus::Denied,
+                            "unknown_tool",
+                            "Tool is not available",
+                        ))
+                    };
+                    // Pair the MCP definition with its validated arguments for
+                    // dispatch; only reachable when `denial` is None.
+                    let mcp_ready = match (mcp_def, mcp_args) {
+                        (Some(def), Some(arguments)) => Some((def, arguments)),
                         _ => None,
                     };
                     let mut planned = json!({"effect_id":effect_id,"call_id":call.id,
@@ -991,140 +1026,180 @@ pub async fn run_admitted_with_text(
                                 .stop(authority.limits().max_run_s)
                                 .is_none()
                         }) {
-                            let reader =
-                                resources.workspaces.get(&authority.workspace().id).cloned();
-                            let writer = resources.writers.get(&authority.workspace().id).cloned();
-                            if let Some(reader) = reader {
-                                let name = tool.ok_or("validated tool missing")?;
-                                let validated =
-                                    args.as_ref().map_err(|_| "validated arguments missing")?;
-                                let shape = validated.shape_for(name);
-                                let write_args = validated.clone();
-                                let path = validated.path.clone();
-                                let query = validated.query.clone();
-                                let case_sensitive = validated.case_sensitive.unwrap_or(false);
-                                let maximum = authority.limits().max_tool_result_bytes;
-                                let evidence_id = name.mints_evidence().then(|| evidence.next_id());
+                            if let Some((def, arguments)) = mcp_ready {
+                                // An MCP tool executes over its stdio session, not a
+                                // workspace capability. Its result is an untrusted
+                                // observation bounded by the same tool-result budget;
+                                // it mints no evidence. The permit is held for the call.
+                                let _permit = permit;
                                 dispatched = true;
-                                if name == ToolName::RunCommand {
-                                    // A command spawns a process, so it runs on the async
-                                    // path where it can be actively killed on timeout or
-                                    // cancellation — unlike a filesystem syscall, which the
-                                    // blocking worker below can only wait out. The runner
-                                    // exists solely for a workspace granted run_command.
-                                    let _permit = permit;
-                                    match shape {
-                                        Err((code, message)) => {
-                                            ToolResult::failure(ToolStatus::Denied, code, message)
-                                        }
-                                        Ok(()) => match resources
-                                            .command_runners
-                                            .get(&authority.workspace().id)
-                                            .cloned()
-                                        {
-                                            None => ToolResult::failure(
-                                                ToolStatus::Denied,
-                                                "command_not_authorized",
-                                                "This workspace does not grant commands.",
-                                            ),
-                                            Some(command_runner) => {
-                                                let argv =
-                                                    write_args.command.clone().unwrap_or_default();
-                                                // The command self-limits to the remaining run
-                                                // budget; cancellation kills it either way. Its
-                                                // captured output is bounded by the same
-                                                // tool-result budget every other tool honors.
-                                                let timeout = deadline
-                                                    .saturating_duration_since(Instant::now());
-                                                command_runner
-                                                    .execute(
-                                                        &argv,
-                                                        timeout,
-                                                        &cancel,
-                                                        authority.limits().max_tool_result_bytes,
-                                                    )
-                                                    .await
-                                            }
-                                        },
+                                let timeout = deadline.saturating_duration_since(Instant::now());
+                                match &resources.mcp {
+                                    Some(pool) => {
+                                        pool.call(
+                                            &def.server,
+                                            &def.tool,
+                                            arguments,
+                                            timeout,
+                                            &cancel,
+                                            authority.limits().max_tool_result_bytes,
+                                        )
+                                        .await
                                     }
-                                } else {
-                                    let mut handle = tokio::task::spawn_blocking(move || {
-                                        // The actual blocking worker owns capacity until it exits.
+                                    None => ToolResult::failure(
+                                        ToolStatus::Error,
+                                        "mcp_unavailable",
+                                        "MCP is not configured for this run",
+                                    ),
+                                }
+                            } else {
+                                let reader =
+                                    resources.workspaces.get(&authority.workspace().id).cloned();
+                                let writer =
+                                    resources.writers.get(&authority.workspace().id).cloned();
+                                if let Some(reader) = reader {
+                                    let name = tool.ok_or("validated tool missing")?;
+                                    let validated =
+                                        args.as_ref().map_err(|_| "validated arguments missing")?;
+                                    let shape = validated.shape_for(name);
+                                    let write_args = validated.clone();
+                                    let path = validated.path.clone();
+                                    let query = validated.query.clone();
+                                    let case_sensitive = validated.case_sensitive.unwrap_or(false);
+                                    let maximum = authority.limits().max_tool_result_bytes;
+                                    let evidence_id =
+                                        name.mints_evidence().then(|| evidence.next_id());
+                                    dispatched = true;
+                                    if name == ToolName::RunCommand {
+                                        // A command spawns a process, so it runs on the async
+                                        // path where it can be actively killed on timeout or
+                                        // cancellation — unlike a filesystem syscall, which the
+                                        // blocking worker below can only wait out. The runner
+                                        // exists solely for a workspace granted run_command.
                                         let _permit = permit;
-                                        if let Err((code, message)) = shape {
-                                            return ToolResult::failure(
+                                        match shape {
+                                            Err((code, message)) => ToolResult::failure(
                                                 ToolStatus::Denied,
                                                 code,
                                                 message,
-                                            );
-                                        }
-                                        if name.is_mutating() {
-                                            // A write reaches only the separate writer, which exists
-                                            // solely for a workspace the operator granted writes.
-                                            return match writer {
-                                                Some(writer) => writer.execute(name, &write_args),
+                                            ),
+                                            Ok(()) => match resources
+                                                .command_runners
+                                                .get(&authority.workspace().id)
+                                                .cloned()
+                                            {
                                                 None => ToolResult::failure(
                                                     ToolStatus::Denied,
-                                                    "write_not_authorized",
-                                                    "This workspace does not grant writes.",
+                                                    "command_not_authorized",
+                                                    "This workspace does not grant commands.",
                                                 ),
-                                            };
+                                                Some(command_runner) => {
+                                                    let argv = write_args
+                                                        .command
+                                                        .clone()
+                                                        .unwrap_or_default();
+                                                    // The command self-limits to the remaining run
+                                                    // budget; cancellation kills it either way. Its
+                                                    // captured output is bounded by the same
+                                                    // tool-result budget every other tool honors.
+                                                    let timeout = deadline
+                                                        .saturating_duration_since(Instant::now());
+                                                    command_runner
+                                                        .execute(
+                                                            &argv,
+                                                            timeout,
+                                                            &cancel,
+                                                            authority
+                                                                .limits()
+                                                                .max_tool_result_bytes,
+                                                        )
+                                                        .await
+                                                }
+                                            },
                                         }
-                                        reader.execute_with_query(
-                                            name,
-                                            &path,
-                                            query.as_deref(),
-                                            case_sensitive,
-                                            maximum,
-                                            evidence_id.as_deref(),
-                                        )
-                                    });
-                                    let completed = tokio::select! {
-                                        biased;
-                                        _=cancel.cancelled()=>None,
-                                        _=tokio::time::sleep_until(deadline)=>None,
-                                        result=&mut handle=>Some(result),
-                                    };
-                                    // Cancellation cannot cancel a running filesystem syscall. Retain
-                                    // ownership and capacity through its actual completion.
-                                    let completed = match completed {
-                                        Some(result) => result,
-                                        None => {
-                                            journal.stop();
-                                            match timeout_at(
-                                                journal.grace.ok_or("missing settlement grace")?,
-                                                &mut handle,
+                                    } else {
+                                        let mut handle = tokio::task::spawn_blocking(move || {
+                                            // The actual blocking worker owns capacity until it exits.
+                                            let _permit = permit;
+                                            if let Err((code, message)) = shape {
+                                                return ToolResult::failure(
+                                                    ToolStatus::Denied,
+                                                    code,
+                                                    message,
+                                                );
+                                            }
+                                            if name.is_mutating() {
+                                                // A write reaches only the separate writer, which exists
+                                                // solely for a workspace the operator granted writes.
+                                                return match writer {
+                                                    Some(writer) => {
+                                                        writer.execute(name, &write_args)
+                                                    }
+                                                    None => ToolResult::failure(
+                                                        ToolStatus::Denied,
+                                                        "write_not_authorized",
+                                                        "This workspace does not grant writes.",
+                                                    ),
+                                                };
+                                            }
+                                            reader.execute_with_query(
+                                                name,
+                                                &path,
+                                                query.as_deref(),
+                                                case_sensitive,
+                                                maximum,
+                                                evidence_id.as_deref(),
                                             )
-                                            .await
-                                            {
-                                                Ok(result) => result,
-                                                Err(_) => {
-                                                    eprintln!(
-                                                        "Run {} has unresolved tool settlement; retaining ownership",
-                                                        authority.run_id()
-                                                    );
-                                                    let result = handle.await;
-                                                    journal.late_bookkeeping = true;
-                                                    result
+                                        });
+                                        let completed = tokio::select! {
+                                            biased;
+                                            _=cancel.cancelled()=>None,
+                                            _=tokio::time::sleep_until(deadline)=>None,
+                                            result=&mut handle=>Some(result),
+                                        };
+                                        // Cancellation cannot cancel a running filesystem syscall. Retain
+                                        // ownership and capacity through its actual completion.
+                                        let completed = match completed {
+                                            Some(result) => result,
+                                            None => {
+                                                journal.stop();
+                                                match timeout_at(
+                                                    journal
+                                                        .grace
+                                                        .ok_or("missing settlement grace")?,
+                                                    &mut handle,
+                                                )
+                                                .await
+                                                {
+                                                    Ok(result) => result,
+                                                    Err(_) => {
+                                                        eprintln!(
+                                                            "Run {} has unresolved tool settlement; retaining ownership",
+                                                            authority.run_id()
+                                                        );
+                                                        let result = handle.await;
+                                                        journal.late_bookkeeping = true;
+                                                        result
+                                                    }
                                                 }
                                             }
-                                        }
-                                    };
-                                    completed.unwrap_or_else(|_| {
-                                        ToolResult::failure(
-                                            ToolStatus::Error,
-                                            "tool_worker_failed",
-                                            "Tool worker failed",
-                                        )
-                                    })
+                                        };
+                                        completed.unwrap_or_else(|_| {
+                                            ToolResult::failure(
+                                                ToolStatus::Error,
+                                                "tool_worker_failed",
+                                                "Tool worker failed",
+                                            )
+                                        })
+                                    }
+                                } else {
+                                    drop(permit);
+                                    ToolResult::failure(
+                                        ToolStatus::Error,
+                                        "workspace_unavailable",
+                                        "Workspace capability is unavailable",
+                                    )
                                 }
-                            } else {
-                                drop(permit);
-                                ToolResult::failure(
-                                    ToolStatus::Error,
-                                    "workspace_unavailable",
-                                    "Workspace capability is unavailable",
-                                )
                             }
                         } else {
                             ToolResult::failure(

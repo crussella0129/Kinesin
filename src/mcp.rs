@@ -10,12 +10,15 @@ use std::fmt;
 use std::time::Duration;
 
 use rmcp::ServiceExt;
+use rmcp::model::{CallToolRequestParams, CallToolResult, ContentBlock};
 use rmcp::service::{RoleClient, RunningService};
 use rmcp::transport::TokioChildProcess;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
+use tokio_util::sync::CancellationToken;
 
 use crate::config::{McpServer, ToolRef};
+use crate::tools::{ToolError, ToolResult, ToolStatus};
 
 /// Bounds connect+initialize and each `tools/list`, so a server that never
 /// answers fails run start with a defined error instead of hanging it.
@@ -157,10 +160,175 @@ impl McpClientPool {
     }
 }
 
+impl McpClientPool {
+    /// Invoke one allow-listed MCP tool, bounded by `timeout` and cancellation and
+    /// with its textual result bounded to `max_bytes`. The result is an untrusted
+    /// observation: it mints no evidence and cannot change policy. A transport,
+    /// timeout, or server error becomes a defined failure `ToolResult`, never a
+    /// panic and never authority.
+    pub async fn call(
+        &self,
+        server: &str,
+        tool: &str,
+        arguments: Map<String, Value>,
+        timeout: std::time::Duration,
+        cancel: &CancellationToken,
+        max_bytes: usize,
+    ) -> ToolResult {
+        let Some(client) = self.clients.get(server) else {
+            return ToolResult::failure(
+                ToolStatus::Error,
+                "mcp_unavailable",
+                "MCP server session is unavailable",
+            );
+        };
+        // `CallToolRequestParams` is `#[non_exhaustive]`, so build it from Default
+        // and set the two fields we own rather than a struct literal.
+        let mut params = CallToolRequestParams::default();
+        params.name = tool.to_owned().into();
+        params.arguments = Some(arguments);
+        let outcome = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                return ToolResult::failure(ToolStatus::Error, "mcp_cancelled", "MCP call cancelled");
+            }
+            outcome = tokio::time::timeout(timeout, client.call_tool(params)) => outcome,
+        };
+        match outcome {
+            Err(_) => {
+                ToolResult::failure(ToolStatus::Error, "mcp_call_timeout", "MCP call timed out")
+            }
+            Ok(Err(_)) => {
+                ToolResult::failure(ToolStatus::Error, "mcp_call_failed", "MCP call failed")
+            }
+            Ok(Ok(result)) => map_result(result, max_bytes),
+        }
+    }
+}
+
+/// Map an MCP `CallToolResult` into a bounded, untrusted `ToolResult`. Text
+/// content is concatenated; a non-text block is noted by kind, not inlined. The
+/// body is the server's own text — data, never trusted — and mints no evidence.
+fn map_result(result: CallToolResult, max_bytes: usize) -> ToolResult {
+    let mut text = String::new();
+    for block in &result.content {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        match block {
+            ContentBlock::Text(content) => text.push_str(&content.text),
+            ContentBlock::Image(_) => text.push_str("[non-text content: image]"),
+            ContentBlock::Audio(_) => text.push_str("[non-text content: audio]"),
+            ContentBlock::Resource(_) => text.push_str("[non-text content: resource]"),
+            ContentBlock::ResourceLink(_) => text.push_str("[non-text content: resource link]"),
+            _ => text.push_str("[non-text content]"),
+        }
+    }
+    let (body, truncated) = bound(text, max_bytes);
+    if result.is_error.unwrap_or(false) {
+        ToolResult {
+            status: ToolStatus::Error,
+            body,
+            truncated,
+            error: Some(ToolError {
+                code: "mcp_tool_error".into(),
+                message: "The MCP tool reported an error".into(),
+            }),
+            evidence_id: None,
+        }
+    } else {
+        ToolResult {
+            status: ToolStatus::Ok,
+            body,
+            truncated,
+            error: None,
+            evidence_id: None,
+        }
+    }
+}
+
+/// Truncate `text` to at most `max` bytes on a UTF-8 boundary, reporting whether
+/// it was shortened, so a large server payload cannot exceed the tool-result cap.
+fn bound(text: String, max: usize) -> (String, bool) {
+    if text.len() <= max {
+        return (text, false);
+    }
+    let mut end = max;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    (text[..end].to_owned(), true)
+}
+
+/// Validate a call's raw JSON arguments against an MCP tool's discovered input
+/// schema, returning the argument object on success. This is a lightweight check
+/// — the argument value must be a JSON object and every `required` property named
+/// by the schema must be present. Full JSON-Schema validation is a documented
+/// follow-up; the server remains the authority on its own schema. It performs no
+/// I/O, so an invalid call is refused before any server is contacted.
+pub fn validate_args(raw: &str, input_schema: &Value) -> Option<Map<String, Value>> {
+    let Value::Object(object) = serde_json::from_str::<Value>(raw).ok()? else {
+        return None;
+    };
+    if let Some(Value::Array(required)) = input_schema.get("required") {
+        for key in required {
+            match key.as_str() {
+                Some(name) if object.contains_key(name) => {}
+                _ => return None,
+            }
+        }
+    }
+    Some(object)
+}
+
 /// The set of MCP server ids an allow-list references, for `connect`.
 pub fn needed_servers(allow: &[ToolRef]) -> HashSet<String> {
     allow
         .iter()
         .filter_map(|tool| tool.mcp().map(|(server, _)| server.to_owned()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn validate_args_requires_object_and_required_keys() {
+        let schema = json!({"type":"object","required":["path"]});
+        // A well-formed object with the required key passes and returns the map.
+        let ok = validate_args(r#"{"path":"a.txt","extra":1}"#, &schema).unwrap();
+        assert_eq!(ok.get("path").unwrap(), "a.txt");
+        // Missing a required key, a non-object, and malformed JSON are all refused
+        // — before any server is contacted.
+        assert!(validate_args(r#"{"other":1}"#, &schema).is_none());
+        assert!(validate_args(r#"["path"]"#, &schema).is_none());
+        assert!(validate_args("not json", &schema).is_none());
+        // With no `required` list, any object is accepted.
+        let open = json!({"type":"object"});
+        assert!(validate_args(r#"{}"#, &open).is_some());
+    }
+
+    #[test]
+    fn bound_truncates_on_a_char_boundary() {
+        let (kept, truncated) = bound("hello".into(), 32);
+        assert_eq!(kept, "hello");
+        assert!(!truncated);
+        // A multi-byte char straddling the cap is dropped whole, never split.
+        let (kept, truncated) = bound("aé".into(), 2);
+        assert_eq!(kept, "a");
+        assert!(truncated);
+    }
+
+    #[test]
+    fn tooldef_wire_name_matches_toolref() {
+        let def = McpToolDef {
+            server: "docs".into(),
+            tool: "grep".into(),
+            description: String::new(),
+            input_schema: json!({"type":"object"}),
+        };
+        assert_eq!(def.wire_name(), "mcp__docs__grep");
+    }
 }

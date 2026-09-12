@@ -188,3 +188,10 @@
 - **Completed:** 2026-09-12T05:12:58Z
 - **Files modified:** src/model.rs, src/runner.rs, src/replay.rs
 - **Commit:** `a8f909ca0b7c1d62d2671c53f3ccaa8e009be46b`
+
+## T-005 (sprint 9)
+- **Description:** live MCP dispatch through the existing gate. Added `McpClientPool::call` (invoke `tools/call` over the run's stdio session, bounded by the tool permit's deadline + cancellation, mapping `CallToolResult` content into an untrusted `ToolResult` — text concatenated, non-text noted by kind, body bounded to `max_tool_result_bytes` on a char boundary, `is_error` → status Error, mints no evidence), plus `validate_args` (lightweight object + required-key check against the discovered `input_schema`; C-002) and `bound`. Restructured the runner dispatch ladder: `ToolName::from_wire` for compiled tools, else match the frozen `mcp_tools` set; an MCP call validates its args and is denied pre-dispatch when unapproved or malformed (no server contacted — C-001); execution routes an approved MCP call to the pool as a sibling of the reader/writer/command paths, holding the permit. Unit tests `validate_args_requires_object_and_required_keys`, `bound_truncates_on_a_char_boundary`, `tooldef_wire_name_matches_toolref` (fixture-driven approved/denied/byte-cap tests land with T-007).
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T05:19:04Z
+- **Files modified:** src/mcp.rs, src/runner.rs
+- **Commit:** PENDING
