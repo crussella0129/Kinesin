@@ -230,3 +230,10 @@
 - **Completed:** 2026-09-12T15:15:38.4038221Z
 - **Files modified:** src/process.rs, src/tools.rs, src/lib.rs, Cargo.toml, src/bin/cmd-fixture.rs, tests/command_tool.rs
 - **Commit:** `5c6f5aca4e49e582e84d33176adc1083f17b7475`
+
+## T-006 (sprint 10)
+- **Description:** Bounded MCP input before JSON decoding with cancellation-safe line/aggregate counters; capped servers, pages, advertised tools and frozen metadata. Replaced SDK child lifecycle with scrubbed owned process groups/jobs, suppressed inherited stderr and awaited cleanup on initialization failure, call timeout/cancellation and explicit shutdown. Five MCP unit tests and 14 integration tests passed on Windows; isolated environment worker is invoked by its parent test. Targeted rustfmt and all-target/all-feature clippy with warnings denied passed. Full run ownership moves under admission in T-007.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:28:40Z
+- **Files modified:** src/mcp.rs, src/mcp/transport.rs, src/bin/mcp-fixture.rs, tests/mcp.rs
+- **Commit:** PENDING

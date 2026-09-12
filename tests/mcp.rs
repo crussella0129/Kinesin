@@ -447,3 +447,241 @@ async fn mcp_discovery_timeout_fails_start() {
     let error = result.err().expect("a hung server times out");
     assert_eq!(error.code, "mcp_initialize_timeout");
 }
+
+#[tokio::test]
+async fn mcp_protocol_and_discovery_are_bounded() {
+    for (mode, code) in [
+        ("giant-frame", "mcp_initialize_failed"),
+        ("cursor-cycle", "mcp_pagination_limit"),
+        ("too-many-tools", "mcp_advertised_tool_limit_or_duplicate"),
+        ("duplicate", "mcp_advertised_tool_limit_or_duplicate"),
+        ("metadata", "mcp_metadata_limit"),
+    ] {
+        let fixture = Fixture::new();
+        let tools: Vec<String> = if mode == "metadata" {
+            (0..6).map(|i| format!("mcp__fixture__meta{i}")).collect()
+        } else {
+            vec!["mcp__fixture__echo".into()]
+        };
+        let names: Vec<_> = tools.iter().map(String::as_str).collect();
+        let config = Config::parse(
+            &config_text(&names, 8192, "metadata", &["--protocol-case", mode]),
+            &fixture.root.join("kinesin.toml"),
+        )
+        .unwrap();
+        let authority = freeform(&config, CaptureMode::Metadata);
+        let mut pool = McpClientPool::default();
+        let deadline = Duration::from_secs(3);
+        let result = tokio::time::timeout(deadline, async {
+            pool.connect_into(
+                config.mcp_servers(),
+                &needed_servers(&authority.workspace().tools),
+                deadline,
+            )
+            .await?;
+            pool.discover(&authority.workspace().tools, deadline).await
+        })
+        .await
+        .expect("protocol bound must fail without waiting for timeout");
+        assert_eq!(result.unwrap_err().code, code, "{mode}");
+        pool.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn mcp_shutdown_stops_observed_descendant_after_startup_or_cancellation() {
+    for hang in [false, true] {
+        let fixture = Fixture::new();
+        let marker = fixture.root.join("child.marker");
+        let marker_text = marker.to_str().unwrap();
+        let mut args = vec!["--spawn-grandchild", marker_text];
+        if hang {
+            args.push("--hang");
+        }
+        let config = Config::parse(
+            &config_text(&["mcp__fixture__echo"], 8192, "metadata", &args),
+            &fixture.root.join("kinesin.toml"),
+        )
+        .unwrap();
+        let mut pool = McpClientPool::default();
+        let needed = needed_servers(&freeform(&config, CaptureMode::Metadata).workspace().tools);
+        let result = tokio::time::timeout(
+            Duration::from_secs(if hang { 2 } else { 5 }),
+            pool.connect_into(config.mcp_servers(), &needed, Duration::from_secs(10)),
+        )
+        .await;
+        assert_eq!(result.is_err(), hang);
+        if let Ok(result) = result {
+            result.unwrap();
+        }
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !marker.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        pool.shutdown().await.unwrap();
+        let settled = std::fs::read(&marker).unwrap();
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert_eq!(
+            std::fs::read(&marker).unwrap(),
+            settled,
+            "descendant kept writing after cleanup"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "isolated environment worker invoked by mcp_process_environment_and_stderr_are_scrubbed"]
+async fn mcp_environment_worker() {
+    let path = std::env::var("MCP_PROBE_RESULT").unwrap();
+    let servers = [kinesin::config::McpServer {
+        id: "fixture".into(),
+        command: vec![
+            env!("CARGO_BIN_EXE_mcp-fixture").into(),
+            "--probe-env-file".into(),
+            path,
+        ],
+    }];
+    let pool = McpClientPool::connect(
+        &servers,
+        &["fixture".to_owned()].into_iter().collect(),
+        Duration::from_secs(5),
+    )
+    .await
+    .unwrap();
+    pool.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn mcp_call_timeout_and_cancellation_await_descendant_cleanup() {
+    for cancelled in [false, true] {
+        let fixture = Fixture::new();
+        let marker = fixture.root.join("call-child.marker");
+        let config = Config::parse(
+            &config_text(
+                &["mcp__fixture__echo"],
+                8192,
+                "metadata",
+                &[
+                    "--spawn-grandchild",
+                    marker.to_str().unwrap(),
+                    "--protocol-case",
+                    "hang-call",
+                ],
+            ),
+            &fixture.root.join("kinesin.toml"),
+        )
+        .unwrap();
+        let needed = needed_servers(&freeform(&config, CaptureMode::Metadata).workspace().tools);
+        let pool = McpClientPool::connect(config.mcp_servers(), &needed, Duration::from_secs(5))
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !marker.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let trigger = cancel.clone();
+        let cancellation = async move {
+            if cancelled {
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                trigger.cancel();
+            }
+        };
+        let (result, ()) = tokio::join!(
+            pool.call(
+                "fixture",
+                "echo",
+                serde_json::Map::new(),
+                Duration::from_millis(150),
+                &cancel,
+                8192
+            ),
+            cancellation,
+        );
+        assert_eq!(
+            result.error.unwrap().code,
+            if cancelled {
+                "mcp_cancelled"
+            } else {
+                "mcp_call_timeout"
+            }
+        );
+        let settled = std::fs::read(&marker).unwrap();
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        assert_eq!(std::fs::read(&marker).unwrap(), settled);
+        pool.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn mcp_declared_counts_fail_before_spawning_or_requesting() {
+    let mut pool = McpClientPool::default();
+    let needed = (0..=kinesin::mcp::MAX_MCP_SERVERS)
+        .map(|i| format!("server{i}"))
+        .collect();
+    assert_eq!(
+        pool.connect_into(&[], &needed, Duration::from_secs(1))
+            .await
+            .unwrap_err()
+            .code,
+        "mcp_server_limit"
+    );
+    let allow = (0..=kinesin::mcp::MAX_MCP_TOOLS)
+        .map(|i| kinesin::config::ToolRef::Mcp {
+            server: "fixture".into(),
+            tool: format!("tool{i}"),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pool.discover(&allow, Duration::from_secs(1))
+            .await
+            .unwrap_err()
+            .code,
+        "mcp_tool_limit"
+    );
+}
+
+#[test]
+fn mcp_process_environment_and_stderr_are_scrubbed() {
+    let fixture = Fixture::new();
+    let result = fixture.root.join("environment.json");
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--ignored",
+            "--exact",
+            "mcp_environment_worker",
+            "--nocapture",
+        ])
+        .env("MCP_PROBE_RESULT", &result)
+        .env("MCP_SYNTHETIC_SECRET", "synthetic-test-value")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("MCP_UNTRUSTED_STDERR_MARKER"));
+    let value: Value = serde_json::from_slice(&std::fs::read(result).unwrap()).unwrap();
+    assert_eq!(value["secret_inherited"], false);
+    for key in value["keys"].as_array().unwrap() {
+        assert!(
+            [
+                "PATH",
+                "SYSTEMROOT",
+                "SYSTEMDRIVE",
+                "PATHEXT",
+                "TEMP",
+                "TMP"
+            ]
+            .contains(&key.as_str().unwrap().to_ascii_uppercase().as_str()),
+            "unexpected inherited key: {key}"
+        );
+    }
+}

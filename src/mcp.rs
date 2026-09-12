@@ -10,9 +10,8 @@ use std::fmt;
 use std::time::Duration;
 
 use rmcp::ServiceExt;
-use rmcp::model::{CallToolRequestParams, CallToolResult, ContentBlock};
-use rmcp::service::{RoleClient, RunningService};
-use rmcp::transport::TokioChildProcess;
+use rmcp::model::{CallToolRequestParams, CallToolResult, ContentBlock, PaginatedRequestParams};
+use rmcp::service::{Peer, RoleClient, RunningService};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
@@ -20,13 +19,22 @@ use tokio_util::sync::CancellationToken;
 use crate::config::{McpServer, ToolRef};
 use crate::tools::{ToolError, ToolResult, ToolStatus};
 
+mod transport;
+
+pub const MAX_MCP_FRAME_BYTES: usize = 256 * 1024;
+pub const MAX_MCP_SESSION_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_MCP_METADATA_BYTES: usize = 64 * 1024;
+pub const MAX_MCP_SERVERS: usize = 8;
+pub const MAX_MCP_TOOLS: usize = 64;
+pub const MAX_MCP_PAGES: usize = 16;
+pub const MAX_MCP_ADVERTISED_TOOLS: usize = 1024;
+
 /// Bounds connect+initialize and each `tools/list`, so a server that never
 /// answers fails run start with a defined error instead of hanging it.
 pub const MCP_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// An overall deadline for discovering all of a run's MCP servers, so run start
-/// cannot block for `server count × MCP_STARTUP_TIMEOUT` when several servers are
-/// slow — connects run concurrently under this single bound.
+/// An overall deadline for discovering all of a run's MCP servers. The runner
+/// also applies its admission deadline and cancellation before creating children.
 pub const MCP_DISCOVERY_DEADLINE: Duration = Duration::from_secs(20);
 
 /// Caps on the untrusted, server-supplied tool metadata that is frozen into the
@@ -85,113 +93,197 @@ impl fmt::Display for McpError {
 
 impl std::error::Error for McpError {}
 
-/// The live stdio client sessions for one run's declared-and-used MCP servers,
-/// opened once at run start and held for the run. Dropping the pool drops each
-/// session, tearing down its child process.
+/// Run-scoped sessions plus explicit process ownership. Normal release calls
+/// shutdown and awaits cleanup; dropping remains a process-kill fallback.
+#[derive(Default)]
 pub struct McpClientPool {
-    clients: BTreeMap<String, RunningService<RoleClient, ()>>,
+    clients: BTreeMap<String, Peer<RoleClient>>,
+    services: tokio::sync::Mutex<Vec<RunningService<RoleClient, ()>>>,
+    processes: tokio::sync::Mutex<BTreeMap<String, crate::process::OwnedProcess>>,
 }
 
 impl McpClientPool {
-    /// Spawn and initialize exactly the servers named in `needed` (the run's
-    /// allow-listed MCP servers), skipping any declared server the run does not
-    /// use. A missing declaration is a caller error (config validation already
-    /// proved every referenced server is declared), so it is reported, not
-    /// silently skipped.
     pub async fn connect(
         servers: &[McpServer],
         needed: &HashSet<String>,
         timeout: Duration,
     ) -> Result<Self, McpError> {
-        // Connect every needed server concurrently, so run-start latency is the
-        // slowest server's handshake, not the sum across servers.
-        let mut connects = Vec::with_capacity(needed.len());
-        for id in needed {
+        let mut pool = Self::default();
+        if let Err(error) = pool.connect_into(servers, needed, timeout).await {
+            pool.shutdown().await?;
+            return Err(error);
+        }
+        Ok(pool)
+    }
+
+    /// Retain every spawned process in this pool before awaiting initialization.
+    /// A caller may cancel this future and still await the pool's cleanup.
+    pub async fn connect_into(
+        &mut self,
+        servers: &[McpServer],
+        needed: &HashSet<String>,
+        timeout: Duration,
+    ) -> Result<(), McpError> {
+        if needed.len() > MAX_MCP_SERVERS {
+            return Err(McpError::new("mcp_server_limit", ""));
+        }
+        let mut ids: Vec<_> = needed.iter().collect();
+        ids.sort();
+        for id in ids {
             let server = servers
                 .iter()
-                .find(|s| &s.id == id)
+                .find(|server| &server.id == id)
                 .ok_or_else(|| McpError::new("mcp_server_undeclared", id))?;
-            connects.push(Self::connect_one(server, timeout));
+            if self.processes.get_mut().contains_key(id) {
+                return Err(McpError::new("mcp_server_duplicate", id));
+            }
+            let (exe, args) = server
+                .command
+                .split_first()
+                .ok_or_else(|| McpError::new("mcp_command_empty", id))?;
+            let mut command = tokio::process::Command::new(exe);
+            crate::process::scrub_environment(&mut command);
+            command
+                .args(args)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null());
+            let mut process = crate::process::OwnedProcess::spawn(&mut command)
+                .map_err(|_| McpError::new("mcp_spawn_failed", id))?;
+            let stdout = process
+                .take_stdout()
+                .ok_or_else(|| McpError::new("mcp_pipe_failed", id))?;
+            let stdin = process
+                .take_stdin()
+                .ok_or_else(|| McpError::new("mcp_pipe_failed", id))?;
+            self.processes.get_mut().insert(id.clone(), process);
+            let reader =
+                transport::BoundedReader::new(stdout, MAX_MCP_FRAME_BYTES, MAX_MCP_SESSION_BYTES);
+            let transport = rmcp::transport::async_rw::AsyncRwTransport::new_client(reader, stdin);
+            let client = tokio::time::timeout(timeout, ().serve(transport))
+                .await
+                .map_err(|_| McpError::new("mcp_initialize_timeout", id))?
+                .map_err(|_| McpError::new("mcp_initialize_failed", id))?;
+            self.clients.insert(id.clone(), client.peer().clone());
+            self.services.get_mut().push(client);
         }
-        let clients = futures_util::future::try_join_all(connects)
-            .await?
-            .into_iter()
-            .collect();
-        Ok(Self { clients })
+        Ok(())
     }
 
-    async fn connect_one(
-        server: &McpServer,
-        timeout: Duration,
-    ) -> Result<(String, RunningService<RoleClient, ()>), McpError> {
-        let (exe, args) = server
-            .command
-            .split_first()
-            .ok_or_else(|| McpError::new("mcp_command_empty", &server.id))?;
-        let mut command = tokio::process::Command::new(exe);
-        command.args(args);
-        let transport = TokioChildProcess::new(command)
-            .map_err(|_| McpError::new("mcp_spawn_failed", &server.id))?;
-        let client = tokio::time::timeout(timeout, ().serve(transport))
-            .await
-            .map_err(|_| McpError::new("mcp_initialize_timeout", &server.id))?
-            .map_err(|_| McpError::new("mcp_initialize_failed", &server.id))?;
-        Ok((server.id.clone(), client))
+    /// Close protocol tasks and terminate the owned groups/jobs before releasing
+    /// normal run ownership. Drop remains a synchronous process-kill fallback.
+    pub async fn shutdown(&self) -> Result<(), McpError> {
+        let mut services = self.services.lock().await;
+        for service in services.iter() {
+            service.cancellation_token().cancel();
+        }
+        let mut processes = self.processes.lock().await;
+        for (server, process) in processes.iter_mut() {
+            process
+                .terminate_and_wait()
+                .await
+                .map_err(|_| McpError::new("mcp_cleanup_failed", server))?;
+        }
+        processes.clear();
+        for service in services.iter_mut() {
+            service
+                .close()
+                .await
+                .map_err(|_| McpError::new("mcp_cleanup_failed", ""))?;
+        }
+        services.clear();
+        Ok(())
     }
 
-    /// Discover the schema of each allow-listed MCP tool, listing each server's
-    /// tools once. Errors if an allow-listed tool is absent from its server, so a
-    /// run never starts offering a tool the server does not actually provide.
+    /// Page explicitly instead of using the SDK's accumulating list_all_tools.
     pub async fn discover(
         &self,
         allow: &[ToolRef],
         timeout: Duration,
     ) -> Result<Vec<McpToolDef>, McpError> {
-        // Which tools each server must yield, in allow-list order per server.
         let mut wanted: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
         for tool_ref in allow {
             if let Some((server, tool)) = tool_ref.mcp() {
                 wanted.entry(server).or_default().push(tool);
             }
         }
+        if allow.iter().filter(|tool| tool.mcp().is_some()).count() > MAX_MCP_TOOLS {
+            return Err(McpError::new("mcp_tool_limit", ""));
+        }
         let mut defs = Vec::new();
+        // Include the array delimiters and separators in the captured envelope.
+        let mut frozen_bytes = 2_usize;
         for (server, tools) in wanted {
             let client = self
                 .clients
                 .get(server)
                 .ok_or_else(|| McpError::new("mcp_server_unconnected", server))?;
-            let advertised = tokio::time::timeout(timeout, client.list_all_tools())
-                .await
-                .map_err(|_| McpError::new("mcp_list_timeout", server))?
-                .map_err(|_| McpError::new("mcp_list_failed", server))?;
-            for tool in tools {
-                let found = advertised
-                    .iter()
-                    .find(|candidate| candidate.name.as_ref() == tool)
-                    .ok_or_else(|| McpError::new("mcp_tool_absent", server))?;
-                // Bound the untrusted schema/description before freezing it into
-                // the run and every request, so a server cannot bloat the journal
-                // or overflow the model's request budget.
-                let description = found
-                    .description
-                    .as_ref()
-                    .map(|d| d.as_ref().to_owned())
-                    .unwrap_or_default();
-                if description.len() > MAX_MCP_DESCRIPTION_BYTES {
-                    return Err(McpError::new("mcp_description_too_large", server));
+            let mut cursor = None;
+            let mut cursors = HashSet::new();
+            let mut names = HashSet::new();
+            let mut found = BTreeMap::new();
+            for page_index in 0..MAX_MCP_PAGES {
+                let params = PaginatedRequestParams::default().with_cursor(cursor.take());
+                let page = tokio::time::timeout(timeout, client.list_tools(Some(params)))
+                    .await
+                    .map_err(|_| McpError::new("mcp_list_timeout", server))?
+                    .map_err(|_| McpError::new("mcp_list_failed", server))?;
+                for tool in page.tools {
+                    let name = tool.name.to_string();
+                    if names.len() >= MAX_MCP_ADVERTISED_TOOLS || !names.insert(name.clone()) {
+                        return Err(McpError::new(
+                            "mcp_advertised_tool_limit_or_duplicate",
+                            server,
+                        ));
+                    }
+                    if !tools.contains(&name.as_str()) {
+                        continue;
+                    }
+                    let description = tool.description.as_deref().unwrap_or_default().to_owned();
+                    if description.len() > MAX_MCP_DESCRIPTION_BYTES {
+                        return Err(McpError::new("mcp_description_too_large", server));
+                    }
+                    let input_schema = Value::Object((*tool.input_schema).clone());
+                    let schema_bytes = serde_json::to_vec(&input_schema)
+                        .map_err(|_| McpError::new("mcp_schema_invalid", server))?
+                        .len();
+                    if schema_bytes > MAX_MCP_SCHEMA_BYTES {
+                        return Err(McpError::new("mcp_schema_too_large", server));
+                    }
+                    let def = McpToolDef {
+                        server: server.to_owned(),
+                        tool: name.clone(),
+                        description,
+                        input_schema,
+                    };
+                    frozen_bytes = frozen_bytes
+                        .checked_add(
+                            serde_json::to_vec(&def)
+                                .map_err(|_| McpError::new("mcp_schema_invalid", server))?
+                                .len()
+                                + 1,
+                        )
+                        .ok_or_else(|| McpError::new("mcp_metadata_limit", server))?;
+                    if frozen_bytes > MAX_MCP_METADATA_BYTES {
+                        return Err(McpError::new("mcp_metadata_limit", server));
+                    }
+                    found.insert(name, def);
                 }
-                let input_schema = Value::Object((*found.input_schema).clone());
-                if serde_json::to_vec(&input_schema).map_or(usize::MAX, |bytes| bytes.len())
-                    > MAX_MCP_SCHEMA_BYTES
+                let Some(next) = page.next_cursor else { break };
+                if next.len() > 1024
+                    || !cursors.insert(next.clone())
+                    || page_index + 1 == MAX_MCP_PAGES
                 {
-                    return Err(McpError::new("mcp_schema_too_large", server));
+                    return Err(McpError::new("mcp_pagination_limit", server));
                 }
-                defs.push(McpToolDef {
-                    server: server.to_owned(),
-                    tool: tool.to_owned(),
-                    description,
-                    input_schema,
-                });
+                cursor = Some(next);
+            }
+            for tool in tools {
+                defs.push(
+                    found
+                        .remove(tool)
+                        .ok_or_else(|| McpError::new("mcp_tool_absent", server))?,
+                );
             }
         }
         Ok(defs)
@@ -228,15 +320,32 @@ impl McpClientPool {
         let outcome = tokio::select! {
             biased;
             _ = cancel.cancelled() => {
+                if self.shutdown().await.is_err() {
+                    return ToolResult::failure(ToolStatus::Error, "mcp_cleanup_failed", "MCP cleanup failed");
+                }
                 return ToolResult::failure(ToolStatus::Error, "mcp_cancelled", "MCP call cancelled");
             }
             outcome = tokio::time::timeout(timeout, client.call_tool(params)) => outcome,
         };
         match outcome {
             Err(_) => {
+                if self.shutdown().await.is_err() {
+                    return ToolResult::failure(
+                        ToolStatus::Error,
+                        "mcp_cleanup_failed",
+                        "MCP cleanup failed",
+                    );
+                }
                 ToolResult::failure(ToolStatus::Error, "mcp_call_timeout", "MCP call timed out")
             }
             Ok(Err(_)) => {
+                if self.shutdown().await.is_err() {
+                    return ToolResult::failure(
+                        ToolStatus::Error,
+                        "mcp_cleanup_failed",
+                        "MCP cleanup failed",
+                    );
+                }
                 ToolResult::failure(ToolStatus::Error, "mcp_call_failed", "MCP call failed")
             }
             Ok(Ok(result)) => map_result(result, max_bytes),
