@@ -285,4 +285,4 @@
 - **Intent:** [INT-0021](../intents/INT-0021-harness-contract-review.md), [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
 - **Completed:** 2026-09-12T16:24:10.4892797Z
 - **Files modified:** tests/cli_inspect.rs; docs/sprints/s10/sprint-tests/{unit-tests,integration-tests,e2e-tests,integration-review}.md; docs/sprints/s10/sprint-research/transport-mcp-audit.md; docs/sprints/s1/sprint-research/research-report.md; docs/sprints/s2/sprint-research/research-report.md; docs/sprints/s3/sprint-research/research-report.md; docs/roadmap.md; docs/work ledgers. Source review fixes and sprint meta are recorded in preceding reachable commit f3e3d0f.
-- **Commit:** PENDING
+- **Commit:** `1a383954aac7c765fb46347281f380e12e85e2ae`
