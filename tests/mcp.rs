@@ -150,6 +150,7 @@ struct Case {
     record: RunRecord,
     events: Vec<Event>,
     snapshot: Snapshot,
+    requests: Vec<Vec<u8>>,
 }
 impl Case {
     fn tool_finished(&self) -> &Event {
@@ -186,7 +187,7 @@ async fn run_case(config_text: &str, replies: Vec<ModelReply>) -> Case {
     admit(&authority, &store, None).await.unwrap();
     let record = run_admitted(
         authority.clone(),
-        client,
+        client.clone(),
         store.clone(),
         resources,
         CancellationToken::new(),
@@ -194,6 +195,7 @@ async fn run_case(config_text: &str, replies: Vec<ModelReply>) -> Case {
     )
     .await
     .expect("run settles a terminal record");
+    let requests = client.captured_requests().unwrap();
     let page = store
         .execute(
             Command::Events {
@@ -222,6 +224,7 @@ async fn run_case(config_text: &str, replies: Vec<ModelReply>) -> Case {
         record,
         events,
         snapshot,
+        requests,
     }
 }
 
@@ -251,6 +254,38 @@ async fn mcp_approved_call_bounded_no_evidence() {
     assert_eq!(case.observation()["body"], "hello over mcp");
     assert_eq!(case.observation()["evidence_id"], Value::Null);
     assert_eq!(case.record.phase, "completed");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mcp_tool_schema_emitted_to_model() {
+    // The model request offers the MCP tool under its namespaced name with the
+    // server-discovered inputSchema verbatim — proving discovery reaches the model.
+    let config = config_text(&["mcp__fixture__echo"], 8192, "replay", &[]);
+    let case = run_case(
+        &config,
+        vec![
+            batch(vec![tool_call(
+                "t0",
+                "mcp__fixture__echo",
+                json!({"text": "hi"}),
+            )]),
+            ModelReply::Answer("done".into()),
+        ],
+    )
+    .await;
+    let first: Value = serde_json::from_slice(&case.requests[0]).unwrap();
+    let tools = first["tools"].as_array().expect("request carries tools");
+    let echo = tools
+        .iter()
+        .find(|t| t["function"]["name"] == "mcp__fixture__echo")
+        .expect("the MCP tool is offered to the model");
+    // The parameters are the discovered schema: an object with a `text` property.
+    let params = &echo["function"]["parameters"];
+    assert_eq!(params["type"], "object");
+    assert!(params["properties"].get("text").is_some());
+    // The frozen def's schema is exactly what was emitted.
+    let def = &case.authority.mcp_tools()[0];
+    assert_eq!(*params, def.input_schema);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
