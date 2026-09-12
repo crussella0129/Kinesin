@@ -250,4 +250,4 @@
 - **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
 - **Completed:** 2026-09-12T15:30:55Z
 - **Files modified:** src/tools.rs, src/config.rs, src/bin/cmd-fixture.rs, tests/sandbox_linux.rs
-- **Commit:** PENDING
+- **Commit:** `9034980397513e1b7849fa900c90eb5785093bed`
