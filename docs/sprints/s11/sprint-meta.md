@@ -3,14 +3,14 @@
 - **Sprint number:** 11
 - **Book schema version:** 2
 - **Start timestamp:** 2026-09-12T17:43:44Z
-- **End timestamp:** (filled at Loop Phase)
+- **End timestamp:** 2026-09-12T18:25:54Z
 - **Model:** unknown
 - **Bundle version:** 0.22.0
-- **Exit status:** in-progress
+- **Exit status:** success
 - **Token count:** unknown (not exposed by this host)
 - **Summary:** Make Windows and Linux installation and first use explicit
 - **Intents:** [INT-0028](../../intents/INT-0028-first-use-documentation.md) — realized
-- **Completion evidence:** (filled at Loop Phase)
+- **Completion evidence:** INT-0028 realized through T-001/T-002, clean independent TEST review, Windows304/Ubuntu316 canonical CI, native Windows and Debian first-use checks, PowerShell5.1 setup/help, preserved repeat setup and disconnected replay; user-directed shared checkpoint PR11.
 - **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/11
 
 ## Checkpoint scope
