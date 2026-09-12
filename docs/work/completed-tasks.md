@@ -195,3 +195,10 @@
 - **Completed:** 2026-09-12T05:19:04Z
 - **Files modified:** src/mcp.rs, src/runner.rs
 - **Commit:** `db3ee55fdd9ea93aef1db8b2e8aee0bfab196727`
+
+## T-006 (sprint 9)
+- **Description:** replay MCP dispatch without reconnecting. Extended the replay dispatch ladder (replay.rs) to recognize an MCP tool from the frozen `mcp_tools` set (never a live client) and mirror the live denial ladder (`ToolName::from_wire`-equivalent compiled match kept as-is incl. its run_command omission; else frozen-set lookup + `validate_args`; well-formed-but-ungranted `mcp__` → tool_denied; else unknown_tool), so the recorded `dispatch` classification validates consistently and the recorded observation is reproduced. No `McpClientPool` is constructed on the replay path. Existing replay suite green; the fixture-driven `replay_reproduces_mcp_run_without_reconnect` + e2e land with T-007.
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T05:20:50Z
+- **Files modified:** src/replay.rs
+- **Commit:** PENDING

@@ -645,25 +645,57 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     "move_file" => Some(ToolName::MoveFile),
                     _ => None,
                 };
-                let denial = match tool {
-                    None => Some(ToolResult::failure(
-                        ToolStatus::Denied,
-                        "unknown_tool",
-                        "Tool is not available",
-                    )),
-                    Some(name) if !frozen.workspace.tools.contains(&ToolRef::Compiled(name)) => {
+                // Recognize an MCP tool from the frozen discovered set — never a
+                // live reconnect — and mirror the live denial ladder so the recorded
+                // dispatch classification validates consistently.
+                let mcp_def = if tool.is_none() {
+                    frozen
+                        .mcp_tools
+                        .iter()
+                        .find(|def| def.wire_name() == call.name)
+                } else {
+                    None
+                };
+                let mcp_args = mcp_def
+                    .and_then(|def| crate::mcp::validate_args(&call.arguments, &def.input_schema));
+                let denial = if let Some(name) = tool {
+                    if !frozen.workspace.tools.contains(&ToolRef::Compiled(name)) {
                         Some(ToolResult::failure(
                             ToolStatus::Denied,
                             "tool_denied",
                             "Tool is not allowed",
                         ))
+                    } else if args.is_err() {
+                        Some(ToolResult::failure(
+                            ToolStatus::Denied,
+                            "invalid_arguments",
+                            "Tool arguments or resource path are invalid",
+                        ))
+                    } else {
+                        None
                     }
-                    Some(_) if args.is_err() => Some(ToolResult::failure(
+                } else if mcp_def.is_some() {
+                    if mcp_args.is_none() {
+                        Some(ToolResult::failure(
+                            ToolStatus::Denied,
+                            "invalid_arguments",
+                            "Tool arguments or resource path are invalid",
+                        ))
+                    } else {
+                        None
+                    }
+                } else if call.name.starts_with(crate::config::MCP_TOOL_PREFIX) {
+                    Some(ToolResult::failure(
                         ToolStatus::Denied,
-                        "invalid_arguments",
-                        "Tool arguments or resource path are invalid",
-                    )),
-                    _ => None,
+                        "tool_denied",
+                        "Tool is not allowed",
+                    ))
+                } else {
+                    Some(ToolResult::failure(
+                        ToolStatus::Denied,
+                        "unknown_tool",
+                        "Tool is not available",
+                    ))
                 };
                 ensure(
                     planned.data["dispatch"]
