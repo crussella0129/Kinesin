@@ -41,7 +41,7 @@ every model answer met its task rubric. Inspect the emitted `report.json`.
 With the guide's practice workspace, the ordinary CLI proof is:
 
 ```powershell
-cargo run -- run --config examples/file-task.toml --task practice-fields --model local --capture replay
+cargo run -- --config examples/file-task.toml --task practice-fields --model local --capture replay
 ```
 
 The first successful checked CLI run was

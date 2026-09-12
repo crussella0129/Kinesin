@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0004
-- **State:** realized
+- **State:** superseded
 - **Work evidence:** [T-001 build plan](../sprints/s3/sprint-plans/build-plan.md#t-001-emit-cache_prompt-and-re-record-the-request-fixtures)
 - **Completion evidence:** [T-001–T-002 completion log](../work/completed-tasks.md)
 - **Code evidence:** [T-001 `5670688`, T-002 `8be0e84`](../work/completed-tasks.md) — `cache_prompt` mechanism + offline invariants and live benchmark
@@ -43,3 +43,4 @@ interaction with the scheduler, concurrency, and the immutable-run design.
 - 2026-09-11: `planned → active`; sprint 3 build began.
 - 2026-09-11: test phase verified all acceptance criteria (7 named tests, 241 green offline) with an accepted `proceed-with-caveats` critique; test report linked as Test evidence.
 - 2026-09-11: `active → realized`; the headline live measurement was **executed** against the pinned b6500 server (not deferred): the prefix-extending turn re-evaluated only 16 of 59 prompt tokens, and a ~2 576-token shared prefix cut prompt-eval time from ~933 ms to ~51 ms (~18.4×, mean of 3 runs). Immutability/replay preserved; reuse is over a genuine byte-prefix and llama.cpp reuses only byte-identical tokens, so a mismatch re-evaluates and never corrupts. Honest nuance: the wall-clock reduction scales with prefix size (~1.0× for trivially short prompts, which are per-request-overhead-bound). Follow-ups noted (explicit slot pinning; re-recording the dated request fixtures on a live capture) as future work, not gaps.
+- 2026-09-12: `realized → superseded` by [INT-0026](INT-0026-session-context-continuity.md). The benchmark does not exercise actual session assembly; preserve its within-run evidence while carrying unproven session/lifetime acceptance forward. Historical criteria and realization notes are retained as provenance, not current proof.

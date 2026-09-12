@@ -34,10 +34,9 @@ pub struct RunResources {
     /// Present only for workspaces whose operator granted `run_command` with an
     /// allow-list, so a run without that grant has no command runner to reach.
     command_runners: Arc<BTreeMap<String, Arc<CommandRunner>>>,
-    /// Present only for a run that allow-lists MCP tools: the live stdio sessions
-    /// discovered and opened at run start, held for the run. Per-run, not shared
-    /// across the config's models like the other backends.
-    mcp: Option<Arc<crate::mcp::McpClientPool>>,
+    /// Shared operator declarations contain no running processes. An admitted
+    /// runner owns its own pool outside this clonable resource bundle.
+    mcp_servers: Arc<[crate::config::McpServer]>,
     dispatcher: Option<Arc<ModelDispatcher>>,
     pub concurrency: ConcurrencyConfig,
 }
@@ -52,16 +51,16 @@ impl RunResources {
             workspaces: Arc::new(BTreeMap::new()),
             writers: Arc::new(BTreeMap::new()),
             command_runners: Arc::new(BTreeMap::new()),
-            mcp: None,
+            mcp_servers: Arc::from([]),
             dispatcher: None,
             concurrency,
         }
     }
 
-    /// Attach a per-run MCP client pool (trusted startup / run preparation only).
-    /// The pool is discovered and opened before admission and lives for the run.
-    pub fn with_mcp(mut self, pool: Arc<crate::mcp::McpClientPool>) -> Self {
-        self.mcp = Some(pool);
+    /// Attach declarations without spawning. The active runner connects under
+    /// its deadline and cancellation token and awaits cleanup before returning.
+    pub fn with_mcp_servers(mut self, servers: Arc<[crate::config::McpServer]>) -> Self {
+        self.mcp_servers = servers;
         self
     }
 
@@ -164,6 +163,7 @@ impl RunResources {
             backends.clone(),
             concurrency.max_active_runs,
         )?;
+        let mcp_servers: Arc<[crate::config::McpServer]> = config.mcp_servers().to_vec().into();
         Ok(config
             .models()
             .iter()
@@ -176,7 +176,7 @@ impl RunResources {
                         workspaces: workspaces.clone(),
                         writers: writers.clone(),
                         command_runners: command_runners.clone(),
-                        mcp: None,
+                        mcp_servers: mcp_servers.clone(),
                         dispatcher: Some(dispatcher.clone()),
                         concurrency: concurrency.clone(),
                     },
@@ -327,23 +327,29 @@ struct RunJournal {
     cancel: CancellationToken,
     model_turns: usize,
     tool_calls: usize,
-    prompt_tokens: u64,
-    completion_tokens: u64,
-    usage_reported: bool,
+    // Exact totals become unknown permanently if any dispatched call omits a
+    // component or its sum overflows. Each component has independent coverage.
+    prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
     compactions: u64,
     journal_wait_ms: u64,
     capacity_stopped: bool,
     queue_stop: Option<QueueStop>,
+    mcp_cleanup: Option<&'static str>,
 }
 
 impl RunJournal {
-    /// Per-run counters. Token totals appear only when at least one model call
-    /// reported usage, so an absent report stays unknown rather than zero.
+    /// Per-run counters. A token total requires complete dispatched-call
+    /// coverage and an exact sum. No dispatch is unknown rather than zero.
     fn counters(&self) -> Value {
         let mut counters = json!({"model_turns": self.model_turns, "tool_calls": self.tool_calls});
-        if self.usage_reported {
-            counters["prompt_tokens"] = json!(self.prompt_tokens);
-            counters["completion_tokens"] = json!(self.completion_tokens);
+        if self.model_turns > 0 {
+            if let Some(tokens) = self.prompt_tokens {
+                counters["prompt_tokens"] = json!(tokens);
+            }
+            if let Some(tokens) = self.completion_tokens {
+                counters["completion_tokens"] = json!(tokens);
+            }
         }
         // Present only when the run actually compacted, so an ordinary run's
         // counters are unchanged and old replay captures never carry it.
@@ -493,13 +499,24 @@ impl RunJournal {
             }
             value
         });
-        Command::Finish {owner_id:self.owner.clone(),run_id:self.run.clone(),
-            event:self.event("run_finished",json!({"phase":outcome.phase.as_str(),"acceptance_status":outcome.acceptance.as_str(),"reason":outcome.reason,"candidate_sha256":digest,
+        let mut data = json!({"phase":outcome.phase.as_str(),"acceptance_status":outcome.acceptance.as_str(),"reason":outcome.reason,"candidate_sha256":digest,
                 "counters":self.counters(),"journal_wait_before_terminal_ms":self.journal_wait_ms,
-                "control_terminal":control,"queue_stop":self.queue_stop})),
-            terminal:Terminal {phase:outcome.phase.as_str().into(),reason:outcome.reason.clone(),
+                "control_terminal":control,"queue_stop":self.queue_stop});
+        if let Some(status) = self.mcp_cleanup {
+            data["mcp_cleanup"] = json!(status);
+        }
+        Command::Finish {
+            owner_id: self.owner.clone(),
+            run_id: self.run.clone(),
+            event: self.event("run_finished", data),
+            terminal: Terminal {
+                phase: outcome.phase.as_str().into(),
+                reason: outcome.reason.clone(),
                 result,
-                result_sha256:digest,acceptance_status:outcome.acceptance.as_str().into(),receipt:json!(receipt)},
+                result_sha256: digest,
+                acceptance_status: outcome.acceptance.as_str().into(),
+                receipt: json!(receipt),
+            },
         }
     }
     async fn finalize(
@@ -620,7 +637,31 @@ pub async fn run_admitted_with_text(
     resources: RunResources,
     cancel: CancellationToken,
     accepted: Instant,
+    observer: Option<TextObserver>,
+) -> Result<RunRecord, String> {
+    // Keep ownership outside the fallible execution future. Cancellation of a
+    // connect/discovery await cannot lose the child that connect_into retained.
+    let mut pool = crate::mcp::McpClientPool::default();
+    let result = run_owned(
+        authority, client, store, resources, cancel, accepted, observer, &mut pool,
+    )
+    .await;
+    pool.shutdown()
+        .await
+        .map_err(|error| error.code.to_owned())?;
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_owned(
+    mut authority: RunAuthority,
+    client: ModelClient,
+    store: StorageClient,
+    resources: RunResources,
+    cancel: CancellationToken,
+    accepted: Instant,
     mut observer: Option<TextObserver>,
+    pool: &mut crate::mcp::McpClientPool,
 ) -> Result<RunRecord, String> {
     let deadline = accepted + Duration::from_secs(authority.limits().max_run_s);
     let mut journal = RunJournal {
@@ -637,13 +678,13 @@ pub async fn run_admitted_with_text(
         cancel: cancel.clone(),
         model_turns: 0,
         tool_calls: 0,
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        usage_reported: false,
+        prompt_tokens: Some(0),
+        completion_tokens: Some(0),
         compactions: 0,
         journal_wait_ms: 0,
         capacity_stopped: false,
         queue_stop: None,
+        mcp_cleanup: None,
     };
     let (mut state, mut effect) = core::initiate_continued(
         authority.instructions().into(),
@@ -657,15 +698,85 @@ pub async fn run_admitted_with_text(
             .require_acceptance_check()
             .map_err(|e| e.to_string())?;
     }
+    let mut start_data =
+        json!({"queue_ms":accepted.elapsed().as_millis().min(u128::from(u64::MAX)) as u64});
+    let needed = crate::mcp::needed_servers(&authority.workspace().tools);
+    let mcp_enabled = !needed.is_empty() || !authority.mcp_tools().is_empty();
+    if mcp_enabled {
+        let started = journal.control();
+        let preparation_deadline_us = started
+            .elapsed_us
+            .saturating_add(crate::mcp::MCP_DISCOVERY_DEADLINE.as_micros() as u64)
+            .min(authority.limits().max_run_s.saturating_mul(1_000_000));
+        let prepared = if let Some((_, reason)) = started.stop(authority.limits().max_run_s) {
+            Err(reason)
+        } else if !authority.mcp_tools().is_empty() {
+            Err("mcp_authority_already_prepared")
+        } else {
+            let prepare = async {
+                pool.connect_into(
+                    &resources.mcp_servers,
+                    &needed,
+                    crate::mcp::MCP_STARTUP_TIMEOUT,
+                )
+                .await
+                .map_err(|error| error.code)?;
+                let tools = pool
+                    .discover(
+                        &authority.workspace().tools,
+                        crate::mcp::MCP_STARTUP_TIMEOUT,
+                    )
+                    .await
+                    .map_err(|error| error.code)?;
+                crate::mcp::frozen_tools_digest(&authority.workspace().tools, &tools)?;
+                Ok::<_, &'static str>(tools)
+            };
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => Err("mcp_prepare_cancelled"),
+                result = timeout_at(accepted + Duration::from_micros(preparation_deadline_us), prepare) => {
+                    result.unwrap_or(Err("mcp_prepare_timeout"))
+                }
+            }
+        };
+        let finished = journal.control();
+        let (status, reason, tools) = match prepared {
+            Ok(tools) => ("ready", None, tools),
+            Err(reason) => {
+                journal.stop();
+                effect = state
+                    .stop(RunPhase::Failed, reason.into())
+                    .map_err(|error| error.to_string())?;
+                (
+                    if started.stop(authority.limits().max_run_s).is_some() {
+                        "not_started"
+                    } else {
+                        "failed"
+                    },
+                    Some(reason),
+                    Vec::new(),
+                )
+            }
+        };
+        let digest =
+            model::fingerprint(&serde_json::to_vec(&tools).map_err(|_| "mcp_schema_invalid")?);
+        start_data["mcp_status"] = json!(status);
+        start_data["mcp_reason"] = json!(reason);
+        start_data["mcp_deadline_us"] = json!(preparation_deadline_us);
+        start_data["mcp_start_control"] = json!(started);
+        start_data["mcp_finish_control"] = json!(finished);
+        start_data["mcp_tool_count"] = json!(tools.len());
+        start_data["mcp_tools_sha256"] = json!(digest);
+        if authority.capture() == CaptureMode::Replay {
+            start_data["replay"] = json!({"mcp_tools": tools});
+        }
+        authority = authority.with_mcp_tools(tools);
+    }
     if journal.requested_stop().is_some() {
         journal.stop();
     }
     journal
-        .record(
-            "run_started",
-            json!({"queue_ms":accepted.elapsed().as_millis().min(u128::from(u64::MAX)) as u64}),
-            Some("running"),
-        )
+        .record("run_started", start_data, Some("running"))
         .await?;
     let settings = options(&authority);
     // Built once: the constrained turn is a different request shape, not a
@@ -690,6 +801,19 @@ pub async fn run_admitted_with_text(
             effect = state
                 .stop(phase, reason.into())
                 .map_err(|e| e.to_string())?;
+        }
+        if mcp_enabled && matches!(effect, Effect::Candidate(_) | Effect::Stop { .. }) {
+            // Capacity remains owned while all process groups and protocol
+            // tasks settle. Publish a terminal record only after that await.
+            journal.mcp_cleanup = Some(if pool.shutdown().await.is_ok() {
+                "closed"
+            } else {
+                journal.stop();
+                effect = state
+                    .stop(RunPhase::Failed, "mcp_cleanup_failed".into())
+                    .map_err(|error| error.to_string())?;
+                "failed"
+            });
         }
         match std::mem::replace(
             &mut effect,
@@ -823,16 +947,22 @@ pub async fn run_admitted_with_text(
                 let mut metadata = json!({"effect_id":effect_id,"dispatch":"attempted","duration_ms":exchange_start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
                     "control_dispatch":dispatch_control,
                     "classification":match &observation {ModelReply::Answer(_)=>"answer",ModelReply::ToolCalls{..}=>"tool_calls",ModelReply::Incomplete(_)=>"incomplete",ModelReply::Failure(_)=>"failure"}});
-                if let Some(usage) = usage {
-                    metadata["prompt_tokens"] = json!(usage.prompt_tokens);
-                    metadata["completion_tokens"] = json!(usage.completion_tokens);
-                    journal.prompt_tokens =
-                        journal.prompt_tokens.saturating_add(usage.prompt_tokens);
-                    journal.completion_tokens = journal
-                        .completion_tokens
-                        .saturating_add(usage.completion_tokens);
-                    journal.usage_reported = true;
+                let prompt_tokens = usage.and_then(|usage| usage.prompt_tokens);
+                let completion_tokens = usage.and_then(|usage| usage.completion_tokens);
+                if let Some(tokens) = prompt_tokens {
+                    metadata["prompt_tokens"] = json!(tokens);
                 }
+                if let Some(tokens) = completion_tokens {
+                    metadata["completion_tokens"] = json!(tokens);
+                }
+                journal.prompt_tokens = journal
+                    .prompt_tokens
+                    .zip(prompt_tokens)
+                    .and_then(|(total, tokens)| total.checked_add(tokens));
+                journal.completion_tokens = journal
+                    .completion_tokens
+                    .zip(completion_tokens)
+                    .and_then(|(total, tokens)| total.checked_add(tokens));
                 if authority.capture() == CaptureMode::Replay {
                     metadata["replay"] = observed_json(&observation);
                 }
@@ -970,8 +1100,17 @@ pub async fn run_admitted_with_text(
                         } else {
                             None
                         }
-                    } else if mcp_def.is_some() {
-                        if mcp_args.is_none() {
+                    } else if let Some(def) = &mcp_def {
+                        if !authority.allows_tool(&ToolRef::Mcp {
+                            server: def.server.clone(),
+                            tool: def.tool.clone(),
+                        }) {
+                            Some(ToolResult::failure(
+                                ToolStatus::Denied,
+                                "tool_denied",
+                                "Tool is not allowed",
+                            ))
+                        } else if mcp_args.is_none() {
                             Some(ToolResult::failure(
                                 ToolStatus::Denied,
                                 "invalid_arguments",
@@ -1034,24 +1173,15 @@ pub async fn run_admitted_with_text(
                                 let _permit = permit;
                                 dispatched = true;
                                 let timeout = deadline.saturating_duration_since(Instant::now());
-                                match &resources.mcp {
-                                    Some(pool) => {
-                                        pool.call(
-                                            &def.server,
-                                            &def.tool,
-                                            arguments,
-                                            timeout,
-                                            &cancel,
-                                            authority.limits().max_tool_result_bytes,
-                                        )
-                                        .await
-                                    }
-                                    None => ToolResult::failure(
-                                        ToolStatus::Error,
-                                        "mcp_unavailable",
-                                        "MCP is not configured for this run",
-                                    ),
-                                }
+                                pool.call(
+                                    &def.server,
+                                    &def.tool,
+                                    arguments,
+                                    timeout,
+                                    &cancel,
+                                    authority.limits().max_tool_result_bytes,
+                                )
+                                .await
                             } else {
                                 let reader =
                                     resources.workspaces.get(&authority.workspace().id).cloned();
@@ -1067,8 +1197,9 @@ pub async fn run_admitted_with_text(
                                     let query = validated.query.clone();
                                     let case_sensitive = validated.case_sensitive.unwrap_or(false);
                                     let maximum = authority.limits().max_tool_result_bytes;
-                                    let evidence_id =
-                                        name.mints_evidence().then(|| evidence.next_id());
+                                    let evidence_id = (authority.task().is_checked()
+                                        && name.mints_evidence())
+                                    .then(|| evidence.next_id());
                                     dispatched = true;
                                     if name == ToolName::RunCommand {
                                         // A command spawns a process, so it runs on the async
@@ -1225,6 +1356,7 @@ pub async fn run_admitted_with_text(
                     }
                     journal.record("tool_finished", metadata, None).await?;
                     if dispatched
+                        && authority.task().is_checked()
                         && tool == Some(ToolName::ReadFile)
                         && let Err(reason) = evidence.add_observation(
                             &authority,

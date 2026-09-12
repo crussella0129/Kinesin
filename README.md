@@ -2,17 +2,71 @@
 
 [![Rust checks](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/crussella0129/Kinesin/actions/workflows/ci.yml?query=branch%3Adev)
 
-A small Rust runtime for agents with explicit authority and bounded resources.
+A Rust agent harness with explicit authority and bounded resources.
+
+## Start here
+
+Kinesin is a **terminal application**. Cloning this repository does not install
+a `kinesin` command on PATH, and Kinesin does not start its own model server.
+The [complete getting-started guide](docs/getting-started.md) provides separate
+[Windows PowerShell](docs/getting-started.md#windows-powershell) and
+[Linux](docs/getting-started.md#linux) instructions, including prerequisites,
+configuration, private state, a first prompt and an existing nighthawk deployment.
+
+Already have Rust and this checkout? Confirm the CLI starts:
+
+**Windows PowerShell**
+
+```powershell
+cd "$HOME\Kinesin"
+cargo run --locked -- --help
+```
+
+**Linux**
+
+```bash
+cd "$HOME/Kinesin"
+cargo run --locked -- --help
+```
+
+`cargo run` now selects the `kinesin` executable automatically. Help works
+without a model or configuration. Next, follow the guide to copy
+[`kinesin.example.toml`](kinesin.example.toml) to `kinesin.toml`, prepare its
+`workspace` and private `state`, and start or connect the model server. Then:
+
+```text
+cargo run --locked -- --workspace practice --model local --prompt "Say hello" --allow-unchecked
+cargo run --locked
+```
+
+The first command runs one prompt; the second opens the interactive `> ` session.
+There is no `run` subcommand. `kinesin.toml` is read from the current directory,
+or selected explicitly with `--config PATH`. The guide shows the expected JSON
+and how to distinguish a completed answer from checked task acceptance.
+
+To install the program, run `cargo install --locked --path . --bin kinesin`
+from the checkout, then ensure Cargo's `bin` directory is on PATH as shown in
+the guide. After that, `kinesin --help` works from any directory; starting a
+session elsewhere still requires the correct `--config` path.
+
+**Why are there three binaries?** `kinesin` is the product. `cmd-fixture` is a
+test child process for command execution and cleanup; `mcp-fixture` is a test
+stdio server for MCP. Tests need real separate processes to exercise those
+boundaries. You do not need to launch or install either fixture for normal use.
+The `--bin kinesin` installation above installs only the product.
+
+## What Kinesin is
 
 Kinesin gives a model context, interprets its proposed tool calls, decides which
 may run, records outcomes, and controls how the run ends. It also controls how
 many runs may compete for model, filesystem, memory, and storage resources.
 
-**This is the reference implementation.** The Rust CLI and interactive session,
-concurrent controller, read and write file tools, checker, journal, replay,
-streaming, and authenticated loopback service run locally. The
-[validation ledger](docs/build-validation.md) separates passing proofs from
-model-quality failures and deployment gates that remain unproven. The handwritten
+The Rust CLI and interactive session, concurrent controller, read and write file
+tools, argv commands, local MCP tool servers, checker, journal, replay, streaming,
+and authenticated loopback service run locally. The [roadmap](docs/roadmap.md) and
+[threat model](docs/threat-model.md) distinguish delivered mechanisms from open
+capabilities and evidence. The [validation ledger](docs/build-validation.md)
+retains earlier proofs, model-quality failures and deployment limits. The handwritten
 **build guide that teaches how to construct this from scratch lives in its own
 repository**:
 [building-an-agent-harness](https://github.com/crussella0129/building-an-agent-harness).
@@ -22,14 +76,15 @@ is a candidate: scoped tasks pass only after an independent checker verifies
 their frozen contract. Freeform answers remain explicitly unchecked. See
 [task acceptance](docs/verification.md) and the [adversarial review](docs/adversarial-review.md).
 
-The destination is **concurrent agents for one operator, followed by a shared
-service**. Security, low latency, scalability, and minimality are equal design
+Concurrent independent runs and an owner-scoped loopback service are implemented.
+Model-spawned subagents and non-loopback service exposure remain separate work.
+Security, low latency, scalability, and minimality are equal design
 goals. Minimality means a small number of necessary mechanisms you can explain,
 rather than the fewest dependencies or source files.
 
 ## Working here
 
-- `main` is the released branch. `dev` is where sprints happen; each sprint lands
+- `main` contains reviewed source snapshots. `dev` is where sprints happen; each sprint lands
   on `main` through a pull request.
 - Read [the architecture](docs/architecture.md) for the complete shape.
 - Use [the CLI instructions](docs/cli.md) to run the product.
@@ -38,12 +93,12 @@ rather than the fewest dependencies or source files.
 - To build the runtime yourself by hand, follow the separate
   [build guide](https://github.com/crussella0129/building-an-agent-harness/blob/main/build-guide.md#before-you-start).
 
-## What the first complete release does
+## What the harness does
 
 It accepts a bounded batch of independent tasks, runs them concurrently, and
 gives each task its own conversation, workspace authority, budgets, cancellation,
-and result. It begins with three read-only file tools plus a bounded write/edit/delete/move
-set, and one llama.cpp adapter.
+and result. It provides read/list/search, write/edit/delete/move, bounded argv
+commands and operator-declared local MCP tools through a llama.cpp adapter.
 Streaming makes useful text visible sooner; partial tool arguments never execute.
 
 Tests use scripted models. Benchmarks distinguish the runtime's overhead from
@@ -51,25 +106,26 @@ model inference. Capacity limits prevent an overload from becoming an unbounded
 queue. Private state stores outcomes, with full replay capture explicitly selected.
 
 ```text
-CLI / later authenticated API
+CLI / authenticated loopback API
              |
       admission + scheduler
              |
       one runner per run ----------> approved model endpoint
         |          |                   via pooled async HTTP
-        |          +-> capability-scoped file tools
+        |          +-> scoped files / argv commands / local MCP
         +-> bounded storage inbox -> SQLite owner thread
 ```
 
 The existing names remain useful: **K-Core** is the pure decision logic,
-**Koil** is the model adapter, and **Kineserve** is optional model-process
-supervision. They are responsibilities, not three mandatory daemons.
+**Koil** names the model-adapter responsibility. **Kineserve** managed model
+supervision and the separate Koil encrypted-overlay project remain proposed;
+the current harness attaches to an externally started model endpoint.
 
 ## Main choices
 
 - One Cargo package with a thin binary and library modules.
-- Synchronous owned types and fake events first; Tokio and async reqwest when
-  networking begins.
+- Owned decision types and deterministic fixtures; Tokio and pooled async reqwest
+  for runtime effects.
 - Trusted compiled tool handlers receive a narrow `WorkspaceReader` backed by
   `cap-std`, not permission to open arbitrary operating-system paths. Writes use a
   separate `WorkspaceWriter`, built only where an operator granted a write tool.
@@ -80,8 +136,15 @@ supervision. They are responsibilities, not three mandatory daemons.
   replay data. Operational metrics do not contain prompts.
 - No automatic external-effect retry or crash resume. Those require semantics
   beyond an event log.
-- A later single-controller shared service adds authentication, authorization,
-  per-owner quotas, and fair scheduling before network exposure.
+- The single-controller service enforces authentication, owner scope, per-owner
+  quotas and fair scheduling. Its listener remains loopback-only.
+
+Linux commands use mandatory Landlock/seccomp restrictions, with metadata and
+same-user process limits described in the threat model. Windows Jobs control
+process lifetime; Windows filesystem/network isolation remains proposed.
+Non-loopback model origins require HTTPS. Sprint 10 records a
+[real two-host checked run and actual-session cache observation](docs/sprints/s10/sprint-tests/remote-deployment.md).
+Broader deployment, context-continuity and concurrent-slot claims remain on the roadmap.
 
 See [decisions](docs/decisions.md) for alternatives and
 [security](docs/security.md) for exactly what these boundaries protect.
@@ -99,7 +162,9 @@ Kinesin/
 │   ├── model.rs         # Koil: prepare, send, decode; scripted/HTTP variants
 │   ├── config.rs        # Validated deployment settings
 │   ├── policy.rs        # Immutable RunAuthority
-│   ├── tools.rs         # Bounded capability-backed read-only handlers
+│   ├── tools.rs         # File tools, argv execution and Linux sandbox
+│   ├── process.rs       # Owned process groups/Jobs and environment defaults
+│   ├── mcp.rs           # Local stdio tools, bounded discovery and calls
 │   ├── verification.rs  # Frozen task contracts, evidence, pure acceptance checks
 │   ├── storage.rs       # Transactional events, status, owner-scoped queries
 │   ├── scheduler.rs     # Bounded admission and resource allocation
@@ -122,17 +187,22 @@ Kinesin/
 
 ## Documentation map
 
-These describe and validate the runtime. The build guide, roadmap, working
-process, and research review moved to the separate
+These describe and validate the runtime. Its roadmap, intent chapters and sprint
+evidence live here. The handwritten learning guide lives in the separate
 [building-an-agent-harness](https://github.com/crussella0129/building-an-agent-harness)
 repository.
 
 | Document | Responsibility |
 |----------|----------------|
+| [getting started](docs/getting-started.md) | Windows/Linux installation, model setup, first run and troubleshooting |
+| [CLI reference](docs/cli.md) | Session, one-shot, batch, inspect/export/replay and service commands |
 | [architecture](docs/architecture.md) | Ownership, interfaces, deployment, scale boundary |
 | [loop and tools](docs/loop-and-tools.md) | Domain/protocol and tool execution contracts |
 | [configuration](docs/configuration.md) | Configuration examples and per-run limits |
 | [security](docs/security.md) | Authority, data disclosure, authentication, isolation |
+| [threat model](docs/threat-model.md) | Individual OWASP risk mappings, native interfaces and evidence limits |
+| [supply chain](docs/supply-chain.md) | Blocking dependency policy, exact exceptions, native builds and cargo-vet decision |
+| [roadmap](docs/roadmap.md) | Current state, intent ownership and remaining priorities |
 | [performance](docs/performance.md) | Shared limits, scheduling, latency targets, experiments |
 | [build validation](docs/build-validation.md) | Observed proofs and remaining release gates |
 | [live evaluation](docs/live-evaluation.md) | Checked-task results and preserved freeform failures |

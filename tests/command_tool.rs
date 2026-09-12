@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Once;
 use std::time::Duration;
 
-use kinesin::tools::{CommandRunner, MAX_COMMAND_OUTPUT_BYTES, ToolStatus};
+use kinesin::tools::{CommandRunner, MAX_COMMAND_OUTPUT_BYTES, MAX_TOOL_BYTES, ToolStatus};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
@@ -126,10 +126,8 @@ async fn command_output_truncated_at_cap() {
     assert!(result.truncated, "output beyond the cap is truncated");
     let body = body(&result);
     assert_eq!(body["truncated"], true);
-    assert_eq!(
-        body["stdout"].as_str().unwrap().len(),
-        MAX_COMMAND_OUTPUT_BYTES
-    );
+    assert!(body["stdout"].as_str().unwrap().len() < MAX_TOOL_BYTES);
+    assert!(result.encoded().unwrap().len() <= MAX_TOOL_BYTES);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -159,6 +157,7 @@ async fn command_output_bounded_by_configured_budget() {
     let err = body["stderr"].as_str().unwrap().len();
     // The combined capture honors the configured budget, not a per-stream cap.
     assert!(out + err <= 512, "combined {out}+{err} exceeds the budget");
+    assert!(result.encoded().unwrap().len() <= 512);
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -225,6 +224,7 @@ async fn command_timeout_kills_process_tree() {
     assert_eq!(result.error.unwrap().code, "timed_out");
     // Give any surviving grandchild time to keep writing, then confirm it stopped.
     let first = std::fs::metadata(&marker).map(|m| m.len()).unwrap_or(0);
+    assert!(first > 0, "the descendant probe must actually have run");
     std::thread::sleep(Duration::from_millis(600));
     let second = std::fs::metadata(&marker).map(|m| m.len()).unwrap_or(0);
     assert_eq!(
@@ -251,4 +251,153 @@ async fn run_command_passes_argv_without_shell_interpretation() {
     assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
     assert_eq!(body(&result)["stdout"], literal);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[tokio::test]
+async fn command_encoded_budget_covers_escaping_and_invalid_utf8() {
+    let root = workspace();
+    let runner = runner(&root, &["cmd-fixture"]);
+    for (parts, budget) in [
+        (
+            argv(&["cmd-fixture", "--print", &"\"\\\n\t\u{0001}é".repeat(1000)]),
+            256,
+        ),
+        (argv(&["cmd-fixture", "--emit-invalid-utf8", "4000"]), 512),
+        (
+            argv(&[
+                "cmd-fixture",
+                "--emit-stdout",
+                "4000",
+                "--emit-stderr",
+                "4000",
+            ]),
+            1024,
+        ),
+    ] {
+        let result = runner
+            .execute(
+                &parts,
+                Duration::from_secs(10),
+                &CancellationToken::new(),
+                budget,
+            )
+            .await;
+        assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+        assert!(result.encoded().unwrap().len() <= budget);
+        assert!(result.truncated);
+        assert_eq!(body(&result)["exit_code"], 0);
+        assert_eq!(body(&result)["truncated"], true);
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn already_cancelled_and_zero_deadline_commands_never_spawn() {
+    let root = workspace();
+    let runner = runner(&root, &["cmd-fixture"]);
+    let marker = root.join("must-not-exist");
+    let command = argv(&[
+        "cmd-fixture",
+        "--write-file",
+        marker.to_str().unwrap(),
+        "spawned",
+    ]);
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let result = runner
+        .execute(&command, Duration::from_secs(10), &cancel, WIDE)
+        .await;
+    assert_eq!(result.error.unwrap().code, "cancelled");
+    assert!(!marker.exists());
+    let result = runner
+        .execute(&command, Duration::ZERO, &CancellationToken::new(), WIDE)
+        .await;
+    assert_eq!(result.error.unwrap().code, "timed_out");
+    assert!(!marker.exists());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+async fn assert_marker_stopped(marker: &std::path::Path) {
+    let first = std::fs::metadata(marker).unwrap().len();
+    assert!(first > 0, "the descendant probe must actually have run");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(
+        first,
+        std::fs::metadata(marker).unwrap().len(),
+        "descendant survived cleanup"
+    );
+}
+
+async fn await_marker(marker: &std::path::Path) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !std::fs::metadata(marker).is_ok_and(|m| m.len() > 0) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("descendant starts");
+}
+
+#[tokio::test]
+async fn leader_exit_still_terminates_its_descendants() {
+    let root = workspace();
+    let runner = runner(&root, &["cmd-fixture"]);
+    let marker = root.join("leader-exit-marker");
+    let result = runner
+        .execute(
+            &argv(&[
+                "cmd-fixture",
+                "--spawn-grandchild",
+                marker.to_str().unwrap(),
+                "--wait-file",
+                marker.to_str().unwrap(),
+                "--exit",
+                "7",
+            ]),
+            Duration::from_secs(10),
+            &CancellationToken::new(),
+            WIDE,
+        )
+        .await;
+    assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+    assert_eq!(body(&result)["exit_code"], 7);
+    assert_marker_stopped(&marker).await;
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test]
+async fn cancellation_and_dropped_future_terminate_observed_descendants() {
+    for drop_future in [false, true] {
+        let root = workspace();
+        let runner = runner(&root, &["cmd-fixture"]);
+        let marker = root.join("cancel-marker");
+        let command = argv(&[
+            "cmd-fixture",
+            "--spawn-grandchild",
+            marker.to_str().unwrap(),
+            "--sleep-ms",
+            "60000",
+        ]);
+        let cancel = CancellationToken::new();
+        let child_cancel = cancel.clone();
+        let running = tokio::spawn(async move {
+            runner
+                .execute(&command, Duration::from_secs(60), &child_cancel, WIDE)
+                .await
+        });
+        await_marker(&marker).await;
+        if drop_future {
+            running.abort();
+            assert!(running.await.unwrap_err().is_cancelled());
+        } else {
+            cancel.cancel();
+            let result = tokio::time::timeout(Duration::from_secs(5), running)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.error.unwrap().code, "cancelled");
+        }
+        assert_marker_stopped(&marker).await;
+        let _ = std::fs::remove_dir_all(root);
+    }
 }

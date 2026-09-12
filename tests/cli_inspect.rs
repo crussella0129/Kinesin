@@ -134,6 +134,9 @@ allow_replay = true
     /// Produce a completed local checked run whose every model call reports the
     /// same token usage, so the terminal counters sum to a known total.
     fn produce_reporting_usage(&self, per_call: Usage) -> RunRecord {
+        self.produce_usage([Some(per_call); 3])
+    }
+    fn produce_usage(&self, usage: [Option<Usage>; 3]) -> RunRecord {
         let config = BoundedConfig::load(&self.config()).unwrap();
         let submission = Submission::Checked {
             task: "practice-fields".into(),
@@ -147,10 +150,10 @@ allow_replay = true
         let resources = RunResources::single(1, config.concurrency().clone())
             .with_workspace("practice", &self.root.join("workspace"))
             .unwrap();
-        let step = |reply: ModelReply| ScriptStep {
+        let step = |index: usize, reply: ModelReply| ScriptStep {
             delay: std::time::Duration::ZERO,
             reply,
-            usage: Some(per_call),
+            usage: usage[index],
         };
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -159,19 +162,25 @@ allow_replay = true
         runtime.block_on(async move {
             admit(&authority, &store, None).await.unwrap();
             let client = ModelClient::scripted([
-                step(ModelReply::ToolCalls {
-                    content: None,
-                    calls: vec![ToolCall {
-                        id: "read-1".into(),
-                        name: "read_file".into(),
-                        arguments: "{\"path\":\"project.txt\"}".into(),
-                    }],
-                }),
-                step(ModelReply::Answer("I read the file.".into())),
-                step(ModelReply::Answer(
-                    json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]})
-                        .to_string(),
-                )),
+                step(
+                    0,
+                    ModelReply::ToolCalls {
+                        content: None,
+                        calls: vec![ToolCall {
+                            id: "read-1".into(),
+                            name: "read_file".into(),
+                            arguments: "{\"path\":\"project.txt\"}".into(),
+                        }],
+                    },
+                ),
+                step(1, ModelReply::Answer("I read the file.".into())),
+                step(
+                    2,
+                    ModelReply::Answer(
+                        json!({"facts":[{"id":"language","value":"Rust","evidence_id":"e0"}]})
+                            .to_string(),
+                    ),
+                ),
             ]);
             let result = run_admitted(
                 authority,
@@ -228,6 +237,48 @@ fn successful(output: Output) -> Value {
         String::from_utf8_lossy(&output.stderr)
     );
     serde_json::from_slice(&output.stdout).unwrap()
+}
+
+#[test]
+fn help_needs_no_configuration_or_state_and_rejects_extra_arguments() {
+    let root = std::env::temp_dir().join(format!("kinesin-help-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&root).unwrap();
+    for flag in ["--help", "-h"] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
+            .current_dir(&root)
+            .arg(flag)
+            .output()
+            .unwrap();
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{flag}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty());
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains("Usage:"));
+        assert!(help.contains("kinesin [--config PATH]"));
+        assert!(help.contains("kinesin.toml in the current working directory"));
+        assert!(help.contains("interactive session"));
+        assert!(std::fs::read_dir(&root).unwrap().next().is_none());
+    }
+    for args in [
+        vec!["--help", "--config", "missing.toml"],
+        vec!["-h", "--help"],
+        vec!["--config", "missing.toml", "--help"],
+    ] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
+            .current_dir(&root)
+            .args(&args)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "accepted {args:?}");
+        assert!(output.stdout.is_empty());
+        assert!(!output.stderr.is_empty());
+        assert!(std::fs::read_dir(&root).unwrap().next().is_none());
+    }
+    std::fs::remove_dir(&root).unwrap();
 }
 
 #[test]
@@ -293,8 +344,8 @@ fn inspect_surfaces_token_totals_when_reported() {
     let fixture = Fixture::new();
     // A checked run makes three model calls; each reports (13, 5).
     let run = fixture.produce_reporting_usage(Usage {
-        prompt_tokens: 13,
-        completion_tokens: 5,
+        prompt_tokens: Some(13),
+        completion_tokens: Some(5),
     });
     let mut args = fixture.command("inspect");
     args.extend(["--run".into(), run.run_id.clone().into()]);
@@ -333,6 +384,31 @@ fn inspect_omits_token_totals_when_unreported() {
         "unreported usage stays unknown, not zero"
     );
     assert!(counters.get("completion_tokens").is_none());
+    fixture.no_model_calls();
+}
+
+#[test]
+fn inspect_preserves_only_completely_reported_token_dimensions() {
+    let fixture = Fixture::new();
+    let run = fixture.produce_usage([
+        Some(Usage {
+            prompt_tokens: Some(0),
+            completion_tokens: Some(3),
+        }),
+        Some(Usage {
+            prompt_tokens: Some(0),
+            completion_tokens: None,
+        }),
+        Some(Usage {
+            prompt_tokens: Some(0),
+            completion_tokens: Some(4),
+        }),
+    ]);
+    let mut args = fixture.command("inspect");
+    args.extend(["--run".into(), run.run_id.clone().into()]);
+    let inspected = successful(fixture.cli(args));
+    assert_eq!(inspected["counters"]["prompt_tokens"], 0);
+    assert!(inspected["counters"].get("completion_tokens").is_none());
     fixture.no_model_calls();
 }
 
@@ -714,7 +790,13 @@ temperature = 0.0
         .find(|event| event.kind == "tool_finished" && event.data["tool"] == "run_command")
         .expect("the command effect is journalled");
     assert_eq!(finished.data["dispatch"], "executed");
-    assert_eq!(finished.data["classification"], "ok");
+    assert_eq!(
+        finished.data["classification"],
+        "ok",
+        "command effect failed: {}; CLI stderr: {}",
+        finished.data,
+        String::from_utf8_lossy(&run.stderr)
+    );
     let observation: Value = serde_json::from_str(
         finished.data["replay"]["observation"]["body"]
             .as_str()

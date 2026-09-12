@@ -21,6 +21,7 @@ is a separate problem); external timestamping/transparency-log integration
 (a later enhancement); encrypting the journal at rest (orthogonal).
 
 ## Acceptance criteria
+- Verification requires a trusted terminal commitment/key identity to detect suffix or whole-run removal; tests cover truncation, incomplete runs, legacy unsigned history and key rotation. A controller with access to the signing key can forge consistent history and is outside the signature trust claim.
 - Each run's events form a verifiable hash chain; a verifier detects any inserted,
   deleted, reordered, or modified event and names the break.
 - The terminal receipt carries a signature over the run's final digest; a forged
@@ -50,3 +51,4 @@ gain a verification step; a schema migration for existing journals.
 
 ## Transition history
 - 2026-09-11: created as `proposed` (sprint 5 roadmap, theme A — security hardening); closes the adversarial-review "signed attestations" gap.
+- 2026-09-12: proposed acceptance clarified by the intent-first sprint 10 audit; implementation remains proposed.

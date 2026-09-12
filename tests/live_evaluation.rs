@@ -4,7 +4,7 @@
 use kinesin::config::{CaptureMode, Config};
 use kinesin::core::{ModelReply, ToolCall};
 use kinesin::model::ModelClient;
-use kinesin::policy::{Submission, sha256};
+use kinesin::policy::{PriorAnswer, Submission, sha256};
 use kinesin::runner::{RunResources, admit, run_admitted};
 use kinesin::storage::{Command, QueueLimits, Response, Storage};
 use serde_json::{Value, json};
@@ -326,8 +326,11 @@ async fn evaluate(card: &Card, root: &Path, live: bool) -> Value {
             assert_eq!(delivered, observation["data"]["replay"]["observation"]);
         }
     }
+    let replay_consistency = kinesin::replay::replay(&result, &events)
+        .map(|report| report.consistency)
+        .unwrap_or_else(|error| error.to_string());
     json!({
-        "card":card.id, "live":live, "run_id":result.run_id,
+        "card":card.id, "live":live, "run_id":result.run_id, "replay_consistency": replay_consistency,
         "prompt":authority.prompt(), "operator_instructions":authority.instructions(), "config_sha256":sha256(text.as_bytes()),
         "sources":card.files.iter().map(|(path,body)|json!({"path":path,"body":body,"sha256":sha256(body.as_bytes())})).collect::<Vec<_>>(),
         "request_measurements":events.iter().filter(|e|e.kind=="model_planned").map(|e|e.data.clone()).collect::<Vec<_>>(),
@@ -450,125 +453,350 @@ async fn pinned_live_general_operator_diagnostics() {
     run_cards(true, 4, general_instruction_cards()).await;
 }
 
-/// The headline INT-0004 measurement (live, manual): two requests sharing a
-/// prefix, both with `cache_prompt`. The second is a prefix-extension of the
-/// first, so llama.cpp should reuse the cached prefix and evaluate far fewer
-/// prompt tokens than the full prompt — the prompt-eval reduction the intent
-/// targets. Records the workload and the evaluated/total token counts. Run
-/// manually against the pinned server; not a CI gate.
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "KV-cache benchmark; requires the pinned local model profile on 127.0.0.1:8080"]
-async fn kv_cache_reuse_reduces_prompt_eval_time() {
-    let url = "http://127.0.0.1:8080/v1/chat/completions";
-    let client = reqwest::Client::new();
-    async fn ask(client: &reqwest::Client, url: &str, messages: Value) -> Value {
-        let body = json!({
-            "model": "pinned", "messages": messages, "max_tokens": 16,
-            "temperature": 0.0, "cache_prompt": true
-        });
-        let text = client
-            .post(url)
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&body).unwrap())
-            .send()
-            .await
-            .expect("pinned server reachable")
-            .text()
-            .await
-            .expect("response body");
-        serde_json::from_str(&text).expect("response is JSON")
+struct CacheFixture(PathBuf);
+
+impl Drop for CacheFixture {
+    fn drop(&mut self) {
+        assert!(self.0.is_absolute() && self.0.starts_with(std::env::temp_dir()));
+        assert!(
+            self.0
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("kinesin-cache-")
+        );
+        let _ = std::fs::remove_dir_all(&self.0);
     }
+}
 
-    let system = "You are a terse assistant.";
-    let first = ask(
-        &client,
-        url,
-        json!([
-            {"role": "system", "content": system},
-            {"role": "user", "content": "Say the numbers one through ten as words."}
-        ]),
-    )
-    .await;
-    let reply = first["choices"][0]["message"]["content"].clone();
-    // Extend the first exchange: its whole message list is the shared prefix.
-    let second = ask(
-        &client,
-        url,
-        json!([
-            {"role": "system", "content": system},
-            {"role": "user", "content": "Say the numbers one through ten as words."},
-            {"role": "assistant", "content": reply},
-            {"role": "user", "content": "Now say them backwards."}
-        ]),
-    )
-    .await;
+type CacheObservation = (Vec<u8>, Value);
 
-    let evaluated = second["timings"]["prompt_n"]
-        .as_u64()
-        .expect("server reports timings.prompt_n (run the pinned llama.cpp build)");
-    let total = second["usage"]["prompt_tokens"]
-        .as_u64()
-        .expect("response reports usage.prompt_tokens");
-    eprintln!(
-        "KV-cache reuse: second request evaluated {evaluated} of {total} prompt tokens; prompt_ms={}",
-        second["timings"]["prompt_ms"]
+/// Test-only byte-preserving proxy: the production HTTP model client still
+/// executes each admitted run, while the fixture retains provider timings that
+/// are deliberately absent from the production decision protocol.
+async fn cache_recording_proxy() -> (
+    String,
+    tokio::sync::oneshot::Sender<()>,
+    tokio::task::JoinHandle<()>,
+    tokio::sync::mpsc::Receiver<CacheObservation>,
+) {
+    use axum::{Router, body::Bytes, extract::DefaultBodyLimit, routing::post};
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(120))
+        .build()
+        .unwrap();
+    let (observed, receiver) = tokio::sync::mpsc::channel(2);
+    let router = Router::new()
+        .route(
+            "/v1/chat/completions",
+            post(move |body: Bytes| {
+                let client = client.clone();
+                let observed = observed.clone();
+                async move {
+                    let response = client
+                        .post("http://127.0.0.1:8080/v1/chat/completions")
+                        .header("content-type", "application/json")
+                        .body(body.clone())
+                        .send()
+                        .await
+                        .expect("pinned local server reachable");
+                    let status = response.status();
+                    let bytes = response.bytes().await.unwrap();
+                    assert!(bytes.len() <= 1_048_576);
+                    let decoded: Value = serde_json::from_slice(&bytes).unwrap();
+                    observed.send((body.to_vec(), decoded)).await.unwrap();
+                    (status, [("content-type", "application/json")], bytes)
+                }
+            }),
+        )
+        .layer(DefaultBodyLimit::max(131_072));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let task = tokio::spawn(async move {
+        axum::serve(listener, router)
+            .with_graceful_shutdown(async {
+                let _ = stopped.await;
+            })
+            .await
+            .unwrap();
+    });
+    (origin, stop, task, receiver)
+}
+
+async fn actual_cache_session(cache_prompt: bool, live: bool) -> Value {
+    let fixture =
+        CacheFixture(std::env::temp_dir().join(format!("kinesin-cache-{}", uuid::Uuid::new_v4())));
+    std::fs::create_dir_all(fixture.0.join("workspace")).unwrap();
+    let mut proxy = if live {
+        Some(cache_recording_proxy().await)
+    } else {
+        None
+    };
+    let origin = proxy
+        .as_ref()
+        .map_or("http://127.0.0.1:1", |proxy| proxy.0.as_str());
+    // This exercises only the shared system prefix that current sessions really
+    // retain. Full session-history retention remains a separate open intent.
+    let instructions = format!(
+        "Reply with exactly OK.\n{}",
+        "Reference label: calm lake, green forest, clear sky.\n".repeat(128)
     );
-    assert!(
-        evaluated < total,
-        "the shared prefix should be reused: evaluated {evaluated} of {total} prompt tokens"
+    let source = format!(
+        r#"
+version = 1
+instructions = {instructions:?}
+[storage]
+path = "state/journal.sqlite"
+capture = "replay"
+[limits]
+max_run_s = 180
+max_output_tokens = 32
+[[workspaces]]
+id = "practice"
+root = "workspace"
+tools = []
+[[models]]
+id = "local"
+base_url = {origin:?}
+model_id = "pinned"
+context_size = 4096
+verified_slots = 1
+temperature = 0.0
+cache_prompt = {cache_prompt}
+read_timeout_s = 120
+"#
+    );
+    let config = Config::parse(&source, &fixture.0.join("kinesin.toml")).unwrap();
+    let storage = Storage::start(
+        fixture.0.join("state/journal.sqlite"),
+        QueueLimits::default(),
+    )
+    .unwrap();
+    let store = storage.client();
+    let mut prior: Option<PriorAnswer> = None;
+    let mut observations = Vec::new();
+    let mut captures = Vec::new();
+    for prompt in ["Reply OK for entry one.", "Reply OK for entry two."] {
+        let authority = config
+            .authorize_local_continued(
+                Submission::Freeform {
+                    workspace: "practice".into(),
+                    model: "local".into(),
+                    continues: prior.as_ref().map(|prior| prior.run_id.clone()),
+                    prompt: prompt.into(),
+                    limits: None,
+                    capture: Some(CaptureMode::Replay),
+                },
+                prior.clone(),
+            )
+            .unwrap();
+        let client = if live {
+            ModelClient::http(authority.model(), authority.limits().max_response_bytes).unwrap()
+        } else {
+            ModelClient::scripted([ModelReply::Answer("OK".into()).into()])
+        };
+        let resources = RunResources::single(1, config.concurrency().clone());
+        admit(&authority, &store, None).await.unwrap();
+        let run = run_admitted(
+            authority.clone(),
+            client.clone(),
+            store.clone(),
+            resources,
+            CancellationToken::new(),
+            Instant::now(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(run.phase, "completed", "{:?}", run.terminal_reason);
+        let Response::Events(events) = store
+            .execute(
+                Command::Events {
+                    owner_id: authority.owner().into(),
+                    run_id: authority.run_id().into(),
+                    after: None,
+                    limit: 100,
+                },
+                Instant::now() + Duration::from_secs(5),
+            )
+            .await
+            .unwrap()
+        else {
+            panic!("events")
+        };
+        let (bytes, response) = if let Some(proxy) = &mut proxy {
+            proxy.3.recv().await.unwrap()
+        } else {
+            let requests = client.captured_requests().unwrap();
+            assert_eq!(requests.len(), 1);
+            (requests[0].clone(), Value::Null)
+        };
+        let planned = events
+            .iter()
+            .find(|event| event.kind == "model_planned")
+            .unwrap();
+        assert_eq!(planned.data["request_sha256"], sha256(&bytes));
+        let answer = run.result.as_ref().unwrap()["candidate"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        observations.push(json!({
+            "request": serde_json::from_slice::<Value>(&bytes).unwrap(),
+            "prepared_sha256": sha256(&bytes), "candidate": answer,
+            "timings": response["timings"], "usage": response["usage"],
+            "server_fingerprint": response["system_fingerprint"],
+        }));
+        prior = Some(PriorAnswer {
+            run_id: run.run_id.clone(),
+            answer,
+        });
+        captures.push((run, events));
+    }
+    storage.shutdown().await.unwrap();
+    if let Some((_, stop, task, _)) = proxy {
+        stop.send(()).unwrap();
+        task.await.unwrap();
+    }
+    drop(store);
+    drop(fixture);
+    for (run, events) in captures {
+        assert_eq!(
+            kinesin::replay::replay(&run, &events).unwrap().consistency,
+            "consistent"
+        );
+    }
+    json!({"live": live, "cache_prompt": cache_prompt, "observations": observations,
+        "scope": "Actual immutable session turns; shared system prefix only, no full-history retention proof"})
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn actual_session_cache_request_contract() {
+    let enabled = actual_cache_session(true, false).await;
+    let disabled = actual_cache_session(false, false).await;
+    for index in 0..2 {
+        let mut cached = enabled["observations"][index]["request"].clone();
+        assert_eq!(
+            cached.as_object_mut().unwrap().remove("cache_prompt"),
+            Some(json!(true))
+        );
+        assert_eq!(cached, disabled["observations"][index]["request"]);
+    }
+    let first = &enabled["observations"][0]["request"]["messages"];
+    let second = &enabled["observations"][1]["request"]["messages"];
+    assert_eq!(first.as_array().unwrap().len(), 2);
+    assert_eq!(second.as_array().unwrap().len(), 3);
+    assert_eq!(
+        first[0], second[0],
+        "only the system message is a stable prefix"
+    );
+    assert_eq!(second[1]["role"], "user");
+    let reference = second[1]["content"].as_str().unwrap();
+    assert!(reference.starts_with(kinesin::core::PRIOR_ANSWER_FRAME));
+    assert!(reference.ends_with(enabled["observations"][0]["candidate"].as_str().unwrap()));
+    assert_ne!(
+        first[1], second[1],
+        "do not pretend sessions append the previous prompt"
     );
 }
 
-/// INT-0008 (T-002) headline (live, manual): the same pinned `llama-server`,
-/// reached over the host's real non-loopback address (LAN or tailnet), answers
-/// identically to the loopback baseline — proving "attach to another machine"
-/// is the same operation as "attach to localhost." That a Kinesin config admits
-/// the non-loopback (private/overlay) address is covered by the config unit
-/// tests (`origin_accepts_private_and_overlay_http`); this records reachability
-/// and answer-equivalence over that address. Run manually; not a CI gate.
+/// Manual measurement of real harness sessions through a recording proxy.
+/// Requires the pinned server on 127.0.0.1:8080 and KINESIN_BENCH_MACHINE with
+/// machine/model hardware details. Authoring this test is not live evidence.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the pinned local model reachable at both 127.0.0.1:8080 and the host's LAN/tailnet address"]
-async fn attach_to_non_loopback_backend() {
-    // Discover the host's primary non-loopback IPv4 without sending anything.
-    let probe = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
-    probe.connect("8.8.8.8:80").unwrap();
-    let ip = probe.local_addr().unwrap().ip();
-    assert!(
-        !ip.is_loopback(),
-        "no non-loopback interface available to test"
-    );
-    let remote = format!("http://{ip}:8080");
-
-    let client = reqwest::Client::new();
-    async fn ask(client: &reqwest::Client, base: &str) -> String {
-        let body = json!({
-            "model": "pinned",
-            "messages": [{"role": "user", "content": "Reply with exactly one word: ready"}],
-            "max_tokens": 8, "temperature": 0.0
-        });
-        let text = client
-            .post(format!("{base}/v1/chat/completions"))
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&body).unwrap())
-            .send()
-            .await
-            .expect("server reachable at this address")
-            .text()
-            .await
-            .expect("response body");
-        let value: Value = serde_json::from_str(&text).expect("response is JSON");
-        value["choices"][0]["message"]["content"]
-            .as_str()
-            .expect("content string")
-            .trim()
-            .to_string()
+#[ignore = "actual-session KV benchmark; requires pinned local server and KINESIN_BENCH_MACHINE"]
+async fn actual_session_cache_timing_measurement() {
+    let machine =
+        std::env::var("KINESIN_BENCH_MACHINE").expect("record machine/hardware provenance");
+    // false omits the extension; it does not send cache_prompt:false. Warm the
+    // server and alternate order, then report observed reuse without inventing
+    // an uncached control or interpreting a cold-start outlier as flag benefit.
+    for enabled in [false, true] {
+        actual_cache_session(enabled, true).await;
     }
-
-    let baseline = ask(&client, "http://127.0.0.1:8080").await;
-    let over_lan = ask(&client, &remote).await;
-    eprintln!("attach: loopback={baseline:?}  non-loopback({remote})={over_lan:?}");
-    assert_eq!(
-        baseline, over_lan,
-        "the same server via loopback and its non-loopback address must answer identically"
+    let mut samples = Vec::new();
+    for pair in 0..6 {
+        for enabled in if pair % 2 == 0 {
+            [false, true]
+        } else {
+            [true, false]
+        } {
+            samples.push(actual_cache_session(enabled, true).await);
+        }
+    }
+    let mean = |enabled| {
+        let timings: Vec<_> = samples
+            .iter()
+            .filter(|sample| sample["cache_prompt"] == enabled)
+            .map(|sample| {
+                sample["observations"][1]["timings"]["prompt_ms"]
+                    .as_f64()
+                    .expect("pinned server must report actual prompt-evaluation timing")
+            })
+            .collect();
+        timings.iter().sum::<f64>() / timings.len() as f64
+    };
+    let omitted_ms = mean(false);
+    let enabled_ms = mean(true);
+    let reuse_observed_in_both_modes = samples.iter().all(|sample| {
+        let observation = &sample["observations"][1];
+        observation["timings"]["cache_n"]
+            .as_u64()
+            .is_some_and(|cached| cached > 0)
+            && observation["timings"]["prompt_n"]
+                .as_u64()
+                .zip(observation["usage"]["prompt_tokens"].as_u64())
+                .is_some_and(|(evaluated, total)| evaluated < total)
+    });
+    let report = json!({"machine": machine, "os": std::env::consts::OS,
+        "arch": std::env::consts::ARCH, "samples": samples,
+        "omitted_flag_second_turn_mean_ms": omitted_ms, "enabled_flag_second_turn_mean_ms": enabled_ms,
+        "reuse_observed_in_both_modes": reuse_observed_in_both_modes,
+        "control": "Field omitted versus explicitly true; no explicit cache-disabled control",
+        "scope": "Actual shared-prefix reuse; no causal flag speedup, full-history or concurrent-slot guarantee"});
+    let path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/cache-session-measurement.json");
+    std::fs::write(&path, serde_json::to_vec_pretty(&report).unwrap()).unwrap();
+    eprintln!("Actual session cache measurement: {}", path.display());
+    assert!(
+        reuse_observed_in_both_modes,
+        "pinned backend did not report shared-prefix reuse in both measured modes"
     );
+}
+
+/// Run actual checked tools and replay against an operator-verified remote
+/// deployment forwarded to localhost:8080. The companion provenance is supplied
+/// by host/listener/tunnel checks; this test alone cannot prove network topology.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires an authenticated remote SSH forward and KINESIN_REMOTE_PROVENANCE JSON path"]
+async fn secure_two_host_model_serving() {
+    let provenance_path = std::env::var("KINESIN_REMOTE_PROVENANCE")
+        .expect("record independent host, listener and authenticated tunnel checks");
+    let provenance: Value =
+        serde_json::from_slice(&std::fs::read(provenance_path).unwrap()).unwrap();
+    assert_eq!(provenance["transport"], "tailscale-ssh-local-forward");
+    assert_eq!(provenance["local_endpoint"], "http://127.0.0.1:8080");
+    assert_eq!(provenance["remote_bind"], "127.0.0.1:18080");
+    assert_eq!(provenance["direct_model_access_rejected"], true);
+    assert_ne!(provenance["client_host"], provenance["server_host"]);
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("validation-output")
+        .join(format!("secure-two-host-{}", uuid::Uuid::new_v4()));
+    let result = evaluate(&cards().remove(0), &root, true).await;
+    let report = json!({"provenance": provenance, "checked_run": result,
+        "scope": "One pinned two-host deployment over authenticated SSH; broader model accuracy and remote MCP authorization are separate claims"});
+    std::fs::write(
+        root.join("report.json"),
+        serde_json::to_vec_pretty(&report).unwrap(),
+    )
+    .unwrap();
+    eprintln!(
+        "Secure two-host measurement: {}",
+        root.join("report.json").display()
+    );
+    assert_eq!(report["checked_run"]["phase"], "completed");
+    assert_eq!(report["checked_run"]["acceptance"], "passed");
+    assert_eq!(report["checked_run"]["replay_consistency"], "consistent");
+    assert!(report["checked_run"]["tool_calls"].as_u64().unwrap() > 0);
 }

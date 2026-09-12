@@ -3,7 +3,7 @@ use std::time::Duration;
 use kinesin::config::ModelConfig;
 use kinesin::core::{self, ModelReply};
 use kinesin::model::{
-    ModelClient, ModelOptions, StreamDecoder, TextObserver, decode_reply, prepare,
+    ModelClient, ModelOptions, StreamDecoder, TextObserver, Usage, decode_reply, prepare,
 };
 
 /// The protocol tests assert on the decoded reply; usage is exercised separately.
@@ -21,6 +21,67 @@ fn response(content: Value, calls: Value, reason: &str) -> Vec<u8> {
     }
     serde_json::to_vec(&json!({"choices":[{"index":0,"finish_reason":reason,"message":message}]}))
         .unwrap()
+}
+
+#[test]
+fn usage_partial_fields_remain_unknown() {
+    let cases = [
+        (None, None),
+        (Some(json!({})), Some(Usage::default())),
+        (Some(json!({"total_tokens": 9})), Some(Usage::default())),
+        (
+            Some(json!({"prompt_tokens": 7})),
+            Some(Usage {
+                prompt_tokens: Some(7),
+                completion_tokens: None,
+            }),
+        ),
+        (
+            Some(json!({"completion_tokens": 3, "prompt_tokens": null})),
+            Some(Usage {
+                prompt_tokens: None,
+                completion_tokens: Some(3),
+            }),
+        ),
+        (
+            Some(json!({"prompt_tokens": 0, "completion_tokens": 0})),
+            Some(Usage {
+                prompt_tokens: Some(0),
+                completion_tokens: Some(0),
+            }),
+        ),
+        (
+            Some(json!({"prompt_tokens": u64::MAX, "completion_tokens": 1})),
+            Some(Usage {
+                prompt_tokens: Some(u64::MAX),
+                completion_tokens: Some(1),
+            }),
+        ),
+    ];
+    for (usage, expected) in cases {
+        let mut body: Value =
+            serde_json::from_slice(&response(json!("hi"), Value::Null, "stop")).unwrap();
+        if let Some(usage) = &usage {
+            body["usage"] = usage.clone();
+        }
+        let decoded = decode_reply(&serde_json::to_vec(&body).unwrap()).unwrap();
+        assert_eq!(decoded.usage, expected, "nonstream usage {usage:?}");
+
+        let mut stream = String::from(
+            "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n",
+        );
+        if let Some(usage) = &usage {
+            stream.push_str(&format!(
+                "data: {}\n\n",
+                json!({"choices": [], "usage": usage})
+            ));
+        }
+        stream.push_str("data: [DONE]\n\n");
+        let mut decoder = StreamDecoder::new(8192).unwrap();
+        decoder.push(stream.as_bytes()).unwrap();
+        let decoded = decoder.finish().unwrap();
+        assert_eq!(decoded.usage, expected, "stream usage {usage:?}");
+    }
 }
 
 #[test]

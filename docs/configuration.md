@@ -1,5 +1,11 @@
 # Configuration and limits
 
+For an executable setup sequence, use [getting started](getting-started.md).
+The tracked [`kinesin.example.toml`](../kinesin.example.toml) is the root-relative
+starter: copy it to `kinesin.toml` in the directory where you create `workspace`
+and private `state`. The older examples under `examples/` use `../workspace` and
+`../state` instead; moving a configuration changes the base for relative paths.
+
 ## One operator-controlled source
 
 Use ordinary TOML with top-level instruction text. Parse into owned structs,
@@ -10,6 +16,25 @@ serialized with those settings.
 All filesystem paths are relative to the configuration file's directory unless
 absolute. Workspace roots and the private state directory are disjoint. Model
 destinations are approved profiles, not URLs chosen by prompts.
+
+Only loopback model origins may use HTTP. Every non-loopback origin requires
+HTTPS, including RFC1918, CGNAT/Tailscale and IPv6 unique-local addresses. Private
+address classification does not establish encryption. Public destinations also
+require the separate `allow_public_endpoints = true` opt-in. IPv4-mapped IPv6
+addresses follow the embedded IPv4 classification. Redirects and ambient HTTP
+proxies remain disabled.
+
+An operator-managed, authenticated SSH tunnel may expose a remote loopback model
+server at a local loopback URL. In that setup SSH supplies network encryption;
+Kinesin cannot infer tunnel identity or deployment confinement from the URL.
+Record the actual peer, listener bindings and rejected direct access when
+validating a deployment. See [remote integration](integration.md#add-a-machine-uniform-local-and-remote-backends).
+
+`cache_prompt = true` emits the llama.cpp cache request extension. Setting it
+to false omits the field for server compatibility; it does not force the server
+to disable caching. The pinned b6500 server may reuse the prefix in either
+case. Measure actual evaluated/cached tokens before attributing a timing change
+to that flag.
 
 The initial instruction source remains the explicit top-level `instructions`
 value. Do not automatically discover or execute instructions from ancestor
@@ -26,9 +51,10 @@ workspace files remains outside this design.
 
 ## First live-turn configuration
 
-This is a target example for guide step 9, not a supported file already in the
-repository. Replace the model identity and sampling settings with the values
-verified during preflight. Add later tables only when their steps are built.
+This is a minimal supported configuration for one freeform model turn. The
+complete starter above also includes read/list tools and a checked file task.
+The model alias below matches the pinned server setup in getting started; change
+its identity/capacity only to match a separately verified server.
 
 ```toml
 version = 1
@@ -58,7 +84,7 @@ tools = []
 [[models]]
 id = "local"
 base_url = "http://127.0.0.1:8080"
-model_id = "replace-with-verified-served-model-id"
+model_id = "kinesin-qwen25-coder-7b"
 context_size = 4096
 verified_slots = 1
 temperature = 0.2
@@ -77,7 +103,7 @@ not a universal request field.
 The intended invocation is:
 
 ```text
-cargo run -- run --config kinesin.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
+cargo run -- --config kinesin.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
 ```
 
 Read filesystem CLI paths with `args_os` or a suitable CLI parser. Prompt text
@@ -91,11 +117,11 @@ change the receipt or claim task acceptance. See [exit rules](verification.md#cl
 
 ## Extend for tools and concurrency
 
-At the tool milestone, enable `list_files` and `read_file` for the practice
+To enable file tools, add `list_files` and `read_file` for the practice
 workspace, raise `max_model_turns` to the chosen loop limit, and introduce the
-tool-related limit fields below. Only then open a `WorkspaceReader` capability.
+tool-related limit fields below. Configuration constructs the scoped reader.
 
-At the concurrency milestone, add a `[concurrency]` table with the shared-limit
+To configure concurrency, add a `[concurrency]` table with the shared-limit
 names and selected values in [performance.md](performance.md). Start by testing
 one active run and no queued runs, then raise limits to the provisional concurrent
 profile. Never accept an unlimited value such as zero meaning “no limit.”
@@ -107,8 +133,8 @@ must share its limiter; another alias is not extra capacity.
 
 ## Add an explicit checked task
 
-After implementing tools and the [FileFieldsV1 checker](verification.md), append
-this profile to the configuration. First enable `read_file` for the existing
+The tools and [FileFieldsV1 checker](verification.md) are implemented. Append
+this profile to a minimal configuration, or use the complete starter. Enable `read_file` for the existing
 `practice` workspace and raise its loop limits as described above; `list_files`
 is optional for this fixed-path task. Keep profiles outside every tool root.
 
@@ -143,7 +169,7 @@ language=Rust
 The intended checked invocation is:
 
 ```text
-cargo run -- run --config kinesin.toml --task practice-fields --model local
+cargo run -- --config kinesin.toml --task practice-fields --model local
 ```
 
 The profile fixes the workspace and generates the extraction instruction and

@@ -209,3 +209,94 @@
 - **Completed:** 2026-09-12T05:41:45Z
 - **Files modified:** Cargo.toml, Cargo.lock, src/bin/mcp-fixture.rs, tests/mcp.rs
 - **Commit:** `73fb0d781d845cdadac609e92e60ef19b46a642f`
+
+## T-001 (sprint 10)
+- **Description:** Completed the ordered all-intent audit and explicit intent revisions, preserved overclaimed historical evidence through supersession, and locked build/test plans after an independent critic resolved four concerns. Book validation and git diff checks pass; source remained unchanged until Build. No TaskCreate tool is exposed in this host, so this canonical ledger tracks each step.
+- **Intent:** [INT-0021](../intents/INT-0021-harness-contract-review.md)
+- **Completed:** 2026-09-12T15:07:13Z
+- **Files modified:** docs/intents, docs/SUMMARY.md, docs/sprints/s10 research/plans/meta, docs/work ledgers
+- **Commit:** `817f5bdc6bdce1c355fc6914999b03a05f477e45`
+
+## T-002 (sprint 10)
+- **Description:** Preserved independent optional token dimensions, honest mixed-call/error coverage and checked-add overflow without inventing zeros; per-event counts remain known where reported. Focused usage/token tests passed (10 tests), targeted rustfmt and all-target/all-feature clippy with warnings denied passed.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:15:20.6988646Z
+- **Files modified:** src/model.rs, src/runner.rs, tests/model_protocol.rs, tests/runner_tools.rs, tests/cli_inspect.rs
+- **Commit:** `30c1c13b5e236dad18dfef1027295fc813d32db7`
+
+## T-004 (sprint 10)
+- **Description:** Introduced shared owned process groups/Windows Jobs with suspended assignment, awaited normal cleanup and synchronous drop fallback; commands now avoid pre-cancelled spawn and fit the full nested JSON envelope, including escaping and invalid UTF8. Twelve command tests passed on Windows, targeted rustfmt and clippy passed. Linux enforcement is verified under T-005; no Windows AppContainer claim.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:15:38.4038221Z
+- **Files modified:** src/process.rs, src/tools.rs, src/lib.rs, Cargo.toml, src/bin/cmd-fixture.rs, tests/command_tool.rs
+- **Commit:** `5c6f5aca4e49e582e84d33176adc1083f17b7475`
+
+## T-006 (sprint 10)
+- **Description:** Bounded MCP input before JSON decoding with cancellation-safe line/aggregate counters; capped servers, pages, advertised tools and frozen metadata. Replaced SDK child lifecycle with scrubbed owned process groups/jobs, suppressed inherited stderr and awaited cleanup on initialization failure, call timeout/cancellation and explicit shutdown. Five MCP unit tests and 14 integration tests passed on Windows; isolated environment worker is invoked by its parent test. Targeted rustfmt and all-target/all-feature clippy with warnings denied passed. Full run ownership moves under admission in T-007.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:28:40Z
+- **Files modified:** src/mcp.rs, src/mcp/transport.rs, src/bin/mcp-fixture.rs, tests/mcp.rs
+- **Commit:** `133aa3f992de035065963bc36bae1c16bec5d0fb`
+
+## T-003 (sprint 10)
+- **Description:** Made unchecked reads evidence-free and compactable while protecting checked evidence; bounded the actual framed continuation before admission. Faithful session requests exposed and repaired replay's incorrect two-source assumption; replay now validates the prior-answer source and explicitly refuses old semantic versions. Red regressions reproduced oversized admission and long-read history failure. Windows library 159, CLI inspect 10, model protocol 17, runner tools 24, replay 16 and offline live-evaluation 2 tests passed, with targeted rustfmt and clippy. Actual-session cache timing remains manual evidence pending host preparation. Includes T-008's HTTPS fixture compatibility update.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:30:05Z
+- **Files modified:** src/core.rs, src/model.rs, src/policy.rs, src/runner.rs, src/replay.rs, tests/replay.rs, tests/live_evaluation.rs, tests/runner_tools.rs
+- **Commit:** `1f8c9a8f1be636fc37edefaa0d51e3f15a931581`
+
+## T-005 (sprint 10)
+- **Description:** Required fully enforced Landlock ABI v3 and seccomp, narrowed runtime grants and exact executable access, protected private config/state placement, closed inherited non-stdio descriptors, denied io_uring and process-group/namespace escape while preserving normal threads/processes. Actual WSL Linux command 12 and mandatory sandbox 8 tests passed without skips, plus forced-refusal/partial-enforcement and private-root regressions. Windows command 12 and config 27 tests passed; affected Windows/Linux clippy and rustfmt passed. Includes T-008's HTTPS origin rule and address-family regression. Documentation reconciles supported content operations and residual metadata/same-user limits in T-009.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:30:55Z
+- **Files modified:** src/tools.rs, src/config.rs, src/bin/cmd-fixture.rs, tests/sandbox_linux.rs
+- **Commit:** `9034980397513e1b7849fa900c90eb5785093bed`
+
+## T-010 (sprint 10)
+- **Description:** Published move destinations with capability-scoped atomic no-replace hard links, followed by source cleanup. Explicit move_source_cleanup_failed reports destination publication if cleanup fails; hard-link/same-filesystem and concurrent-source limitations remain documented. Windows tools 29/29 and Linux move 4/4 tests passed, including synchronized destination creation, simultaneous competitors and cleanup failure. Rustfmt, diff checks and affected Windows/Linux clippy passed. Final security/tool documentation is reconciled in T-009.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:45:43Z
+- **Files modified:** src/tools.rs
+- **Commit:** `2eda32dfac8407e26bd526b7d817b3b86996cbd4`
+
+## T-008 (sprint 10)
+- **Description:** Enforced HTTPS outside loopback with separate public opt-in (shared config source committed in T-005, HTTPS fixture in T-003), documented authenticated-loopback forwarding and replaced the same-host LAN probe with actual checked two-host/replay validation. Windows config 27 and model protocol 17 tests passed; live checked nighthawk run and corrected actual-session cache observation passed on capture v3, followed by offline live-evaluation 2 tests and affected clippy/rustfmt. Measured reuse in both extension modes, with no causal flag-speedup claim. Exact deployment, hashes and observations are in remote-deployment.md.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:49:05Z
+- **Files modified:** tests/live_evaluation.rs, docs/configuration.md, docs/integration.md, docs/sprints/s10/sprint-tests/remote-deployment.md; shared prerequisites src/config.rs and tests/runner_tools.rs recorded in T-005/T-003
+- **Commit:** `e131ed8bc979df56368e64342b9a39b178f4a2d3`
+
+## T-007 (sprint 10)
+- **Description:** Replaced pre-admission MCP sessions with declarative job configuration and one active-run-owned pool. Startup is cancelled/deadline bounded, durably freezes schemas before model dispatch, and cannot enlarge live/replay grants. Cleanup precedes terminal commit and still runs after journal errors; restart recovery handles storage-unavailable rows. Capture v3 explicitly records/replays startup and cleanup. Integrated the independent 4,096-frame ceiling; a tiny-frame flood is bounded and torn down by the deadline, without claiming immediate SDK response completion. Windows lib 164, CLI inspect 10, MCP 20, replay 16 and service 16 tests passed; isolated environment worker is invoked by its parent. Targeted clippy, rustfmt and diff checks passed.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T16:01:45Z
+- **Files modified:** src/cli.rs, src/scheduler.rs, src/service.rs, src/runner.rs, src/replay.rs, src/policy.rs, src/mcp.rs, src/mcp/transport.rs, src/bin/mcp-fixture.rs, tests/mcp.rs, tests/service.rs
+- **Commit:** `e584d9e15f15399b6e0a365a16de74f02c0c9eee`
+
+## T-009 (sprint 10)
+- **Description:** Made duplicate violations blocking with five exact reviewed exceptions, removed unused process dependencies/features and pruned 13 lockfile packages (249 remain). Full deny and audit passed (1,243 advisories, no vulnerabilities); removing the base64 exemption in an isolated temporary policy failed with exit 2. Refreshed all LLM/ASI risk mappings, native/build inventory and cargo-vet decision, roadmap, platform/MCP/transport limits and accurate CLI examples. Linked scoped remote/cache evidence without realizing broader proposed intents. Book validation confirms 27 chapters; documentation checks and current Windows format/all-target clippy/full tests pass.
+- **Intent:** [INT-0021](../intents/INT-0021-harness-contract-review.md), [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T16:05:30Z
+- **Files modified:** Cargo.toml, Cargo.lock, deny.toml, README.md, docs/SUMMARY.md, docs/cli.md, docs/configuration.md, docs/live-evaluation.md, docs/loop-and-tools.md, docs/security.md, docs/roadmap.md, docs/threat-model.md, docs/supply-chain.md, docs/intents/INT-0007-managed-model-process.md, docs/intents/INT-0026-session-context-continuity.md, docs/intents/INT-0027-encrypted-remote-deployment.md, docs/sprints/s10/sprint-tests/remote-deployment.md
+- **Commit:** `e84d1700ac44bc79ad06f750c4325edafbd129c7`
+
+## T-011 (sprint 10)
+- **Description:** Completed the integrated repair and verification boundary, including independent process-ID, private-verifier, MCP-frame and x32 review fixes. Windows local full suite passed 303 tests; canonical CI 34704378309 on f3e3d0ff066eccbccf0d8e4e592031d9715c2b05 passed Windows 303 and Ubuntu 315 tests, format/clippy and dependency gates. A diagnostic-only assertion change then passed its affected Windows test and full clippy. Final documentation review repaired 27 historical links, one omitted survey-criterion disposition and a stale deployment condition. Two real nighthawk checks and disconnected pure replay passed. Failed mounted-WSL/native-cache and disk-full attempts are retained as environment limits, not passes. Formal TEST critique, completion transitions and the one-PR checkpoint remain enforced by the following TEST/Loop phase gates and their report/meta evidence.
+- **Intent:** [INT-0021](../intents/INT-0021-harness-contract-review.md), [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T16:24:10.4892797Z
+- **Files modified:** tests/cli_inspect.rs; docs/sprints/s10/sprint-tests/{unit-tests,integration-tests,e2e-tests,integration-review}.md; docs/sprints/s10/sprint-research/transport-mcp-audit.md; docs/sprints/s1/sprint-research/research-report.md; docs/sprints/s2/sprint-research/research-report.md; docs/sprints/s3/sprint-research/research-report.md; docs/roadmap.md; docs/work ledgers. Source review fixes and sprint meta are recorded in preceding reachable commit f3e3d0f.
+- **Commit:** `1a383954aac7c765fb46347281f380e12e85e2ae`
+
+## T-001 (sprint 11)
+- **Description:** Selected kinesin as Cargo's default binary and added successful standalone help without configuration or state effects, including malformed-argument regression coverage. Added a root-relative starter and explicit Windows/Linux installation, PATH, private setup, external model, session, checked-task and replay instructions. Explained why process/stdio fixtures remain test support and how installation excludes them. CLI unit 8 and integration 11 tests, format and all-target/all-feature clippy passed; actual product-only installs, repeated setup preservation and model walkthroughs passed on Windows and native Debian nighthawk. Independent documentation review fixes for health-port consistency and safe temporary rustup download passed recheck. Formal platform evidence is recorded by T-002.
+- **Intent:** [INT-0028](../intents/INT-0028-first-use-documentation.md)
+- **Completed:** 2026-09-12T18:06:47Z
+- **Files modified:** Cargo.toml; src/cli.rs; tests/cli_inspect.rs; kinesin.example.toml; README.md; docs/getting-started.md; docs/cli.md; docs/configuration.md; docs/SUMMARY.md; docs/intents/INT-0028-first-use-documentation.md; docs/sprints/s11/sprint-meta.md; docs/sprints/s11/sprint-plans/{build-plan,test-plan}.md (finalization markers); docs/work ledgers.
+- **Commit:** `c7eb088ad104d381853ede5d2288c8d97e663aa2`
+
+## T-002 (sprint 11)
+- **Description:** Verified the documented product-only debug installation, default/help entry, preserved repeated setup and six actual model runs across Windows and native Debian nighthawk. Both checked tasks passed and both exports replayed consistently after verified server/tunnel cleanup. Recorded source hashes, run IDs, commands and scoped provisioning, distinguishing failed attempts and unexecuted prerequisite/release installation steps. Format, diff, affected CLI tests and all-target/all-feature clippy pass on the unchanged implementation. Canonical CI on ee6a26b is running; its conclusion, formal independent TEST critique and realization/checkpoint records remain enforced by the following TEST/Loop gates. The user explicitly selected existing PR #11.
+- **Intent:** [INT-0028](../intents/INT-0028-first-use-documentation.md)
+- **Completed:** 2026-09-12T18:12:14Z
+- **Files modified:** docs/sprints/s11/sprint-tests/{unit-tests,integration-tests,e2e-tests,platform-verification}.md; docs/work ledgers.
+- **Commit:** `b342011305227e4acd2105ade54f681ca95281a2`

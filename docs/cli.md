@@ -1,5 +1,10 @@
 # Local CLI
 
+Start with [installation and first use](getting-started.md) for Windows/Linux
+build tools, PATH, configuration, model startup and the fixture explanation.
+`kinesin --help` (or `cargo run --locked -- --help` in a checkout) prints usage
+without opening configuration, storage, a workspace or a model connection.
+
 ## The session
 
 ```text
@@ -16,7 +21,7 @@ needs no run id and no flag:
 ```
 
 A session takes no workspace or model alias. With one of each configured there is
-nothing to choose; with several, the operator names them in a `run` command
+nothing to choose; with several, the operator names them in a single-run command
 instead, because guessing would silently pick an authority. `kinesin --config
 other.toml` opens a session against a different file. End it with Ctrl+C or by
 closing the input.
@@ -32,8 +37,8 @@ The cited answer enters as reference data with its own entry in the input
 inventory, marked as earlier model output. It is information, not instruction,
 and grants no permission.
 
-Run these commands from the repository root after building the guide's matching
-milestones. `run` and `batch` require the verified model server. Configuration paths resolve
+Run these commands from the repository root after the getting-started setup.
+Single runs, sessions and `batch` require the verified model server. Configuration paths resolve
 relative to the configuration file; CLI input-file paths resolve from your current
 directory. Run execution uses the implicit local operator identity; `--owner`
 is limited to provisioning credentials for a configured service owner.
@@ -45,8 +50,8 @@ port 8080. Follow [the recorded server startup](model-preflight.md#reproduce-the
 or edit your copied example to match the separately verified endpoint.
 
 ```text
-cargo run -- run --config examples/file-task.toml --task practice-fields --model local
-cargo run -- run --config examples/first-turn.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
+cargo run -- --config examples/file-task.toml --task practice-fields --model local
+cargo run -- --config examples/first-turn.toml --workspace practice --model local --prompt "Say hello" --allow-unchecked
 cargo run -- batch --config examples/file-task.toml --input examples/batch.jsonl
 ```
 
@@ -86,7 +91,7 @@ for existing work, rather than submitting the rest of the file as waiting tasks.
 One awaited blocking job reads input, and one awaited blocking job writes output;
 neither creates an unbounded producer or result queue.
 
-A single `run` using a streaming model profile also emits `kind: "text_delta"`
+A single run using a streaming model profile also emits `kind: "text_delta"`
 lines with `run_id`, `text`, and `provisional: true`. These are display progress,
 not candidates accepted by the checker. Only the durable final `kind: "run"`
 line publishes the final phase and receipt. At most 128 text frames of 2 KiB each
@@ -134,12 +139,17 @@ The supplied current configuration must still validate, including its workspace
 locations; it is not used to reassess a retained result.
 
 ```text
+cargo run -- --config examples/file-task.toml --task practice-fields --model local --capture replay
 cargo run -- inspect --config examples/file-task.toml --run RUN_ID
-cargo run -- export --config examples/file-task.toml --run RUN_ID --output private-exports/run.json
-cargo run -- replay --input private-exports/run.json
+cargo run -- export --config examples/file-task.toml --run RUN_ID --output state/run.json
+cargo run -- replay --input state/run.json
 ```
 
-Create the private export directory beforehand. `inspect` prints the saved result,
+Substitute the actual run ID from the first command. The examples default to
+metadata capture, so `--capture replay` must be selected on the original run.
+Use a new export filename and a private state directory as provisioned in the
+getting-started guide. Stop any other Kinesin session using this state first.
+`inspect` prints the saved result,
 receipt, both outcomes, derived `task_accepted`, and at most 256 event summaries.
 Summaries contain sequence, kind, and elapsed time; they exclude raw replay inputs.
 `events_complete: false` identifies a longer history.
@@ -159,11 +169,12 @@ bounded snapshot, without loading configuration, opening a workspace or database
 constructing a model client, or starting an async runtime. It rebuilds recorded
 requests and decisions and recomputes compatible checked receipts from captured
 evidence. Missing inputs, modified bindings, unsupported versions, and divergences
-are errors. Version 2 captures support completed runs, deterministic error/limit
+are errors. Current version 3 captures support completed runs, deterministic error/limit
 endings, and recorded cancellation, deadline, model-queue, and journal-admission
 stops. Dispatch and terminal decisions use their captured control observations;
-late settlement cannot overwrite the recorded pre-inbox decision. Pre-version-2
-captures, missing control inputs, recovery-interrupted runs, and otherwise
+late settlement cannot overwrite the recorded pre-inbox decision. Version 3 also
+records bounded MCP startup, frozen schemas and cleanup. Older unsupported
+capture/semantic versions, missing control inputs, recovery-interrupted runs, and otherwise
 unavailable external-stop observations are explicit refusals. Imported data is
 not authenticated and cannot create live authority or a new accepted result.
 

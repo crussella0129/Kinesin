@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0010
 - **State:** proposed
-- **Work evidence:** none
+- **Work evidence:** [T-107 backlog](../work/tasks.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -28,6 +28,7 @@ general lock service for non-Kinesin processes; replacing git's own merge — th
 coordinates *before* writes conflict, it does not resolve merges after.
 
 ## Acceptance criteria
+- Lease ownership is fenced at the actual mutation boundary: a paused former holder that resumes after reassignment cannot write. Canonical resource identity, multi-resource acquisition order, and cross-process ownership are explicit and tested.
 - A second agent's write to a resource already held is **blocked or queued**, not
   silently applied or lost; the first writer's changes are never clobbered.
 - Releasing a hold ("back out"), or a completed run, **unblocks the next** waiter
@@ -79,3 +80,4 @@ multi-session work enable.
 
 ## Transition history
 - 2026-09-11: created as `proposed`.
+- 2026-09-12: proposed acceptance clarified by the intent-first sprint 10 audit; implementation remains proposed.

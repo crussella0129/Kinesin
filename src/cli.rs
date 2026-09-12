@@ -19,8 +19,27 @@ use crate::runner::RunResources;
 use crate::scheduler::{Controller, ControllerHandle, Job, PendingRun};
 use crate::storage::{Command, Event, QueueLimits, Response, RunRecord, Storage, StorageClient};
 
-pub const USAGE: &str = "kinesin
-kinesin [--config PATH] --workspace ALIAS --model ALIAS --prompt TEXT [--allow-unchecked]\nkinesin [--config PATH] --task ALIAS --model ALIAS\nkinesin batch --config PATH --input PATH\nkinesin inspect --config PATH --run ID\nkinesin export --config PATH --run ID --output NEW_FILE\nkinesin replay --input FILE\nkinesin retain --config PATH [--limit 100]\nkinesin backup --config PATH --output NEW_FILE\nkinesin serve --config PATH\nkinesin provision --config PATH --owner ALIAS --hours HOURS";
+pub const USAGE: &str = "Kinesin - bounded local harness
+
+Usage:
+  kinesin [--config PATH]
+  kinesin [--config PATH] --workspace ALIAS --model ALIAS --prompt TEXT [--allow-unchecked] [--capture MODE]
+  kinesin [--config PATH] --task ALIAS --model ALIAS [--capture MODE]
+  kinesin batch --config PATH --input PATH
+  kinesin inspect --config PATH --run ID
+  kinesin export --config PATH --run ID --output NEW_FILE
+  kinesin replay --input FILE
+  kinesin retain --config PATH [--limit 100]
+  kinesin backup --config PATH --output NEW_FILE
+  kinesin serve --config PATH
+  kinesin provision --config PATH --owner ALIAS --hours HOURS
+  kinesin --help | -h
+
+Bare kinesin starts an interactive session. Each entry continues the previous answer.
+Sessions and one-shot runs default to kinesin.toml in the current working directory.
+Use --config PATH to select another configuration file. Aliases come from that file.
+Capture MODE is metadata or replay; replay capture retains private inputs and outputs.
+Help must be used alone and does not load configuration or start a model.";
 pub const MAX_BATCH_ENTRIES: usize = 1_024;
 pub const MAX_BATCH_LINE_BYTES: usize = 65_536;
 pub const MAX_BATCH_BYTES: usize = 16 * 1_048_576;
@@ -56,6 +75,7 @@ pub struct BackupCommand {
     pub output: PathBuf,
 }
 pub enum CliCommand {
+    Help,
     /// No run input (no arguments, or only `--config`): an interactive session.
     /// Each entry continues the one before it, so following up needs no run id
     /// and no flag.
@@ -89,6 +109,13 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, Str
         });
     };
     let command = first.into_string().map_err(|_| USAGE)?;
+    if command == "--help" || command == "-h" {
+        return if args.next().is_none() {
+            Ok(CliCommand::Help)
+        } else {
+            Err("help must be used alone".into())
+        };
+    }
     // Running is what bare `kinesin` does. A leading flag (or no argument at all)
     // is the default entry: a one-shot run when run inputs are given, or the
     // interactive session when only --config is. Only operations that do
@@ -420,13 +447,6 @@ impl Startup {
         self.job_continued(submission, None)
     }
 
-    /// Discover and attach the run's MCP tools before submission. Delegates to the
-    /// shared `Job::discover_mcp` choke point so the CLI and the loopback service
-    /// prepare MCP identically.
-    async fn prepare_mcp(&self, job: Job) -> Result<Job, String> {
-        job.discover_mcp(&self.config).await
-    }
-
     fn job_continued(
         &self,
         submission: Submission,
@@ -447,7 +467,8 @@ impl Startup {
                 .ok_or("unknown prepared resources")?
                 .clone(),
             authority,
-        })
+        }
+        .discover_mcp(&self.config))
     }
 }
 
@@ -561,6 +582,13 @@ async fn emit(line: OutputLine) -> Result<(), String> {
 }
 
 pub fn execute(command: CliCommand) -> Result<u8, String> {
+    if matches!(&command, CliCommand::Help) {
+        let mut output = std::io::stdout().lock();
+        writeln!(output, "{USAGE}")
+            .and_then(|()| output.flush())
+            .map_err(|_| "CLI output failed".to_owned())?;
+        return Ok(0);
+    }
     if let CliCommand::Serve { config } = &command {
         return crate::operator::serve(config);
     }
@@ -586,7 +614,10 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
         CliCommand::Export(command) => &command.config,
         CliCommand::Retain(command) => &command.config,
         CliCommand::Backup(command) => &command.config,
-        CliCommand::Replay(_) | CliCommand::Serve { .. } | CliCommand::Provision { .. } => {
+        CliCommand::Help
+        | CliCommand::Replay(_)
+        | CliCommand::Serve { .. }
+        | CliCommand::Provision { .. } => {
             unreachable!("command handled before startup")
         }
     };
@@ -669,7 +700,6 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
                 (Some((mut submission, allow_unchecked)), None) => {
                     let prior = resolve_continuation(&storage.client(), &mut submission).await?;
                     let job = startup.job_continued(submission, prior)?;
-                    let job = startup.prepare_mcp(job).await?;
                     run_single(&handle, job, allow_unchecked).await
                 }
                 (None, Some(reader)) => run_batch(&handle, &startup, reader, &interrupted).await,
@@ -1160,17 +1190,6 @@ async fn run_session(
                 continue;
             }
         };
-        let job = match startup.prepare_mcp(job).await {
-            Ok(job) => job,
-            Err(error) => {
-                emit(OutputLine::Error {
-                    index: None,
-                    reason: error,
-                })
-                .await?;
-                continue;
-            }
-        };
         let run_id = job.authority.run_id().to_owned();
         code = run_single(handle, job, true).await?;
         previous = Some(run_id);
@@ -1268,21 +1287,6 @@ async fn run_batch(
             parsed.and_then(|item| Ok((startup.job(item.submission)?, item.allow_unchecked)));
         let (job, allow_unchecked) = match prepared {
             Ok(prepared) => prepared,
-            Err(reason) => {
-                aggregate = aggregate_exit(aggregate, 1);
-                if let Err(error) = emit(OutputLine::Error {
-                    index: Some(index),
-                    reason,
-                })
-                .await
-                {
-                    output_failed = Some(error);
-                }
-                continue;
-            }
-        };
-        let job = match startup.prepare_mcp(job).await {
-            Ok(job) => job,
             Err(reason) => {
                 aggregate = aggregate_exit(aggregate, 1);
                 if let Err(error) = emit(OutputLine::Error {

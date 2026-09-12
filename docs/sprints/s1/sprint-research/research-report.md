@@ -18,14 +18,14 @@ interpolation, and unbounded output.
 ## 2. Existing Code Survey
 | File | Relevance | Notes |
 |------|-----------|-------|
-| [src/tools.rs](src/tools.rs) | high | `WorkspaceReader`/`WorkspaceWriter`, `TypedToolArgs`, `ToolResult`/`ToolStatus`, byte bounds (`MAX_WRITE_BYTES`, `MAX_TOOL_BYTES`). The `WorkspaceWriter` (l.659) is the pattern to mirror: a capability built only when the grant exists, so an ungranted run has nothing to reach. |
-| [src/config.rs](src/config.rs) | high | `ToolName` enum (l.88), `is_mutating()` (l.114) — the checked-run bar hinges on it — `mints_evidence()` (l.124), and `WorkspaceConfig { id, root, tools }` (l.131). The allow-list must live here. |
-| [src/runner.rs](src/runner.rs) | high | Tool dispatch (l.872–1041): name→`ToolName`, `allows_tool` gate, `tool_planned`/`tool_finished` journalling, and the binary reader-vs-writer route at l.952. A process needs a *third* route and a kill-on-deadline model unlike the filesystem worker's detach-and-wait (l.979). |
-| [src/policy.rs](src/policy.rs) | high | `allows_tool` (l.232) = workspace grants the tool; the checked-run mutation bar (l.355) refuses a checked workspace that grants any mutating tool. Making `run_command` mutating gives the checked-run bar for free. |
-| [src/core.rs](src/core.rs) | medium | Pure ReAct loop that emits tool-call effects the runner dispatches; confirms the model never controls execution directly and no auto-retry exists to remove. |
-| [tests/runner_tools.rs](tests/runner_tools.rs) | medium | The integration harness (scripted `ModelClient`, `Fixture`, `run_admitted`) the failure-mode tests will reuse. |
-| [tests/cli_inspect.rs](tests/cli_inspect.rs) | medium | Real-binary E2E pattern (`CARGO_BIN_EXE_kinesin`) for asserting a command effect surfaces through `inspect`. |
-| [Cargo.toml](Cargo.toml) | medium | `tokio` features (l.25) omit `process`; `cap-std = 4.0.3` (l.13). Spawning a killable child needs either the `process` feature or `std::process` in the existing `spawn_blocking` worker. |
+| [src/tools.rs](../../../../src/tools.rs) | high | `WorkspaceReader`/`WorkspaceWriter`, `TypedToolArgs`, `ToolResult`/`ToolStatus`, byte bounds (`MAX_WRITE_BYTES`, `MAX_TOOL_BYTES`). The `WorkspaceWriter` (l.659) is the pattern to mirror: a capability built only when the grant exists, so an ungranted run has nothing to reach. |
+| [src/config.rs](../../../../src/config.rs) | high | `ToolName` enum (l.88), `is_mutating()` (l.114) — the checked-run bar hinges on it — `mints_evidence()` (l.124), and `WorkspaceConfig { id, root, tools }` (l.131). The allow-list must live here. |
+| [src/runner.rs](../../../../src/runner.rs) | high | Tool dispatch (l.872–1041): name→`ToolName`, `allows_tool` gate, `tool_planned`/`tool_finished` journalling, and the binary reader-vs-writer route at l.952. A process needs a *third* route and a kill-on-deadline model unlike the filesystem worker's detach-and-wait (l.979). |
+| [src/policy.rs](../../../../src/policy.rs) | high | `allows_tool` (l.232) = workspace grants the tool; the checked-run mutation bar (l.355) refuses a checked workspace that grants any mutating tool. Making `run_command` mutating gives the checked-run bar for free. |
+| [src/core.rs](../../../../src/core.rs) | medium | Pure ReAct loop that emits tool-call effects the runner dispatches; confirms the model never controls execution directly and no auto-retry exists to remove. |
+| [tests/runner_tools.rs](../../../../tests/runner_tools.rs) | medium | The integration harness (scripted `ModelClient`, `Fixture`, `run_admitted`) the failure-mode tests will reuse. |
+| [tests/cli_inspect.rs](../../../../tests/cli_inspect.rs) | medium | Real-binary E2E pattern (`CARGO_BIN_EXE_kinesin`) for asserting a command effect surfaces through `inspect`. |
+| [Cargo.toml](../../../../Cargo.toml) | medium | `tokio` features (l.25) omit `process`; `cap-std = 4.0.3` (l.13). Spawning a killable child needs either the `process` feature or `std::process` in the existing `spawn_blocking` worker. |
 
 ## 3. External Sources
 - [std::process::Command](https://doc.rust-lang.org/std/process/struct.Command.html) — argv-vector spawning (`.arg`/`.args`, `.env_clear`, `.current_dir`), `Child::kill`/`wait`; the no-shell primitive the tool is built on.

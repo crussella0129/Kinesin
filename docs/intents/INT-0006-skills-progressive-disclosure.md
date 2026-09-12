@@ -22,6 +22,7 @@ Non-goal: letting a workspace file named `SKILL.md`, `AGENTS.md`, or `rules.md`
 become installed policy or grant a tool.
 
 ## Acceptance criteria
+- Every loaded skill (eager or on demand) carries an origin and frozen digest; changing its installed file mid-run cannot alter that run, and all loading counts against context/request budgets.
 - An operator-installed skill's instructions reach a run as data, marked by
   origin, and grant no permission.
 - A skill file discovered inside a tool workspace remains untrusted data and
@@ -46,3 +47,4 @@ part is on-demand loading, which trades relevance against a fixed context.
 
 ## Transition history
 - 2026-09-08: created as `proposed`.
+- 2026-09-12: proposed acceptance clarified by the intent-first sprint 10 audit; implementation remains proposed.

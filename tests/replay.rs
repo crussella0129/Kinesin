@@ -91,6 +91,15 @@ fn answer(value: &str, evidence: &str) -> ModelReply {
     )
 }
 async fn capture(checked: bool, mode: CaptureMode, replies: Vec<ModelReply>) -> Snapshot {
+    capture_with_prior(checked, mode, replies, None).await
+}
+
+async fn capture_with_prior(
+    checked: bool,
+    mode: CaptureMode,
+    replies: Vec<ModelReply>,
+    prior: Option<kinesin::policy::PriorAnswer>,
+) -> Snapshot {
     let fixture = Fixture::new();
     let config = Config::parse(CONFIG, &fixture.root.join("kinesin.toml")).unwrap();
     let submission = if checked {
@@ -104,13 +113,13 @@ async fn capture(checked: bool, mode: CaptureMode, replies: Vec<ModelReply>) -> 
         Submission::Freeform {
             workspace: "practice".into(),
             model: "local".into(),
-            continues: None,
+            continues: prior.as_ref().map(|prior| prior.run_id.clone()),
             prompt: "Please inspect the file".into(),
             limits: None,
             capture: Some(mode),
         }
     };
-    let authority = config.authorize_local(submission).unwrap();
+    let authority = config.authorize_local_continued(submission, prior).unwrap();
     let owner = authority.owner().to_owned();
     let run_id = authority.run_id().to_owned();
     let path = fixture.root.join("state/kinesin.sqlite");
@@ -913,4 +922,158 @@ async fn replay_reproduces_a_cache_prompt_run() {
     let report = replay(&snapshot.run, &snapshot.events).expect("replay is consistent");
     assert_eq!(report.consistency, "consistent");
     assert!(report.model_requests >= 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn freeform_reads_compact_and_replay() {
+    let fixture = Fixture::new();
+    let source = format!(
+        "{}\n[limits.compaction]\nfloor = 2\n",
+        CONFIG.replace(
+            "max_model_turns = 3",
+            "max_model_turns = 24\nmax_history_bytes = 12288"
+        )
+    );
+    let config = Config::parse(&source, &fixture.root.join("kinesin.toml")).unwrap();
+    // More than 64 KiB of successful reads crosses both former limits:
+    // protected conversation history and the unused freeform evidence store.
+    let body = "x".repeat(4096);
+    let mut replies = Vec::new();
+    for index in 0..18 {
+        let path = format!("source-{index}.txt");
+        std::fs::write(fixture.root.join("workspace").join(&path), &body).unwrap();
+        replies.push(ModelReply::ToolCalls {
+            content: None,
+            calls: vec![ToolCall {
+                id: format!("r{index}"),
+                name: "read_file".into(),
+                arguments: json!({"path": path}).to_string(),
+            }],
+        });
+    }
+    replies.push(ModelReply::Answer("done".into()));
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Read the source files.".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let storage = Storage::start(
+        fixture.root.join("state/kinesin.sqlite"),
+        QueueLimits::default(),
+    )
+    .unwrap();
+    let store = storage.client();
+    let model = ModelClient::scripted(replies.into_iter().map(Into::into));
+    let resources = RunResources::single(1, config.concurrency().clone())
+        .with_workspace("practice", &fixture.root.join("workspace"))
+        .unwrap();
+    admit(&authority, &store, None).await.unwrap();
+    let run = run_admitted(
+        authority.clone(),
+        model.clone(),
+        store.clone(),
+        resources,
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .unwrap();
+    let Response::Events(events) = store
+        .execute(
+            Command::Events {
+                owner_id: authority.owner().into(),
+                run_id: authority.run_id().into(),
+                after: None,
+                limit: 100,
+            },
+            Instant::now() + Duration::from_secs(5),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("events")
+    };
+    storage.shutdown().await.unwrap();
+    assert_eq!(run.phase, "completed", "{:?}", run.terminal_reason);
+    assert_eq!(run.acceptance_status, "unchecked");
+    let tools: Vec<_> = events
+        .iter()
+        .filter(|event| event.kind == "tool_finished")
+        .collect();
+    assert_eq!(tools.len(), 18);
+    assert!(
+        tools
+            .iter()
+            .all(|event| event.data["evidence_id"].is_null())
+    );
+    assert!(
+        events.last().unwrap().data["counters"]["compactions"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    for request in model.captured_requests().unwrap() {
+        let request: Value = serde_json::from_slice(&request).unwrap();
+        assert!(serde_json::to_vec(&request["messages"]).unwrap().len() <= 12288);
+        let messages = request["messages"].as_array().unwrap();
+        for (index, message) in messages.iter().enumerate() {
+            if message["role"] == "tool" {
+                assert_eq!(
+                    messages[index - 1]["tool_calls"][0]["id"],
+                    message["tool_call_id"]
+                );
+            }
+        }
+    }
+    drop(model);
+    drop(store);
+    drop(fixture);
+    assert_eq!(replay(&run, &events).unwrap().consistency, "consistent");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn compaction_replay_version_compatibility() {
+    let captured = capture(
+        false,
+        CaptureMode::Replay,
+        vec![read_file(), ModelReply::Answer("done".into())],
+    )
+    .await;
+    assert_eq!(
+        replay(&captured.run, &captured.events).unwrap().consistency,
+        "consistent"
+    );
+    let mut legacy = captured;
+    legacy.events[0].data["versions"] = json!({"capture":2,"core":1,"adapter":2,"tools":1,"checker":1,
+        "source_parser":1,"output_contract":1});
+    assert_eq!(replay_code(&legacy), "replay_versions_unsupported");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn continuation_replay_validates_the_recorded_reference_origin() {
+    let captured = capture_with_prior(
+        false,
+        CaptureMode::Replay,
+        vec![ModelReply::Answer("done".into())],
+        Some(kinesin::policy::PriorAnswer {
+            run_id: "11111111-1111-4111-8111-111111111111".into(),
+            answer: "earlier answer".into(),
+        }),
+    )
+    .await;
+    assert_eq!(
+        replay(&captured.run, &captured.events).unwrap().consistency,
+        "consistent"
+    );
+    for field in ["origin", "sha256"] {
+        let mut altered = captured.clone();
+        altered.events[0].data["replay"]["authority"]["input_sources"][2][field] = json!("forged");
+        altered.events[0].data["input_sources"][2][field] = json!("forged");
+        assert_eq!(replay_code(&altered), "replay_input_sources");
+    }
 }

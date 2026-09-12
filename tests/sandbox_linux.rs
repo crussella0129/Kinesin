@@ -5,9 +5,9 @@
 //! These run where the kernel enforces Landlock+seccomp (WSL kernel 6.6, the
 //! Ubuntu CI runner). The sandbox is mandatory: on a kernel that cannot enforce
 //! it, `run_command` refuses with `sandbox_unavailable` rather than running
-//! unconfined — so each enforcement test skips (with a note) when the kernel is
-//! not capable, and `sandbox_is_mandatory` asserts the enforce-or-refuse
-//! dichotomy holds on any kernel.
+//! unconfined. This suite requires actual enforcement: an unsupported kernel is
+//! a test failure, not a passing skip. Forced setup-failure tests separately
+//! establish fail-closed behavior in the tools unit suite.
 #![cfg(target_os = "linux")]
 
 use std::path::{Path, PathBuf};
@@ -68,16 +68,6 @@ async fn run(root: &Path, parts: &[&str]) -> ToolResult {
         .await
 }
 
-/// True when the kernel refused the command because the sandbox could not be
-/// established (the mandatory refuse path).
-fn refused(result: &ToolResult) -> bool {
-    result.status == ToolStatus::Error
-        && result
-            .error
-            .as_ref()
-            .is_some_and(|e| e.code == "sandbox_unavailable")
-}
-
 #[tokio::test]
 async fn sandbox_allows_in_workspace_work() {
     let (base, ws) = scratch();
@@ -88,13 +78,9 @@ async fn sandbox_allows_in_workspace_work() {
         &["cmd-fixture", "--read-file", inside.to_str().unwrap()],
     )
     .await;
-    if refused(&result) {
-        eprintln!("skip: kernel does not enforce the sandbox (mandatory refuse)");
-    } else {
-        assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
-        assert_eq!(body(&result)["stdout"], "READ_OK");
-        assert_eq!(body(&result)["exit_code"], 0);
-    }
+    assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+    assert_eq!(body(&result)["stdout"], "READ_OK");
+    assert_eq!(body(&result)["exit_code"], 0);
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -110,13 +96,9 @@ async fn sandbox_denies_out_of_workspace_read() {
         &["cmd-fixture", "--read-file", secret.to_str().unwrap()],
     )
     .await;
-    if refused(&result) {
-        eprintln!("skip: kernel does not enforce the sandbox (mandatory refuse)");
-    } else {
-        // The command runs but Landlock denies the read.
-        assert_eq!(body(&result)["stdout"], "READ_DENIED");
-        assert_eq!(body(&result)["exit_code"], 21);
-    }
+    assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+    assert_eq!(body(&result)["stdout"], "READ_DENIED");
+    assert_eq!(body(&result)["exit_code"], 21);
     let _ = std::fs::remove_dir_all(&base);
 }
 
@@ -124,29 +106,144 @@ async fn sandbox_denies_out_of_workspace_read() {
 async fn sandbox_denies_network_socket() {
     let (base, ws) = scratch();
     let result = run(&ws, &["cmd-fixture", "--open-socket"]).await;
-    if refused(&result) {
-        eprintln!("skip: kernel does not enforce the sandbox (mandatory refuse)");
-    } else {
-        // seccomp denies the `socket` syscall.
-        assert_eq!(body(&result)["stdout"], "SOCKET_DENIED");
-        assert_eq!(body(&result)["exit_code"], 22);
-    }
+    assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+    assert_eq!(body(&result)["stdout"], "SOCKET_DENIED");
+    assert_eq!(body(&result)["exit_code"], 22);
     let _ = std::fs::remove_dir_all(&base);
 }
 
 #[tokio::test]
-async fn sandbox_is_mandatory() {
-    // On any kernel, a command either runs under the enforced sandbox (Ok) or is
-    // refused (sandbox_unavailable) — it is never run unconfined. This covers the
-    // refuse clause on kernels lacking Landlock, and the enforced path elsewhere.
+async fn sandbox_is_actually_available_on_the_test_platform() {
     let (base, ws) = scratch();
     let result = run(&ws, &["cmd-fixture", "--print", "ok"]).await;
-    if refused(&result) {
-        // mandatory refusal — nothing ran.
-        assert!(result.body.is_empty() || body(&result).get("stdout").is_none());
-    } else {
-        assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
-        assert_eq!(body(&result)["stdout"], "ok");
-    }
+    assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+    assert_eq!(body(&result)["stdout"], "ok");
     let _ = std::fs::remove_dir_all(&base);
+}
+
+#[tokio::test]
+async fn sandbox_denies_outside_truncate_but_allows_workspace_write_and_rename() {
+    let (base, ws) = scratch();
+    let outside = base.join("private-data");
+    std::fs::write(&outside, "preserve").unwrap();
+    let result = run(
+        &ws,
+        &["cmd-fixture", "--truncate-file", outside.to_str().unwrap()],
+    )
+    .await;
+    assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+    assert_eq!(body(&result)["stdout"], "TRUNCATE_DENIED\n");
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "preserve");
+    std::fs::create_dir(ws.join("nested")).unwrap();
+    let result = run(
+        &ws,
+        &[
+            "cmd-fixture",
+            "--write-file",
+            "inside",
+            "original",
+            "--truncate-file",
+            "inside",
+            "--rename-file",
+            "inside",
+            "nested/moved",
+        ],
+    )
+    .await;
+    assert_eq!(body(&result)["exit_code"], 0);
+    assert_eq!(std::fs::read(ws.join("nested/moved")).unwrap(), b"");
+    assert!(!ws.join("inside").exists());
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test]
+async fn sandbox_denies_executable_siblings_and_proc() {
+    let (base, ws) = scratch();
+    let executable_dir = PathBuf::from(env!("CARGO_BIN_EXE_cmd-fixture"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let secret = executable_dir.join(format!("private-probe-{}", uuid::Uuid::new_v4()));
+    std::fs::write(&secret, "synthetic secret").unwrap();
+    for path in [secret.as_path(), Path::new("/proc/version")] {
+        let result = run(&ws, &["cmd-fixture", "--read-file", path.to_str().unwrap()]).await;
+        assert_eq!(result.status, ToolStatus::Ok, "{:?}", result.error);
+        assert_eq!(body(&result)["stdout"], "READ_DENIED");
+    }
+    std::fs::remove_file(secret).unwrap();
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test]
+async fn sandbox_denies_io_uring_and_process_group_escape() {
+    let (base, ws) = scratch();
+    for name in [
+        "uring-setup",
+        "uring-enter",
+        "uring-register",
+        "setpgid",
+        "unshare",
+        "setns",
+        "clone3",
+    ] {
+        let result = run(&ws, &["cmd-fixture", "--probe-syscall", name]).await;
+        assert_eq!(body(&result)["stdout"], "SYSCALL_DENIED\n", "{name}");
+        assert_eq!(body(&result)["exit_code"], 0, "{name}");
+    }
+    let result = run(&ws, &["cmd-fixture", "--spawn-session-probe"]).await;
+    assert_eq!(body(&result)["stdout"], "SYSCALL_DENIED\n");
+    assert_eq!(body(&result)["exit_code"], 0);
+    let result = run(
+        &ws,
+        &["cmd-fixture", "--probe-namespace-clone", "--spawn-thread"],
+    )
+    .await;
+    assert_eq!(body(&result)["stdout"], "SYSCALL_DENIED\nTHREAD_OK\n");
+    assert_eq!(body(&result)["exit_code"], 0);
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[tokio::test]
+async fn sandbox_denies_x32_syscalls_before_kernel_abi_dispatch() {
+    let (base, ws) = scratch();
+    for name in [
+        "x32-getpid",
+        "x32-socket",
+        "x32-setpgid",
+        "x32-setsid",
+        "x32-legacy-first",
+        "x32-legacy-last",
+    ] {
+        let result = run(&ws, &["cmd-fixture", "--probe-syscall", name]).await;
+        assert_eq!(result.status, ToolStatus::Ok, "{name}: {:?}", result.error);
+        // Require our EPERM policy action, including on kernels which otherwise
+        // return ENOSYS for unsupported x32; kernel non-support cannot pass this.
+        assert_eq!(body(&result)["stdout"], "SYSCALL_DENIED\n", "{name}");
+        assert_eq!(body(&result)["exit_code"], 0, "{name}");
+    }
+    let _ = std::fs::remove_dir_all(base);
+}
+
+#[tokio::test]
+async fn sandbox_closes_inherited_non_stdio_descriptors() {
+    use std::os::fd::AsRawFd;
+    let (base, ws) = scratch();
+    let secret = base.join("private-descriptor");
+    std::fs::write(&secret, "synthetic").unwrap();
+    let file = std::fs::File::open(secret).unwrap();
+    // SAFETY: file owns this valid descriptor throughout the child execution.
+    // Clear CLOEXEC only on this test-owned synthetic file, not an application FD.
+    assert_eq!(
+        unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETFD, 0) },
+        0
+    );
+    let result = run(
+        &ws,
+        &["cmd-fixture", "--read-fd", &file.as_raw_fd().to_string()],
+    )
+    .await;
+    assert_eq!(body(&result)["stdout"], "FD_READ_DENIED\n");
+    drop(file);
+    let _ = std::fs::remove_dir_all(base);
 }
