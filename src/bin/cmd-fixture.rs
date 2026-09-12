@@ -129,6 +129,138 @@ fn main() {
                 }
                 let _ = out.flush();
             }
+            #[cfg(target_os = "linux")]
+            "--truncate-file" => {
+                let path = std::ffi::CString::new(value(&mut i)).unwrap();
+                // SAFETY: fixture-owned terminated path; mutation targets only
+                // the explicit synthetic test path supplied by the test.
+                let denied = unsafe { libc::truncate(path.as_ptr(), 0) } != 0;
+                println!(
+                    "{}",
+                    if denied {
+                        "TRUNCATE_DENIED"
+                    } else {
+                        "TRUNCATE_OK"
+                    }
+                );
+                if denied {
+                    exit_code = 25;
+                }
+            }
+            "--rename-file" => {
+                let from = value(&mut i);
+                let to = value(&mut i);
+                if std::fs::rename(from, to).is_err() {
+                    exit_code = 26;
+                }
+            }
+            #[cfg(target_os = "linux")]
+            "--read-fd" => {
+                let fd: i32 = value(&mut i).parse().unwrap();
+                let mut byte = [0_u8; 1];
+                // SAFETY: bounded initialized output and a numeric descriptor
+                // explicitly supplied by the synthetic inheritance test.
+                let read = unsafe { libc::pread(fd, byte.as_mut_ptr().cast(), 1, 0) };
+                println!(
+                    "{}",
+                    if read > 0 {
+                        "FD_READ_OK"
+                    } else {
+                        "FD_READ_DENIED"
+                    }
+                );
+            }
+            #[cfg(target_os = "linux")]
+            "--probe-syscall" => {
+                let name = value(&mut i);
+                let syscall = match name.as_str() {
+                    "uring-setup" => libc::SYS_io_uring_setup,
+                    "uring-enter" => libc::SYS_io_uring_enter,
+                    "uring-register" => libc::SYS_io_uring_register,
+                    "setpgid" => libc::SYS_setpgid,
+                    "setsid" => libc::SYS_setsid,
+                    "unshare" => libc::SYS_unshare,
+                    "setns" => libc::SYS_setns,
+                    "clone3" => libc::SYS_clone3,
+                    _ => panic!("unsupported syscall probe"),
+                };
+                // SAFETY: zero arguments are invalid for io_uring or request a
+                // self group/session change; no foreign pointer is dereferenced.
+                let result = unsafe {
+                    libc::syscall(
+                        syscall, 0_usize, 0_usize, 0_usize, 0_usize, 0_usize, 0_usize,
+                    )
+                };
+                let expected = if name == "clone3" {
+                    libc::ENOSYS
+                } else {
+                    libc::EPERM
+                };
+                let denied = result == -1
+                    && std::io::Error::last_os_error().raw_os_error() == Some(expected);
+                println!(
+                    "{}",
+                    if denied {
+                        "SYSCALL_DENIED"
+                    } else {
+                        "SYSCALL_NOT_DENIED"
+                    }
+                );
+                if !denied {
+                    exit_code = 27;
+                }
+            }
+            #[cfg(target_os = "linux")]
+            "--probe-namespace-clone" => {
+                // SAFETY: the filter must deny namespace clone before argument
+                // validation; zero pointers do not name parent memory to write.
+                let result = unsafe {
+                    libc::syscall(
+                        libc::SYS_clone,
+                        libc::CLONE_NEWUSER | libc::SIGCHLD,
+                        0_usize,
+                        0_usize,
+                        0_usize,
+                        0_usize,
+                    )
+                };
+                if result == 0 {
+                    std::process::exit(29);
+                }
+                let denied = result == -1
+                    && std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
+                if result > 0 {
+                    // SAFETY: this is the PID returned by our own unexpected
+                    // successful clone; reap it so a failed probe leaks nothing.
+                    unsafe {
+                        libc::waitpid(result as libc::pid_t, std::ptr::null_mut(), 0);
+                    }
+                }
+                println!(
+                    "{}",
+                    if denied {
+                        "SYSCALL_DENIED"
+                    } else {
+                        "SYSCALL_NOT_DENIED"
+                    }
+                );
+                if !denied {
+                    exit_code = 29;
+                }
+            }
+            "--spawn-thread" => {
+                std::thread::spawn(|| println!("THREAD_OK")).join().unwrap();
+            }
+            #[cfg(target_os = "linux")]
+            "--spawn-session-probe" => {
+                // A grandchild is not a group leader, so setsid would succeed
+                // without the filter; testing it in the leader is insufficient.
+                let status = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--probe-syscall", "setsid"])
+                    .status()
+                    .unwrap();
+                exit_code = status.code().unwrap_or(28);
+            }
             "--open-socket" => {
                 // Probe network confinement: creating a UDP socket exercises the
                 // `socket` syscall. Denied (e.g. by seccomp) => 22.

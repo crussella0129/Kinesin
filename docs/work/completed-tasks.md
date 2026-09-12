@@ -244,3 +244,10 @@
 - **Completed:** 2026-09-12T15:30:05Z
 - **Files modified:** src/core.rs, src/model.rs, src/policy.rs, src/runner.rs, src/replay.rs, tests/replay.rs, tests/live_evaluation.rs, tests/runner_tools.rs
 - **Commit:** `1f8c9a8f1be636fc37edefaa0d51e3f15a931581`
+
+## T-005 (sprint 10)
+- **Description:** Required fully enforced Landlock ABI v3 and seccomp, narrowed runtime grants and exact executable access, protected private config/state placement, closed inherited non-stdio descriptors, denied io_uring and process-group/namespace escape while preserving normal threads/processes. Actual WSL Linux command 12 and mandatory sandbox 8 tests passed without skips, plus forced-refusal/partial-enforcement and private-root regressions. Windows command 12 and config 27 tests passed; affected Windows/Linux clippy and rustfmt passed. Includes T-008's HTTPS origin rule and address-family regression. Documentation reconciles supported content operations and residual metadata/same-user limits in T-009.
+- **Intent:** [INT-0022](../intents/INT-0022-completed-contract-repairs.md)
+- **Completed:** 2026-09-12T15:30:55Z
+- **Files modified:** src/tools.rs, src/config.rs, src/bin/cmd-fixture.rs, tests/sandbox_linux.rs
+- **Commit:** PENDING

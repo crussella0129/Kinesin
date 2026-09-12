@@ -647,6 +647,13 @@ impl Config {
                     return Err("duplicate command in the allow-list".into());
                 }
             }
+            #[cfg(target_os = "linux")]
+            if grants_run_command {
+                crate::tools::validate_command_private_paths(
+                    &workspace.commands,
+                    &[state_dir, &config.config_path],
+                )?;
+            }
         }
         let allow_public = config.allow_public_endpoints;
         for model in &mut config.models {
@@ -1017,12 +1024,15 @@ fn validate_origin(raw: &str, allow_public: bool) -> Result<String, String> {
     if url.scheme() != "http" && url.scheme() != "https" {
         return Err("model origin must use http or https".into());
     }
-    // Address-privacy policy: loopback and private/overlay addresses may be
-    // reached over plaintext HTTP because the local host or the overlay
-    // (WireGuard/Tailscale) already confines and encrypts the traffic. A public
-    // address is refused unless the operator opts in, and even then only over
-    // HTTPS — plaintext must never cross the open internet.
+    // A private address does not prove an encrypted route. Require TLS for
+    // every non-loopback URL, independently of the public-destination opt-in.
+    // An operator-managed encrypted tunnel may terminate at a loopback URL;
+    // its endpoint identity and remote exposure are deployment responsibilities.
     match origin_reach(url.host().expect("host presence checked above")) {
+        OriginReach::Loopback => {}
+        OriginReach::Private if url.scheme() != "https" => {
+            return Err("a non-loopback model origin requires HTTPS".into());
+        }
         OriginReach::Private => {}
         OriginReach::Public => {
             if !allow_public {
@@ -1042,28 +1052,36 @@ fn validate_origin(raw: &str, allow_public: bool) -> Result<String, String> {
 /// Whether a model origin's host is confined to the local host or a
 /// private/overlay network, or is publicly routable.
 enum OriginReach {
+    Loopback,
     Private,
     Public,
 }
 
-/// Classify a host for the address-privacy policy. Loopback, RFC1918 IPv4, the
-/// CGNAT range `100.64.0.0/10` (used by Tailscale), and IPv6 unique-local
-/// `fc00::/7` count as private/overlay. A non-`localhost` domain is treated as
+/// Classify reachability independently from confidentiality. RFC1918 IPv4,
+/// CGNAT `100.64.0.0/10`, and IPv6 ULA `fc00::/7` are private, but still require
+/// HTTPS unless they are loopback. A non-`localhost` domain is treated as
 /// public because a name cannot be proven to resolve onto an overlay here.
 fn origin_reach(host: url::Host<&str>) -> OriginReach {
     match host {
         url::Host::Ipv4(ip) => {
             let octets = ip.octets();
             let cgnat = octets[0] == 100 && (64..=127).contains(&octets[1]);
-            if ip.is_loopback() || ip.is_private() || cgnat {
+            if ip.is_loopback() {
+                OriginReach::Loopback
+            } else if ip.is_private() || cgnat {
                 OriginReach::Private
             } else {
                 OriginReach::Public
             }
         }
         url::Host::Ipv6(ip) => {
+            if let Some(mapped) = ip.to_ipv4_mapped() {
+                return origin_reach(url::Host::Ipv4(mapped));
+            }
             let unique_local = ip.octets()[0] & 0xfe == 0xfc;
-            if ip.is_loopback() || unique_local {
+            if ip.is_loopback() {
+                OriginReach::Loopback
+            } else if unique_local {
                 OriginReach::Private
             } else {
                 OriginReach::Public
@@ -1071,7 +1089,7 @@ fn origin_reach(host: url::Host<&str>) -> OriginReach {
         }
         url::Host::Domain(host) => {
             if host == "localhost" {
-                OriginReach::Private
+                OriginReach::Loopback
             } else {
                 OriginReach::Public
             }
@@ -1218,6 +1236,27 @@ allow_replay = false
 mod tests {
     use super::test_support::*;
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn command_runtime_grants_cannot_cover_private_state() {
+        let fixture = Fixture::new();
+        let text = BASE
+            .replace(
+                "state/kinesin.sqlite",
+                "/usr/kinesin-private-probe/kinesin.sqlite",
+            )
+            .replace(
+                "tools = [\"read_file\"]",
+                "tools = [\"read_file\", \"run_command\"]\ncommands = [\"echo\"]",
+            );
+        let error = fixture.parse(&text).unwrap_err();
+        assert_eq!(
+            error,
+            "private state and configuration must be disjoint from command sandbox runtime grants"
+        );
+        assert!(!std::path::Path::new("/usr/kinesin-private-probe").exists());
+    }
 
     #[test]
     fn config_resolves_relative_to_its_location_without_creating_state() {
@@ -1629,20 +1668,25 @@ mod tests {
         assert!(validate_origin("http://127.0.0.1:8080", false).is_ok());
         assert!(validate_origin("http://localhost:8080", false).is_ok());
         assert!(validate_origin("http://[::1]:8080", false).is_ok());
+        assert!(validate_origin("http://[::ffff:127.0.0.1]:8080", false).is_ok());
     }
 
     #[test]
-    fn origin_accepts_private_and_overlay_http() {
-        // RFC1918, CGNAT 100.64.0.0/10 (Tailscale), and IPv6 ULA fc00::/7 are
-        // private/overlay: plaintext HTTP is admissible without opting in.
+    fn remote_plaintext_is_rejected() {
+        // Private address classes and an explicit public opt-in do not prove
+        // encryption. Apply the confidentiality gate independently to both.
         for origin in [
             "http://192.168.1.10:8080",
             "http://10.0.0.5:8080",
             "http://172.16.4.2:8080",
             "http://100.100.20.30:8080",
             "http://[fd7a:1234::1]:8080",
+            "http://[::ffff:192.168.1.10]:8080",
         ] {
-            assert!(validate_origin(origin, false).is_ok(), "{origin}");
+            assert!(validate_origin(origin, false).is_err(), "{origin}");
+            assert!(validate_origin(origin, true).is_err(), "{origin}");
+            let secure = origin.replacen("http:", "https:", 1);
+            assert!(validate_origin(&secure, false).is_ok(), "{secure}");
         }
         // A non-overlay CGNAT-adjacent address (100.128.x) is still public.
         assert!(validate_origin("http://100.128.0.1:8080", false).is_err());

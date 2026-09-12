@@ -1042,7 +1042,20 @@ impl CommandRunner {
                 "Command deadline elapsed before spawn.",
             );
         }
-        let mut command = tokio::process::Command::new(&argv[0]);
+        #[cfg(target_os = "linux")]
+        let executable = match sandbox_linux::resolve_binary(&argv[0]) {
+            Some(path) => path,
+            None => {
+                return ToolResult::failure(
+                    ToolStatus::Error,
+                    "spawn_failed",
+                    "The command could not be started.",
+                );
+            }
+        };
+        #[cfg(not(target_os = "linux"))]
+        let executable = PathBuf::from(&argv[0]);
+        let mut command = tokio::process::Command::new(&executable);
         command
             .args(&argv[1..])
             .current_dir(&self.root)
@@ -1058,11 +1071,19 @@ impl CommandRunner {
         // Mandatory — if the kernel cannot enforce it, refuse rather than run the
         // command unconfined.
         #[cfg(target_os = "linux")]
-        if let Err((code, message)) = sandbox_linux::arm(&mut command, &self.root, &argv[0]) {
+        if let Err((code, message)) = sandbox_linux::arm(&mut command, &self.root, &executable) {
             return ToolResult::failure(ToolStatus::Error, code, message);
         }
         let mut child = match OwnedProcess::spawn(&mut command) {
             Ok(child) => child,
+            #[cfg(target_os = "linux")]
+            Err(error) if error.raw_os_error() == Some(libc::EOPNOTSUPP) => {
+                return ToolResult::failure(
+                    ToolStatus::Error,
+                    "sandbox_unavailable",
+                    "The required command sandbox could not be applied; command refused.",
+                );
+            }
             Err(_) => {
                 return ToolResult::failure(
                     ToolStatus::Error,
@@ -1139,16 +1160,27 @@ mod sandbox_linux {
     use std::path::Path;
 
     use landlock::{
-        ABI, Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus,
-        path_beneath_rules,
+        ABI, Access, AccessFs, CompatLevel, Compatible, PathBeneath, PathFd, Ruleset, RulesetAttr,
+        RulesetCreatedAttr, RulesetStatus, path_beneath_rules,
     };
-    use seccompiler::{BpfProgram, SeccompAction, SeccompFilter};
+    use seccompiler::{
+        BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
+        SeccompRule,
+    };
 
     /// Read-execute prefixes a normal command needs (dynamic linker, shared
     /// libraries, read-only config). Non-existent entries are skipped.
-    const SYSTEM_RX: &[&str] = &["/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc", "/proc"];
+    const SYSTEM_RX: &[&str] = &[
+        "/usr",
+        "/lib",
+        "/lib64",
+        "/bin",
+        "/sbin",
+        "/etc/ld.so.cache",
+        "/etc/localtime",
+    ];
 
-    fn network_syscalls() -> [i64; 9] {
+    fn denied_syscalls() -> [i64; 16] {
         [
             libc::SYS_socket,
             libc::SYS_socketpair,
@@ -1159,15 +1191,49 @@ mod sandbox_linux {
             libc::SYS_accept4,
             libc::SYS_sendto,
             libc::SYS_sendmsg,
+            libc::SYS_io_uring_setup,
+            libc::SYS_io_uring_enter,
+            libc::SYS_io_uring_register,
+            libc::SYS_setsid,
+            libc::SYS_setpgid,
+            libc::SYS_unshare,
+            libc::SYS_setns,
         ]
     }
 
-    fn build_bpf() -> Result<BpfProgram, ()> {
+    fn build_bpf() -> Result<[BpfProgram; 2], ()> {
         use std::collections::BTreeMap;
         let mut rules: BTreeMap<i64, Vec<seccompiler::SeccompRule>> = BTreeMap::new();
-        for syscall in network_syscalls() {
+        for syscall in denied_syscalls() {
             rules.insert(syscall, vec![]); // empty rule vec = match unconditionally
         }
+        // clone's flags are directly inspectable; keep ordinary process/thread
+        // creation, but prevent a new namespace from escaping the owned group.
+        let mut namespace_rules = Vec::new();
+        for flag in [
+            libc::CLONE_NEWCGROUP,
+            libc::CLONE_NEWIPC,
+            libc::CLONE_NEWNET,
+            libc::CLONE_NEWNS,
+            libc::CLONE_NEWPID,
+            libc::CLONE_NEWUSER,
+            libc::CLONE_NEWUTS,
+        ] {
+            let flag = flag as u64;
+            namespace_rules.push(
+                SeccompRule::new(vec![
+                    SeccompCondition::new(
+                        0,
+                        SeccompCmpArgLen::Qword,
+                        SeccompCmpOp::MaskedEq(flag),
+                        flag,
+                    )
+                    .map_err(|_| ())?,
+                ])
+                .map_err(|_| ())?,
+            );
+        }
+        rules.insert(libc::SYS_clone, namespace_rules);
         let arch = std::env::consts::ARCH.try_into().map_err(|_| ())?;
         let filter = SeccompFilter::new(
             rules,
@@ -1176,44 +1242,93 @@ mod sandbox_linux {
             arch,
         )
         .map_err(|_| ())?;
-        BpfProgram::try_from(filter).map_err(|_| ())
+        // clone3's flags are behind a pointer and cannot be safely inspected by
+        // seccomp. ENOSYS preserves libc's fallback to inspectable clone.
+        let clone3 = SeccompFilter::new(
+            BTreeMap::from([(libc::SYS_clone3, vec![])]),
+            SeccompAction::Allow,
+            SeccompAction::Errno(libc::ENOSYS as u32),
+            arch,
+        )
+        .map_err(|_| ())?;
+        Ok([
+            BpfProgram::try_from(filter).map_err(|_| ())?,
+            BpfProgram::try_from(clone3).map_err(|_| ())?,
+        ])
     }
 
     /// Resolve an allow-listed command name to its binary path so the sandbox can
     /// grant execute access to its location (system prefixes cover the common
     /// case; this also covers binaries elsewhere, e.g. a test fixture in target/).
-    fn resolve_binary(name: &str) -> Option<std::path::PathBuf> {
+    pub(super) fn resolve_binary(name: &str) -> Option<std::path::PathBuf> {
         let direct = Path::new(name);
         if direct.is_absolute() || name.contains('/') {
-            return direct.is_file().then(|| direct.to_path_buf());
+            return direct
+                .is_file()
+                .then(|| direct.canonicalize().ok())
+                .flatten();
         }
         let path = std::env::var_os("PATH")?;
         std::env::split_paths(&path)
             .map(|dir| dir.join(name))
             .find(|candidate| candidate.is_file())
+            .and_then(|candidate| candidate.canonicalize().ok())
     }
 
-    fn build_ruleset(root: &Path, bin: &str) -> Result<landlock::RulesetCreated, ()> {
-        // Read-execute prefixes: existing system dirs plus the directory of the
-        // resolved command binary (so it can be exec'd even outside /usr).
-        let mut read_paths: Vec<std::path::PathBuf> = SYSTEM_RX
+    pub(super) fn private_paths_disjoint(
+        commands: &[String],
+        private: &[&Path],
+    ) -> Result<(), String> {
+        let grants = SYSTEM_RX
+            .iter()
+            .filter_map(|path| Path::new(path).canonicalize().ok())
+            .chain(commands.iter().filter_map(|name| resolve_binary(name)));
+        for grant in grants {
+            if private
+                .iter()
+                .any(|path| path.starts_with(&grant) || grant.starts_with(path))
+            {
+                return Err("private state and configuration must be disjoint from command sandbox runtime grants".into());
+            }
+        }
+        Ok(())
+    }
+
+    fn build_ruleset(root: &Path, bin: &Path) -> Result<landlock::RulesetCreated, ()> {
+        // Grant the executable file itself, never its parent directory. Broad
+        // runtime exceptions are checked against private roots at config load.
+        let read_paths: Vec<std::path::PathBuf> = SYSTEM_RX
             .iter()
             .map(std::path::PathBuf::from)
             .filter(|p| p.exists())
             .collect();
-        if let Some(dir) = resolve_binary(bin).and_then(|b| b.parent().map(Path::to_path_buf)) {
-            read_paths.push(dir);
-        }
-        let abi = ABI::V1;
+        let abi = ABI::V3;
         Ruleset::default()
+            .set_compatibility(CompatLevel::HardRequirement)
             .handle_access(AccessFs::from_all(abi))
             .map_err(|_| ())?
             .create()
             .map_err(|_| ())?
             .add_rules(path_beneath_rules(read_paths, AccessFs::from_read(abi)))
             .map_err(|_| ())?
-            .add_rules(path_beneath_rules([root], AccessFs::from_all(abi)))
+            .add_rule(PathBeneath::new(
+                PathFd::new(bin).map_err(|_| ())?,
+                AccessFs::ReadFile | AccessFs::Execute,
+            ))
+            .map_err(|_| ())?
+            .add_rule(PathBeneath::new(
+                PathFd::new(root).map_err(|_| ())?,
+                AccessFs::from_all(abi),
+            ))
             .map_err(|_| ())
+    }
+
+    fn require_full_enforcement(status: RulesetStatus, no_new_privs: bool) -> std::io::Result<()> {
+        if status != RulesetStatus::FullyEnforced || !no_new_privs {
+            Err(std::io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+        } else {
+            Ok(())
+        }
     }
 
     /// Arm the mandatory sandbox on `command`. Builds the ruleset and BPF in the
@@ -1221,7 +1336,7 @@ mod sandbox_linux {
     pub fn arm(
         command: &mut tokio::process::Command,
         root: &Path,
-        bin: &str,
+        bin: &Path,
     ) -> Result<(), (&'static str, &'static str)> {
         const UNAVAILABLE: (&str, &str) = (
             "sandbox_unavailable",
@@ -1237,22 +1352,103 @@ mod sandbox_linux {
         unsafe {
             command.pre_exec(move || {
                 use std::io::Error;
-                let created = ruleset
-                    .take()
-                    .ok_or_else(|| Error::other("sandbox armed twice"))?;
-                let status = created
-                    .restrict_self()
-                    .map_err(|_| Error::other("landlock restrict_self failed"))?;
-                if status.ruleset == RulesetStatus::NotEnforced {
-                    return Err(Error::other("landlock not enforced"));
+                let unavailable = || Error::from_raw_os_error(libc::EOPNOTSUPP);
+                let created = ruleset.take().ok_or_else(unavailable)?;
+                let status = created.restrict_self().map_err(|_| unavailable())?;
+                require_full_enforcement(status.ruleset, status.no_new_privs)?;
+                // Mark all non-stdio descriptors close-on-exec. Closing them
+                // immediately would also close Rust's exec-error pipe. Landlock
+                // cannot restrict handles inherited from before enforcement.
+                if libc::syscall(
+                    libc::SYS_close_range,
+                    3_u32,
+                    u32::MAX,
+                    libc::CLOSE_RANGE_CLOEXEC,
+                ) == -1
+                {
+                    return Err(unavailable());
                 }
-                seccompiler::apply_filter(&bpf)
-                    .map_err(|_| Error::other("seccomp apply failed"))?;
+                for filter in &bpf {
+                    seccompiler::apply_filter(filter).map_err(|_| unavailable())?;
+                }
                 Ok(())
             });
         }
         Ok(())
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn partial_or_missing_enforcement_is_refused() {
+            for (status, no_new_privs) in [
+                (RulesetStatus::PartiallyEnforced, true),
+                (RulesetStatus::NotEnforced, true),
+                (RulesetStatus::FullyEnforced, false),
+            ] {
+                assert_eq!(
+                    require_full_enforcement(status, no_new_privs)
+                        .unwrap_err()
+                        .raw_os_error(),
+                    Some(libc::EOPNOTSUPP)
+                );
+            }
+            assert!(require_full_enforcement(RulesetStatus::FullyEnforced, true).is_ok());
+        }
+
+        #[tokio::test]
+        async fn sandbox_setup_failure_never_executes_child() {
+            use std::collections::BTreeMap;
+            for syscall in [libc::SYS_landlock_restrict_self, libc::SYS_seccomp] {
+                let root =
+                    std::env::temp_dir().join(format!("kinesin-refuse-{}", uuid::Uuid::new_v4()));
+                std::fs::create_dir(&root).unwrap();
+                let marker = root.join("must-not-exist");
+                let mut command = tokio::process::Command::new("/bin/touch");
+                command.arg(&marker);
+                let arch = std::env::consts::ARCH.try_into().unwrap();
+                let filter = SeccompFilter::new(
+                    BTreeMap::from([(syscall, vec![])]),
+                    SeccompAction::Allow,
+                    SeccompAction::Errno(libc::EPERM as u32),
+                    arch,
+                )
+                .unwrap();
+                let bpf = BpfProgram::try_from(filter).unwrap();
+                // SAFETY: child-only test fault injection applies a parent-built
+                // filter; the parent process is never restricted. The following
+                // sandbox callback must fail before /bin/touch can execute.
+                unsafe {
+                    command.pre_exec(move || {
+                        seccompiler::apply_filter(&bpf)
+                            .map_err(|_| std::io::Error::from_raw_os_error(libc::EOPNOTSUPP))
+                    });
+                }
+                arm(&mut command, &root, Path::new("/bin/touch")).unwrap();
+                match crate::process::OwnedProcess::spawn(&mut command) {
+                    Err(error) => assert_eq!(error.raw_os_error(), Some(libc::EOPNOTSUPP)),
+                    Ok(mut child) => {
+                        child.terminate_and_wait().await.unwrap();
+                        panic!("sandbox setup failure executed the child");
+                    }
+                }
+                assert!(!marker.exists());
+                std::fs::remove_dir(root).unwrap();
+            }
+        }
+    }
+}
+
+/// Trusted Linux startup validates every runtime read exception, in addition to
+/// the workspace/state separation already enforced by configuration.
+#[cfg(target_os = "linux")]
+pub(crate) fn validate_command_private_paths(
+    commands: &[String],
+    private: &[&Path],
+) -> Result<(), String> {
+    sandbox_linux::private_paths_disjoint(commands, private)
 }
 
 /// Grace for the reader tasks to finish after the child is awaited or killed.
