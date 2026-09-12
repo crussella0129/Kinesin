@@ -8,6 +8,6 @@
 - **Bundle version:** 0.22.0
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
-- **Summary:** (one-line description of sprint goal, filled after Plan Phase)
-- **Intents:** (filled after Plan Phase)
+- **Summary:** Integrate operator-approved local (stdio) MCP tool servers on the official rmcp SDK — generalize the closed ToolName enum to a ToolRef (compiled ∪ MCP), declare+validate servers in config, discover tool schemas and freeze them into the run authority, emit them to the model, and dispatch tools/call through the existing authority/allow-list/byte/time gates as untrusted evidence-free observations, reproducible under deterministic replay without reconnecting (INT-0005). Remote/HTTP+OAuth split to INT-0020.
+- **Intents:** [INT-0005](../../intents/INT-0005-mcp-tool-servers.md) — planned
 - **Completion evidence:** (filled at Loop Phase)
