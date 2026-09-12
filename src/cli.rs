@@ -420,6 +420,13 @@ impl Startup {
         self.job_continued(submission, None)
     }
 
+    /// Discover and attach the run's MCP tools before submission. Delegates to the
+    /// shared `Job::discover_mcp` choke point so the CLI and the loopback service
+    /// prepare MCP identically.
+    async fn prepare_mcp(&self, job: Job) -> Result<Job, String> {
+        job.discover_mcp(&self.config).await
+    }
+
     fn job_continued(
         &self,
         submission: Submission,
@@ -662,6 +669,7 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
                 (Some((mut submission, allow_unchecked)), None) => {
                     let prior = resolve_continuation(&storage.client(), &mut submission).await?;
                     let job = startup.job_continued(submission, prior)?;
+                    let job = startup.prepare_mcp(job).await?;
                     run_single(&handle, job, allow_unchecked).await
                 }
                 (None, Some(reader)) => run_batch(&handle, &startup, reader, &interrupted).await,
@@ -1152,6 +1160,17 @@ async fn run_session(
                 continue;
             }
         };
+        let job = match startup.prepare_mcp(job).await {
+            Ok(job) => job,
+            Err(error) => {
+                emit(OutputLine::Error {
+                    index: None,
+                    reason: error,
+                })
+                .await?;
+                continue;
+            }
+        };
         let run_id = job.authority.run_id().to_owned();
         code = run_single(handle, job, true).await?;
         previous = Some(run_id);
@@ -1249,6 +1268,21 @@ async fn run_batch(
             parsed.and_then(|item| Ok((startup.job(item.submission)?, item.allow_unchecked)));
         let (job, allow_unchecked) = match prepared {
             Ok(prepared) => prepared,
+            Err(reason) => {
+                aggregate = aggregate_exit(aggregate, 1);
+                if let Err(error) = emit(OutputLine::Error {
+                    index: Some(index),
+                    reason,
+                })
+                .await
+                {
+                    output_failed = Some(error);
+                }
+                continue;
+            }
+        };
+        let job = match startup.prepare_mcp(job).await {
+            Ok(job) => job,
             Err(reason) => {
                 aggregate = aggregate_exit(aggregate, 1);
                 if let Err(error) = emit(OutputLine::Error {

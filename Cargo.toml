@@ -20,7 +20,17 @@ getrandom = "0.4.3"
 hyper = { version = "1.11.1", features = ["server", "http1"] }
 hyper-util = { version = "0.1.20", features = ["server", "http1", "tokio", "service"] }
 reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "stream"] }
+# client + child-process for reaching operator-declared servers over stdio;
+# server + transport-io + macros build the in-repo `mcp-fixture` test server.
+# These extra features enable already-present deps (schemars, pastey, rmcp-macros,
+# uuid, tokio/tokio-util) and pull no new crates, so the supply-chain gate is
+# unaffected.
+rmcp = { version = "3", features = ["client", "transport-child-process", "server", "transport-io", "macros"] }
 rusqlite = { version = "0.40.2", features = ["backup", "bundled"] }
+# Already in the tree via rmcp's server feature; named directly so the
+# mcp-fixture test server can derive JsonSchema for its tool arguments. No new
+# crate is added.
+schemars = "1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
@@ -37,6 +47,15 @@ uuid = { version = "1.26.0", features = ["v4"] }
 [[bin]]
 name = "cmd-fixture"
 path = "src/bin/cmd-fixture.rs"
+test = false
+doc = false
+
+# A minimal in-repo MCP server the tests/mcp.rs integration tests spawn over
+# stdio, so MCP coverage needs no external server or network. Test support only;
+# reached through CARGO_BIN_EXE_mcp-fixture.
+[[bin]]
+name = "mcp-fixture"
+path = "src/bin/mcp-fixture.rs"
 test = false
 doc = false
 

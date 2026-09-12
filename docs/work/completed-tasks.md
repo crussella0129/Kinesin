@@ -160,3 +160,52 @@
 - **Completed:** 2026-09-11T22:03:43Z
 - **Files modified:** tests/redteam.rs
 - **Commit:** `14fc67a8a2f87adecc498e27d0acf18b286c19e0`
+
+## T-001 (sprint 9)
+- **Description:** generalized the tool allow-list identity to `ToolRef` (config.rs) — `Compiled(ToolName)` ∪ `Mcp { server, tool }` with string serde (`mcp__<server>__<tool>`), `wire_name`/`is_mutating` (MCP = true, barred from checked runs)/`mints_evidence` (MCP = false)/`parse`; added `ToolName::from_wire` to DRY the wire→variant map. Changed `WorkspaceConfig.tools` and the per-owner override to `Vec<ToolRef>`, generalized `allows_tool` (policy) and every allow-list call site in config/policy/runner/replay to `ToolRef` (compiled arms wrapped `ToolRef::Compiled`); existing TOML tool configs parse unchanged. Unit tests `toolref_compiled_roundtrip`, `toolref_mcp_parse`, `toolref_mcp_barred_from_checked_run`.
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T00:46:06Z
+- **Files modified:** src/config.rs, src/policy.rs, src/runner.rs, src/replay.rs, docs/intents/INT-0005-mcp-tool-servers.md
+- **Commit:** `8d13879d67c61fac9fb38bbc84ccc9a9f78a842e`
+
+## T-002 (sprint 9)
+- **Description:** added the operator MCP server declarations — a root `[[mcp.servers]]` section (`McpConfig`/`McpServer { id, command }`) on `Config`/`ConfigFile`, and validation in `Config::parse`: unique server ids (via `unique_ids`), a non-empty command with a bare executable, a server id free of the `__` namespacing separator, and the identity gate — every `mcp__server__tool` referenced by any workspace or owner allow-list must name a declared server (else parse fails). Tests `mcp_config_accepts_declared_server_and_tool`, `mcp_config_rejects_undeclared_server`, `mcp_config_rejects_dup_or_empty`.
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T00:52:00Z
+- **Files modified:** src/config.rs
+- **Commit:** `166ecdd482bc071929f27a9858e76f5b4da54700`
+
+## T-003 (sprint 9)
+- **Description:** added the `mcp` module (`src/mcp.rs`): `McpToolDef { server, tool, description, input_schema }` (the frozen tool record), `McpClientPool` with `connect` (spawn+`initialize` each needed operator-declared server over the official rmcp v3.3.0 `TokioChildProcess` stdio transport, bounded by `MCP_STARTUP_TIMEOUT`) and `discover` (list each server's tools once, extract the allow-listed tools' schemas, error on an absent tool or a list/connect timeout — C-003), plus `needed_servers`. Froze the discovered set into the run: `mcp_tools: Vec<McpToolDef>` on both `RunAuthority` (with `mcp_tools()`/`with_mcp_tools`) and `FrozenContext`, each `#[serde(default, skip_serializing_if = "Vec::is_empty")]` so a non-MCP run's frozen bytes and pre-feature journals stay byte-identical (replay parity). Added a per-run `mcp` pool field + `with_mcp` builder to `RunResources`, `Config::mcp_servers()`, and the CLI discovery-before-submit step (`Startup::prepare_mcp`) wired into the single, interactive-session, and batch run paths. Test `non_mcp_authority_omits_mcp_tools_while_added_ones_freeze`; non-MCP replay parity confirmed by the full replay suite staying green.
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T01:08:08Z
+- **Files modified:** Cargo.toml, Cargo.lock, src/mcp.rs, src/lib.rs, src/policy.rs, src/replay.rs, src/runner.rs, src/config.rs, src/cli.rs
+- **Commit:** `9e85b5388400b1dacc1c3e4eadd093d13e92d932`
+
+## T-004 (sprint 9)
+- **Description:** emit discovered MCP tool schemas to the model, identical on live and replay. Changed `ModelOptions.tools` from `Vec<String>` to `Vec<ToolDef>` (`Compiled(name)` | `Mcp { name, description, input_schema }`, with `From<&str>`/`From<String>`); the `prepare` compiler now emits the fixed schema for a compiled tool and the server-discovered `input_schema` verbatim for an MCP tool. Added the shared `model::tool_defs(allow, mcp)` builder (preserves allow-list order, pairs each MCP ref with its frozen def) and pointed both `runner::options` and `FrozenContext::options` at it, so both paths read the same frozen source and produce byte-identical requests. Compiled-tool schemas and replay parity confirmed unchanged (lib/model_protocol/replay/runner_tools green).
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T05:12:58Z
+- **Files modified:** src/model.rs, src/runner.rs, src/replay.rs
+- **Commit:** `a8f909ca0b7c1d62d2671c53f3ccaa8e009be46b`
+
+## T-005 (sprint 9)
+- **Description:** live MCP dispatch through the existing gate. Added `McpClientPool::call` (invoke `tools/call` over the run's stdio session, bounded by the tool permit's deadline + cancellation, mapping `CallToolResult` content into an untrusted `ToolResult` — text concatenated, non-text noted by kind, body bounded to `max_tool_result_bytes` on a char boundary, `is_error` → status Error, mints no evidence), plus `validate_args` (lightweight object + required-key check against the discovered `input_schema`; C-002) and `bound`. Restructured the runner dispatch ladder: `ToolName::from_wire` for compiled tools, else match the frozen `mcp_tools` set; an MCP call validates its args and is denied pre-dispatch when unapproved or malformed (no server contacted — C-001); execution routes an approved MCP call to the pool as a sibling of the reader/writer/command paths, holding the permit. Unit tests `validate_args_requires_object_and_required_keys`, `bound_truncates_on_a_char_boundary`, `tooldef_wire_name_matches_toolref` (fixture-driven approved/denied/byte-cap tests land with T-007).
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T05:19:04Z
+- **Files modified:** src/mcp.rs, src/runner.rs
+- **Commit:** `db3ee55fdd9ea93aef1db8b2e8aee0bfab196727`
+
+## T-006 (sprint 9)
+- **Description:** replay MCP dispatch without reconnecting. Extended the replay dispatch ladder (replay.rs) to recognize an MCP tool from the frozen `mcp_tools` set (never a live client) and mirror the live denial ladder (`ToolName::from_wire`-equivalent compiled match kept as-is incl. its run_command omission; else frozen-set lookup + `validate_args`; well-formed-but-ungranted `mcp__` → tool_denied; else unknown_tool), so the recorded `dispatch` classification validates consistently and the recorded observation is reproduced. No `McpClientPool` is constructed on the replay path. Existing replay suite green; the fixture-driven `replay_reproduces_mcp_run_without_reconnect` + e2e land with T-007.
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T05:20:50Z
+- **Files modified:** src/replay.rs
+- **Commit:** `4c9b2c2630da64049480034186870930b09f40d9`
+
+## T-007 (sprint 9)
+- **Description:** in-repo fixture MCP server + integration tests. Added `src/bin/mcp-fixture.rs` — a stdio MCP server built on the same rmcp SDK (guaranteeing the handshake) exposing `echo` (verbatim) and `poison` (prompt-injection text in both its description and result), plus a `--hang` mode for the discovery-timeout test. Enabled rmcp `server`/`transport-io`/`macros` features and named `schemars` directly (all already in the tree via rmcp — no new crates; `cargo deny`/`audit` stay green: 262 deps, 0 vulns). `tests/mcp.rs` drives real runs against the fixture via the scripted-model harness: `mcp_approved_call_bounded_no_evidence`, `mcp_result_truncated_at_byte_cap`, `mcp_unapproved_call_denied`, `mcp_poison_description_and_result_are_data` (injection is data — no owned.txt, allow-list unchanged), `mcp_missing_allowlisted_tool_fails_start`, `mcp_discovery_timeout_fails_start` (C-003), and `e2e_mcp_echo_run_and_replay` (replay reproduces consistent without reconnecting — T-006).
+- **Intent:** [INT-0005](../intents/INT-0005-mcp-tool-servers.md)
+- **Completed:** 2026-09-12T05:41:45Z
+- **Files modified:** Cargo.toml, Cargo.lock, src/bin/mcp-fixture.rs, tests/mcp.rs
+- **Commit:** `73fb0d781d845cdadac609e92e60ef19b46a642f`

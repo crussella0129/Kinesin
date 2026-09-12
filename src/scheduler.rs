@@ -25,6 +25,65 @@ pub struct Job {
     pub display: Option<crate::model::TextObserver>,
 }
 
+impl Job {
+    /// If the run's allow-list names MCP tools, connect to their operator-declared
+    /// servers, discover the tools' schemas, freeze them into the authority, and
+    /// attach the live pool to the resources — all before submission, so the
+    /// journaled authority carries the frozen set and the run can dispatch. A run
+    /// with no MCP tools is returned unchanged, spawning nothing.
+    ///
+    /// This is the single MCP-preparation choke point: every submission path (the
+    /// CLI run/session/batch and the loopback service) routes through it, so MCP
+    /// tools are never silently unavailable on one path.
+    ///
+    /// The pool is per-run by design, not reused across a session's turns: each
+    /// run is an isolation boundary whose recorded observations are all replay
+    /// reproduces, so a server's cross-turn state must never leak into a run.
+    /// Batch items are independent runs for the same reason. The process-spawn
+    /// cost is bounded (`MCP_DISCOVERY_DEADLINE`, concurrent connects) and small
+    /// against model latency, so isolation is preferred over connection reuse.
+    pub async fn discover_mcp(self, config: &crate::config::Config) -> Result<Self, String> {
+        let needed = crate::mcp::needed_servers(&self.authority.workspace().tools);
+        if needed.is_empty() {
+            return Ok(self);
+        }
+        let Job {
+            authority,
+            client,
+            resources,
+            display,
+        } = self;
+        // One overall deadline over connect + discover, so a slow server cannot
+        // stall run start beyond a bounded window regardless of server count.
+        let prepared = tokio::time::timeout(crate::mcp::MCP_DISCOVERY_DEADLINE, async {
+            let pool = crate::mcp::McpClientPool::connect(
+                config.mcp_servers(),
+                &needed,
+                crate::mcp::MCP_STARTUP_TIMEOUT,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            let tools = pool
+                .discover(
+                    &authority.workspace().tools,
+                    crate::mcp::MCP_STARTUP_TIMEOUT,
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok::<_, String>((pool, tools))
+        })
+        .await
+        .map_err(|_| "mcp discovery exceeded its deadline".to_owned())??;
+        let (pool, tools) = prepared;
+        Ok(Job {
+            authority: authority.with_mcp_tools(tools),
+            client,
+            resources: resources.with_mcp(std::sync::Arc::new(pool)),
+            display,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ControllerStats {
     /// Includes admission, execution, finalization, and completed unjoined tasks.

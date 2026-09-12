@@ -1360,7 +1360,11 @@ fn escaped_len(text: &str) -> usize {
     text.chars().map(escaped_char_len).sum()
 }
 
-fn escaped_prefix(text: &str, max_escaped_bytes: usize) -> &str {
+/// The longest prefix of `text` whose JSON-escaped length fits `max_escaped_bytes`,
+/// cut on a character boundary. Shared with the MCP adapter so a server result is
+/// bounded exactly like a compiled tool's — accounting for escaping, not just raw
+/// bytes — before it is journaled.
+pub(crate) fn escaped_prefix(text: &str, max_escaped_bytes: usize) -> &str {
     let mut used = 0;
     for (offset, character) in text.char_indices() {
         used += escaped_char_len(character);

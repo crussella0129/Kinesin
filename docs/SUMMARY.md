@@ -20,6 +20,7 @@
   - [INT-0017 Human-approval gates & JIT privilege](intents/INT-0017-approval-gates-jit-privilege.md)
   - [INT-0018 Subagents & bounded parallel orchestration](intents/INT-0018-subagents-parallel-orchestration.md)
   - [INT-0019 Windows command sandboxing (AppContainer/LPAC)](intents/INT-0019-windows-command-sandboxing.md)
+  - [INT-0020 Remote MCP transport & delegated authorization](intents/INT-0020-remote-mcp-delegated-auth.md)
 - [The roadmap](roadmap.md)
 - [Threat model & assurance](threat-model.md)
 - [Tasks](work/tasks.md)
@@ -33,3 +34,4 @@
 - [Sprint 6](sprints/s6/sprint-meta.md)
 - [Sprint 7](sprints/s7/sprint-meta.md)
 - [Sprint 8](sprints/s8/sprint-meta.md)
+- [Sprint 9](sprints/s9/sprint-meta.md)

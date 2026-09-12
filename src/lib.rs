@@ -6,6 +6,7 @@ pub mod config;
 pub mod core;
 pub mod dispatch;
 pub mod ingress;
+pub mod mcp;
 pub mod model;
 pub mod operator;
 pub mod policy;

@@ -7,7 +7,9 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::config::{CaptureMode, Limits, ModelConfig, ToolName, WorkspaceConfig, validate_id};
+use crate::config::{
+    CaptureMode, Limits, ModelConfig, ToolName, ToolRef, WorkspaceConfig, validate_id,
+};
 use crate::core::{self, Effect, ModelReply, RunPhase, ToolCall};
 use crate::model::{self, ModelOptions};
 use crate::policy::{InputSource, TaskContract};
@@ -188,6 +190,11 @@ struct FrozenContext {
     prior: Option<crate::policy::PriorAnswer>,
     submission_sha256: String,
     input_sources: Vec<InputSource>,
+    /// Mirrors `RunAuthority.mcp_tools`; `skip_serializing_if` keeps a non-MCP
+    /// run's frozen bytes (and pre-feature journals) byte-identical, so the
+    /// `json!(frozen) == authority` replay-parity check still holds.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    mcp_tools: Vec<crate::mcp::McpToolDef>,
 }
 impl AssessmentContext for FrozenContext {
     fn owner(&self) -> &str {
@@ -226,12 +233,7 @@ impl FrozenContext {
             max_response_bytes: self.limits.max_response_bytes,
             stream: self.model.stream,
             cache_prompt: self.model.cache_prompt,
-            tools: self
-                .workspace
-                .tools
-                .iter()
-                .map(|tool| tool.as_str().into())
-                .collect(),
+            tools: crate::model::tool_defs(&self.workspace.tools, &self.mcp_tools),
             constraint,
         }
     }
@@ -259,7 +261,7 @@ impl FrozenContext {
                     .workspace
                     .tools
                     .iter()
-                    .map(|tool| tool.as_str())
+                    .map(|tool| tool.wire_name())
                     .collect::<BTreeSet<_>>()
                     .len()
                     == self.workspace.tools.len(),
@@ -306,7 +308,10 @@ impl FrozenContext {
                         && profile.checker == "file_fields_v1"
                         && profile.checker_version == 1
                         && (1..=4).contains(&profile.criteria.len())
-                        && self.workspace.tools.contains(&ToolName::ReadFile),
+                        && self
+                            .workspace
+                            .tools
+                            .contains(&ToolRef::Compiled(ToolName::ReadFile)),
                     "replay_task_identity",
                     seq,
                 )?;
@@ -630,35 +635,62 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     serde_json::from_value(finished.data["replay"]["observation"].clone())
                         .map_err(|_| error("replay_tool_input_missing", Some(finished.seq)))?;
                 let args = TypedToolArgs::parse(&call.arguments);
-                let tool = match call.name.as_str() {
-                    "read_file" => Some(ToolName::ReadFile),
-                    "list_files" => Some(ToolName::ListFiles),
-                    "search_files" => Some(ToolName::SearchFiles),
-                    "write_file" => Some(ToolName::WriteFile),
-                    "edit_file" => Some(ToolName::EditFile),
-                    "delete_file" => Some(ToolName::DeleteFile),
-                    "move_file" => Some(ToolName::MoveFile),
-                    _ => None,
+                // Mirror the live dispatch exactly (`ToolName::from_wire`, which
+                // recognizes every compiled tool including `run_command`). A
+                // narrower match here would classify a recorded run_command call as
+                // `unknown_tool` and diverge from the recorded `executed` dispatch.
+                let tool = ToolName::from_wire(&call.name);
+                // Recognize an MCP tool from the frozen discovered set — never a
+                // live reconnect — and mirror the live denial ladder so the recorded
+                // dispatch classification validates consistently.
+                let mcp_def = if tool.is_none() {
+                    frozen
+                        .mcp_tools
+                        .iter()
+                        .find(|def| def.wire_name() == call.name)
+                } else {
+                    None
                 };
-                let denial = match tool {
-                    None => Some(ToolResult::failure(
-                        ToolStatus::Denied,
-                        "unknown_tool",
-                        "Tool is not available",
-                    )),
-                    Some(name) if !frozen.workspace.tools.contains(&name) => {
+                let mcp_args = mcp_def
+                    .and_then(|def| crate::mcp::validate_args(&call.arguments, &def.input_schema));
+                let denial = if let Some(name) = tool {
+                    if !frozen.workspace.tools.contains(&ToolRef::Compiled(name)) {
                         Some(ToolResult::failure(
                             ToolStatus::Denied,
                             "tool_denied",
                             "Tool is not allowed",
                         ))
+                    } else if args.is_err() {
+                        Some(ToolResult::failure(
+                            ToolStatus::Denied,
+                            "invalid_arguments",
+                            "Tool arguments or resource path are invalid",
+                        ))
+                    } else {
+                        None
                     }
-                    Some(_) if args.is_err() => Some(ToolResult::failure(
+                } else if mcp_def.is_some() {
+                    if mcp_args.is_none() {
+                        Some(ToolResult::failure(
+                            ToolStatus::Denied,
+                            "invalid_arguments",
+                            "Tool arguments or resource path are invalid",
+                        ))
+                    } else {
+                        None
+                    }
+                } else if call.name.starts_with(crate::config::MCP_TOOL_PREFIX) {
+                    Some(ToolResult::failure(
                         ToolStatus::Denied,
-                        "invalid_arguments",
-                        "Tool arguments or resource path are invalid",
-                    )),
-                    _ => None,
+                        "tool_denied",
+                        "Tool is not allowed",
+                    ))
+                } else {
+                    Some(ToolResult::failure(
+                        ToolStatus::Denied,
+                        "unknown_tool",
+                        "Tool is not available",
+                    ))
                 };
                 ensure(
                     planned.data["dispatch"]
