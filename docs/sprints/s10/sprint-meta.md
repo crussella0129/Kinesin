@@ -11,6 +11,7 @@
 - **Summary:** Audit harness intents and repair execution, isolation, replay and transport contracts
 - **Intents:** [INT-0021](../../intents/INT-0021-harness-contract-review.md), [INT-0022](../../intents/INT-0022-completed-contract-repairs.md) — realized; remaining capability chapters stay proposed.
 - **Completion evidence:** INT-0021 and INT-0022 realized through all-intent audit and completed-contract repairs; accepted clean TEST critique, Windows303/Ubuntu315 CI on f3e3d0f, dependency gates, actual nighthawk serving/cache observations and disconnected pure replay; limits and unscheduled follow-ups preserved in the Book.
+- **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/11
 
 ## Build integration notes
 
