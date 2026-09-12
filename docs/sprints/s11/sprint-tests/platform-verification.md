@@ -39,6 +39,20 @@ retry succeeded. An additional replay attempt from the elevated cleanup context
 could not open the private capture; the original-context documented command
 passed. Neither failed attempt is counted as a successful test.
 
+### Windows PowerShell 5.1 compatibility
+
+A separate execution on Desktop PowerShell 5.1.26100.9444 passed the verbatim
+guide setup in `target/s11-ps51`: correct starter/sample content and state DACL
+restricted to the current account, SYSTEM and Administrators. Repeating the block
+preserved both configuration/project sentinel hashes and full state SDDL.
+Installed --help exited 0 with usage from the user's temporary directory.
+The binary SHA-256 was
+`634fb52927c54c28719b753a4d342138b67c93017d8372a439bc7cf6cd5c9202`.
+Evidence is in `target/s11-ps51/results.json` and `installed-help.txt`.
+Existing execution policy blocked a preliminary -File invocation before setup;
+the documented pasted-command equivalent passed using -NoProfile -Command.
+No execution policy or persistent PATH setting changed.
+
 ## Native Debian on Nighthawk
 
 Debian 13.7, kernel 6.12.94+deb13-amd64; existing GCC/G++ 14.2, Make 4.4.1,
@@ -105,6 +119,7 @@ product installation, Windows model download/startup, or new model download on
 Nighthawk. The guide distinguishes retained paths from fresh download instructions;
 official b6500 archive names/digests were checked against release metadata. No
 system packages, GPU drivers, shell profiles or existing operator files changed.
-Documentation supports PowerShell 5.1 syntax, while execution used this host's
-PowerShell runtime. Full offline platform suites belong to canonical CI, not
+The setup and installed help were also executed on Windows PowerShell 5.1;
+the full Windows live walkthrough used this host's PowerShell 7 runtime.
+Full offline platform suites belong to canonical CI, not
 these targeted native-host walkthroughs.
