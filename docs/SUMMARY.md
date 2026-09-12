@@ -28,6 +28,7 @@
   - [INT-0025 Credential isolation and explicit egress](intents/INT-0025-secrets-and-egress.md)
   - [INT-0026 Session continuity and model-context admission](intents/INT-0026-session-context-continuity.md)
   - [INT-0027 Verified encrypted remote-model deployment](intents/INT-0027-encrypted-remote-deployment.md)
+  - [INT-0028 Runnable Windows and Linux first-use instructions](intents/INT-0028-first-use-documentation.md)
 - [The roadmap](roadmap.md)
 - [Threat model & assurance](threat-model.md)
 - [Supply-chain policy](supply-chain.md)
@@ -44,3 +45,4 @@
 - [Sprint 8](sprints/s8/sprint-meta.md)
 - [Sprint 9](sprints/s9/sprint-meta.md)
 - [Sprint 10](sprints/s10/sprint-meta.md)
+- [Sprint 11](sprints/s11/sprint-meta.md)
