@@ -70,12 +70,14 @@ and `cargo tree --locked --offline --target TARGET --edges normal,build` for
 | SQLite | `rusqlite 0.40.2` → `libsqlite3-sys 0.38.2` | `bundled` compiles native SQLite using `cc`. Rust wrappers do not make SQLite's C implementation memory-safe. Storage owns access, transactions and result conversion; engine versions/advisories remain part of review. |
 | TLS cryptography | `reqwest 0.13.4` → `rustls 0.23.44` → `aws-lc-rs 1.18.1` / `aws-lc-sys 0.45.0` | AWS-LC contains native cryptography and build tooling (`cc`, `cmake`). Rustls avoids an OpenSSL dependency but is not a claim that the complete TLS stack contains no native code. |
 | OS APIs and system libraries | `windows-sys`, Windows safe-wrapper crates, `libc`, `rustix` | Platform FFI under filesystem capabilities, networking, signals and process ownership. Review feature/target changes alongside the first-party unsafe inventory in [the threat model](threat-model.md). |
+| Capability directory traversal | `cap-fs-ext 4.0.3` with `cap-std 4.0.3` | Adds the public no-follow directory-open API used by directory creation. One new lockfile package; existing capability primitives and platform dependencies are reused. |
+| Native terminal model selection | `crossterm 0.29.0` → Windows console wrappers or Unix terminal/event APIs | Used only for the local GGUF selector's keys, raw mode and alternate screen. A scoped guard restores terminal state on selection, cancellation and errors. These native APIs do not grant model/tool authority. |
 | Other target/feature branches | `ring 0.17.14`, JNI/platform verifier branches, `sqlite-wasm-rs` and wasm-bindgen | Present in all-platform metadata/lock resolution; the reviewed Windows/Linux default runtime graphs select AWS-LC and libsqlite3-sys, not ring or Wasm SQLite. Recompute the graph before claiming a different target or feature is supported. |
 
 The custom-build inventory for the two reviewed target graphs includes:
 
 - Native/platform setup: `aws-lc-rs`, `aws-lc-sys`, `libsqlite3-sys`,
-  `cap-primitives`, `cap-std`, `getrandom`, `io-extras`, both resolved
+  `cap-fs-ext`, `cap-primitives`, `cap-std`, `getrandom`, `io-extras`, both resolved
   `io-lifetimes` versions, and `libc`; Windows also includes
   `windows_x86_64_msvc`, while Linux includes `rustix`.
 - Compiler/configuration/data setup: `httparse`, `icu_normalizer_data`,
@@ -90,6 +92,32 @@ features change. Do not run builds with production credentials merely because
 the advisory gate is green. Existing CI uses read-only repository permissions
 and disables checkout credential persistence; action major tags and downloaded
 tool versions remain an accepted build-tool trust boundary.
+
+### Local model selector dependency change
+
+The selector adds `crossterm 0.29.0` with `default-features = false` and only
+`events` and `windows`. Bracketed paste, derive helpers, async event streams,
+serde support and clipboard/OSC52 support are not enabled. The lockfile adds
+these 14 packages; existing packages such as `mio`, `libc`, `rustix` and
+`signal-hook-registry` are reused:
+
+| Purpose | Added packages |
+| --- | --- |
+| Terminal implementation | `crossterm 0.29.0`, `crossterm_winapi 0.9.1` |
+| Internal locking | `lock_api 0.4.14`, `parking_lot 0.12.5`, `parking_lot_core 0.9.12`, `scopeguard 1.2.0` |
+| Unix events | `signal-hook 0.3.18`, `signal-hook-mio 0.2.5` |
+| Platform branches | `redox_syscall 0.5.18`, `winapi 0.3.9`, `winapi-i686-pc-windows-gnu 0.4.0`, `winapi-x86_64-pc-windows-gnu 0.4.0` |
+| Compile-time documentation macro | `document-features 0.2.12`, `litrs 1.0.0` |
+
+The added Windows runtime graph includes the `parking_lot_core` and `winapi`
+build scripts. The GNU support packages retain their target-specific build
+scripts in the all-platform resolution. Keep these branches in lockfile and
+deny/audit review even when they are absent from the native MSVC build. The
+terminal dependency is not an inference library: the operator-installed
+llama.cpp executable and its native dependencies remain a separate trusted
+runtime distribution. Their source/version and model artifact must be recorded
+for any live compatibility claim; Cargo's dependency gate does not audit those
+external binary downloads.
 
 ## cargo-vet decision and release boundary
 

@@ -93,15 +93,19 @@ actual frozen inputs; a stored verdict alone is not reproducible proof.
 
 ## Write tools change the trust model
 
-The first three tools only observe the workspace. `write_file` changes it, and
-that is a deliberate step across the read-only boundary, gated the same way every
-other authority is.
+`list_files`, `read_file`, and `search_files` only observe the workspace. Directory
+creation and file mutation cross the read-only boundary and require their own
+tool grants.
 
 **Consent is the operator's, at configuration time.** A workspace grants writes
 only when its operator lists a write tool in that workspace's `tools`. The model
-proposing a write is not authorization; the operator enabling the tool is, exactly
-as installing a skill rather than ingesting a web page is the consent. The model
-is never consulted on a security decision.
+proposing a write cannot grant it permission. Human-session setup creates a
+personal profile permitting listing, reading, searching, directory creation,
+writing, and editing in the selected working folder. The session displays that
+folder and its capabilities before accepting a task. Existing personal profiles
+retain their grants; `--config` selects an explicit operator profile. Setup does
+not grant deletion, moves, commands, or MCP servers. These are run-level grants,
+not a per-effect approval protocol.
 
 **The capability is separate by construction.** Writes run through a
 `WorkspaceWriter` distinct from `WorkspaceReader`; the read tools have no method
@@ -109,24 +113,34 @@ that can change a file. A writer is built only for a workspace that granted a
 write tool, so a run without that grant has no writer to reach, and an
 unauthorized write is denied before any handler runs and is still journalled.
 
-**The write itself is bounded and structure-preserving.** It stays inside the
-capability root, refuses to write through a symbolic link or over a directory,
+**`write_file` is bounded and structure-preserving.** It stays inside the
+capability root, refuses a symbolic-link target or a directory,
 does not create parent directories, and replaces the whole file atomically
 through a temporary sibling and a rename, so a crash leaves either the old file
 or the new one. Content is bounded and mints no evidence.
+
+**`create_directory` creates one new directory, without replacing any entry.**
+Its bounded, workspace-relative path may include spaces. Every existing parent
+component is opened through `cap-fs-ext`'s `open_dir_nofollow`, retaining a directory
+capability before resolving the next component; the final creation is relative
+to that handle. Traversal, absolute paths, reserved device/stream syntax, and
+symbolic-link parents are refused. Missing parents are not created implicitly.
+An existing file, directory, or link produces an error and is left unchanged.
+Directory creation mints no evidence. Replay consumes its recorded observation
+without creating the directory again.
 
 **A checked task cannot write.** Acceptance depends on observing files the run did
 not author. A run that could edit a source and then read it back would certify its
 own change, so authorization refuses a write tool in a checked task's workspace.
 
-**`edit_file` is the second mutating tool, and the same capability.** It replaces
+**`edit_file` uses the same write capability.** It replaces
 one exact passage in an existing file and requires the passage to be **unique**:
 an absent match cannot edit and an ambiguous one is refused, so the change never
 lands in the wrong place. It runs through the same `WorkspaceWriter`, the same
 symlink and directory guards, the same atomic replace, and the same bar on write
 tools in checked runs.
 
-**`delete_file` and `move_file` complete the file-mutation set, same capability.**
+**`delete_file` and `move_file` also require write grants.**
 Delete removes only a regular file, refusing a directory or a symbolic link so it
 cannot remove curated structure or follow a link outside the root; a missing file
 is an error. Move publishes a hard link with atomic no-replace semantics and
@@ -192,12 +206,46 @@ Pin a maintained release and review advisories during dependency updates. A
 previous Windows device-name bypass was fixed in 3.4.1; old tutorial pins are not
 a security baseline. [cap-std advisory](https://github.com/bytecodealliance/cap-std/security/advisories/GHSA-hxf5-99xg-86hw)
 
+## Local model process ownership
+
+Normal human terminal entry lets the operator choose a GGUF and a trusted
+llama.cpp executable. Discovery examines a bounded set of direct model-directory
+entries; it does not read project instructions to decide what program to execute.
+The per-user runtime location, a portable `runtime/` directory beside the
+installed Kinesin executable, trusted absolute PATH entries or an explicit
+`--runtime-path` supply the executable. Treat the backend and its companion
+native libraries as trusted installed software. Model-file validation identifies
+a GGUF input; it does not establish that arbitrary model bytes or native runtime
+code are safe against every parser defect.
+
+The selected GGUF's parent and runtime executable's parent must be disjoint in
+both directions from every workspace root. An interactive overlap asks the
+operator to select another working folder. This prevents the assistant's granted
+file tools from changing those inference inputs, including when selected through
+an external filesystem path. Selecting a model does not grant assistant tools
+read access to its containing folder. These startup checks assume trusted stable
+host paths; another process acting as the same OS account is outside this boundary.
+
+The managed server receives a fixed argv and scrubbed environment, binds
+loopback, and must pass readiness checks before task admission. Its process
+group/Windows Job belongs to the session, with bounded startup/log handling and
+cleanup on failure, exit and cancellation. This is lifecycle control of trusted
+inference software, not a hostile-native-code sandbox. Model output cannot change
+the executable, model path or listener. External profiles attach only: Kinesin
+does not acquire process ownership of an already running server.
+
 ## Network and credential boundaries
 
 The model profile fixes the destination. Model output cannot edit URLs, request
 headers, TLS settings, or proxy configuration. The first local profile uses a
 loopback listener. Remote profiles name an operator-approved destination; network
 access and transport authentication are configured separately from tool policy.
+
+`--external` explicitly chooses an external connection for a human session;
+normal local GGUF entry does not use SSH. Optional remote SSH login and forwarding
+are operator actions in a foreground terminal. Kinesin does not silently log in,
+suppress authentication prompts or collect/store SSH passwords. A local forward's
+URL alone does not prove the identity of its remote peer.
 
 Configure `reqwest` explicitly: no redirects, no inherited/system proxy, no
 automatic retries, a connection timeout, and a total exchange deadline including
@@ -251,6 +299,23 @@ shared-memory sidecar, exports, and backups inherit the same confidentiality
 requirement. WAL mode and durable transactions do not provide encryption or
 owner-level access control. Apply retention to private payloads and operational
 metadata deliberately; do not expose database files through the service API.
+
+Human-session setup provisions new personal settings and state directories
+outside the chosen workspace. On Unix, new directories use mode `0700` and the
+settings file uses `0600`. On Windows, new directories receive a protected DACL
+with inheritable access for the current user, SYSTEM, and Administrators. Existing
+trees are checked with the private-state validator; setup does not broaden or
+repair existing permissions. The settings file is created with no-replace
+semantics after profile validation, so a competing first setup cannot overwrite
+another profile. These checks assume trusted, stable ancestor directories and
+do not provide encryption or isolation from the same OS account. Explicit
+profiles and shared-service deployments retain their operator provisioning
+requirements; the interactive setup flow does not run for them.
+
+Changing a saved local model/runtime selection checks the existing settings,
+preserves a private backup and replaces the settings file. Existing tool grants
+and directory permissions are preserved. The backup contains operator settings
+and belongs in the same protected settings directory, outside tool access.
 
 Never log bearer tokens, authorization headers, private keys, raw environment
 dumps, or complete credential-bearing URLs. Metrics use bounded labels such as

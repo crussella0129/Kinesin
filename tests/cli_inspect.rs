@@ -239,6 +239,300 @@ fn successful(output: Output) -> Value {
     serde_json::from_slice(&output.stdout).unwrap()
 }
 
+fn receive_model_request(listener: &TcpListener) -> (std::net::TcpStream, Value) {
+    use std::io::Read;
+    use std::time::{Duration, Instant};
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let (mut connection, _) = loop {
+        match listener.accept() {
+            Ok(connection) => break connection,
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                assert!(Instant::now() < deadline, "model request deadline");
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Err(error) => panic!("model accept: {error}"),
+        }
+    };
+    connection
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .unwrap();
+    let mut header = Vec::new();
+    while !header.ends_with(b"\r\n\r\n") {
+        assert!(header.len() < 16384);
+        let mut byte = [0];
+        connection.read_exact(&mut byte).unwrap();
+        header.push(byte[0]);
+    }
+    let header = String::from_utf8(header).unwrap();
+    let length = header
+        .lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().unwrap())
+        })
+        .unwrap();
+    assert!(length <= 131072);
+    let mut bytes = vec![0; length];
+    connection.read_exact(&mut bytes).unwrap();
+    (connection, serde_json::from_slice(&bytes).unwrap())
+}
+
+fn serve_messages(fixture: &Fixture, messages: Vec<Value>) -> std::thread::JoinHandle<Vec<Value>> {
+    use std::io::Write;
+    let listener = fixture.listener.try_clone().unwrap();
+    std::thread::spawn(move || {
+        messages.into_iter().map(|message| {
+        let (mut connection, request) = receive_model_request(&listener);
+        let reason = if message.get("tool_calls").is_some() { "tool_calls" } else { "stop" };
+        let reply = json!({"choices":[{"index":0,"finish_reason":reason,"message":message}]}).to_string();
+        write!(connection, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", reply.len(), reply).unwrap();
+        request
+    }).collect()
+    })
+}
+
+fn session_output(fixture: &Fixture, json: bool, input: &str) -> Output {
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"));
+    command
+        .current_dir(&fixture.root)
+        .args(["--config".into(), fixture.config().into_os_string()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if json {
+        command.arg("--json");
+    }
+    let mut child = command.spawn().unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+#[test]
+fn human_session_shows_workspace_answers_and_tools_without_dumping_receipts() {
+    let fixture = Fixture::new();
+    let provider = serve_messages(
+        &fixture,
+        vec![
+            json!({"role":"assistant","content":null,"tool_calls":[{"id":"read-1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"project.txt\"}"}}]}),
+            json!({"role":"assistant","content":"The project uses Rust."}),
+            json!({"role":"assistant","content":"Hello again."}),
+        ],
+    );
+    let output = session_output(
+        &fixture,
+        false,
+        "Read project.txt\n/status\n/permissions\n/new\nHello\n/exit\n",
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "human prompts share the answer stream"
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(
+            &fixture
+                .root
+                .join("workspace")
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+        )
+    );
+    assert!(stdout.contains("Model: scripted-fixture (local)"));
+    assert!(stdout.contains("Can: read files"));
+    assert!(stdout.contains("Read-only workspace"));
+    assert!(stdout.contains("read_file ..."));
+    assert!(stdout.contains("read_file project.txt: ok"), "{stdout}");
+    assert!(
+        stdout.contains("The project uses Rust.\n\n> "),
+        "the answer must precede the next prompt: {stdout}"
+    );
+    assert!(stdout.contains("Run completed (freeform; no acceptance check)."));
+    assert!(stdout.contains("Run: "));
+    assert!(stdout.contains("Allowed tools: read_file"));
+    assert!(stdout.contains("Previous-answer context cleared."));
+    assert!(stdout.contains("Hello again.\n\n> "));
+    for private_field in [
+        "\"kind\"",
+        "\"receipt\"",
+        "task_accepted",
+        "submission_sha256",
+        "private instruction sentinel",
+    ] {
+        assert!(
+            !stdout.contains(private_field),
+            "unwanted metadata: {private_field}"
+        );
+    }
+    let requests = provider.join().unwrap();
+    assert_eq!(requests.len(), 3, "slash commands never call the model");
+    assert!(
+        !requests[2].to_string().contains("The project uses Rust."),
+        "/new clears prior answer"
+    );
+    let run_id = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("Run: "))
+        .unwrap();
+    let mut inspect = fixture.command("inspect");
+    inspect.extend(["--run".into(), run_id.into()]);
+    let receipt = successful(fixture.cli(inspect));
+    assert_eq!(receipt["result"]["candidate"], "The project uses Rust.");
+    assert_eq!(receipt["acceptance_status"], "unchecked");
+    assert_eq!(
+        receipt["receipt"]["status"], "unchecked",
+        "readable presentation preserves the durable receipt"
+    );
+}
+
+#[test]
+fn explicit_json_session_keeps_stdout_as_structured_receipts() {
+    let fixture = Fixture::new();
+    let provider = serve_messages(
+        &fixture,
+        vec![json!({"role":"assistant","content":"Hello."})],
+    );
+    let output = session_output(&fixture, true, "Hello\n");
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stderr).unwrap(), "> > ");
+    let record: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(record["kind"], "run");
+    assert_eq!(record["phase"], "completed");
+    assert_eq!(record["result"]["candidate"], "Hello.");
+    assert_eq!(record["receipt"]["status"], "unchecked");
+    provider.join().unwrap();
+}
+
+#[test]
+fn human_session_reports_model_failure_without_claiming_completion() {
+    use std::io::Write;
+    let fixture = Fixture::new();
+    let listener = fixture.listener.try_clone().unwrap();
+    let provider = std::thread::spawn(move || {
+        let (mut connection, _) = receive_model_request(&listener);
+        connection.write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+    });
+    let output = session_output(&fixture, false, "Hello\n/exit\n");
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Run failed:"), "{stdout}");
+    assert!(!stdout.contains("Run completed"));
+    assert!(
+        stdout.contains("Run: "),
+        "failures retain an inspectable identifier"
+    );
+    assert!(output.stderr.is_empty());
+    provider.join().unwrap();
+}
+
+#[test]
+fn human_session_flushes_provisional_text_then_finishes_answer_once() {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+    use std::time::Duration;
+    let fixture = Fixture::new();
+    let config = std::fs::read_to_string(fixture.config())
+        .unwrap()
+        .replace("temperature = 0.0", "temperature = 0.0\nstream = true");
+    std::fs::write(fixture.config(), config).unwrap();
+    let listener = fixture.listener.try_clone().unwrap();
+    let (release, gate) = std::sync::mpsc::sync_channel(1);
+    let provider = std::thread::spawn(move || {
+        let (mut connection, request) = receive_model_request(&listener);
+        assert_eq!(request["stream"], true);
+        let first = format!(
+            "data: {}\n\n",
+            json!({"choices":[{"index":0,"delta":{"role":"assistant","content":"early"},"finish_reason":null}]})
+        );
+        let last = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"choices":[{"index":0,"delta":{"content":" answer"},"finish_reason":"stop"}]})
+        );
+        write!(connection, "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", first.len()+last.len(), first).unwrap();
+        connection.flush().unwrap();
+        gate.recv_timeout(Duration::from_secs(30)).unwrap();
+        connection.write_all(last.as_bytes()).unwrap();
+    });
+    struct ChildGuard(std::process::Child);
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let mut child = ChildGuard(
+        std::process::Command::new(env!("CARGO_BIN_EXE_kinesin"))
+            .args(["--config".into(), fixture.config().into_os_string()])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    child
+        .0
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"Hello\n/exit\n")
+        .unwrap();
+    let mut stdout = child.0.stdout.take().unwrap();
+    let (seen_tx, seen_rx) = std::sync::mpsc::sync_channel(1);
+    let reader = std::thread::spawn(move || {
+        let mut output = Vec::new();
+        let mut seen = false;
+        loop {
+            let mut chunk = [0; 1024];
+            let count = stdout.read(&mut chunk).unwrap();
+            if count == 0 {
+                break;
+            }
+            output.extend_from_slice(&chunk[..count]);
+            assert!(output.len() < 65536);
+            if !seen && String::from_utf8_lossy(&output).contains("[Provisional response]\nearly") {
+                seen_tx.send(()).unwrap();
+                seen = true;
+            }
+        }
+        String::from_utf8(output).unwrap()
+    });
+    seen_rx.recv_timeout(Duration::from_secs(30)).unwrap();
+    assert!(
+        child.0.try_wait().unwrap().is_none(),
+        "provisional text must flush while the model is still running"
+    );
+    release.send(()).unwrap();
+    assert!(child.0.wait().unwrap().success());
+    let stdout = reader.join().unwrap();
+    assert_eq!(stdout.matches("early answer").count(), 1, "{stdout}");
+    assert!(stdout.contains("early answer\n\n> "), "{stdout}");
+    assert!(!stdout.contains("\"kind\""));
+    let mut stderr = String::new();
+    child
+        .0
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut stderr)
+        .unwrap();
+    assert!(stderr.is_empty());
+    provider.join().unwrap();
+}
+
 #[test]
 fn help_needs_no_configuration_or_state_and_rejects_extra_arguments() {
     let root = std::env::temp_dir().join(format!("kinesin-help-{}", uuid::Uuid::new_v4()));
@@ -318,9 +612,20 @@ fn inspect_export_and_pure_replay_preserve_durable_acceptance_without_models() {
     assert_eq!(exported["capture_present"], true);
     assert!(exported.get("exact_replay_available").is_none());
     let bytes = std::fs::read(&export).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        assert_eq!(std::fs::metadata(&export).unwrap().mode() & 0o777, 0o600);
+        std::fs::set_permissions(&export, std::fs::Permissions::from_mode(0o640)).unwrap();
+    }
     let duplicate = fixture.cli(args);
     assert!(!duplicate.status.success());
     assert_eq!(std::fs::read(&export).unwrap(), bytes);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(std::fs::metadata(&export).unwrap().mode() & 0o777, 0o640);
+    }
     // The replay process has neither current configuration nor source/database
     // files available. Its input still binds the historical task and evidence.
     std::fs::rename(
@@ -466,8 +771,19 @@ fn owner_scope_and_operator_backups_do_not_overwrite_or_shorten_retention() {
     args.extend(["--output".into(), backup.clone().into_os_string()]);
     assert_eq!(successful(fixture.cli(args.clone()))["kind"], "backed_up");
     let bytes = std::fs::read(&backup).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        assert_eq!(std::fs::metadata(&backup).unwrap().mode() & 0o777, 0o600);
+        std::fs::set_permissions(&backup, std::fs::Permissions::from_mode(0o640)).unwrap();
+    }
     assert!(!fixture.cli(args).status.success());
     assert_eq!(std::fs::read(&backup).unwrap(), bytes);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(std::fs::metadata(&backup).unwrap().mode() & 0o777, 0o640);
+    }
     let mut restored = Store::open(&backup).unwrap();
     let Response::Run(Some(record)) = restored
         .execute(Command::Get {

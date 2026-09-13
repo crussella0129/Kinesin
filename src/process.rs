@@ -34,9 +34,20 @@ impl OwnedProcess {
     /// The caller owns executable authorization, stdio, and any sandbox policy.
     /// Unix group creation precedes every pre_exec sandbox callback.
     pub fn spawn(command: &mut Command) -> io::Result<Self> {
+        Self::spawn_with_visibility(command, false)
+    }
+
+    /// Background inference servers must not create another Windows console.
+    /// The existing spawn path retains its original console behavior.
+    pub fn spawn_hidden(command: &mut Command) -> io::Result<Self> {
+        Self::spawn_with_visibility(command, true)
+    }
+
+    fn spawn_with_visibility(command: &mut Command, hidden: bool) -> io::Result<Self> {
         command.kill_on_drop(true);
         #[cfg(unix)]
         {
+            let _ = hidden;
             use std::os::unix::process::CommandExt;
             command.as_std_mut().process_group(0);
             let child = command.spawn()?;
@@ -52,9 +63,9 @@ impl OwnedProcess {
         }
         #[cfg(windows)]
         {
-            use windows_sys::Win32::System::Threading::CREATE_SUSPENDED;
+            use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
             let job = windows::Job::new()?;
-            command.creation_flags(CREATE_SUSPENDED);
+            command.creation_flags(CREATE_SUSPENDED | if hidden { CREATE_NO_WINDOW } else { 0 });
             let child = command.spawn()?;
             // Failure drops both owners: the suspended direct child and any
             // successfully assigned job members are terminated before resuming.

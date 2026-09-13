@@ -1,10 +1,25 @@
 # Configuration and limits
 
-For an executable setup sequence, use [getting started](getting-started.md).
-The tracked [`kinesin.example.toml`](../kinesin.example.toml) is the root-relative
-starter: copy it to `kinesin.toml` in the directory where you create `workspace`
-and private `state`. The older examples under `examples/` use `../workspace` and
-`../state` instead; moving a configuration changes the base for relative paths.
+Bare terminal `kinesin` creates or loads per-user settings, selects a working
+folder and offers local GGUF files in an arrow-key selector; see
+[getting started](getting-started.md#where-settings-live). The working root changes
+only for that session. Model/runtime selections are saved for later launches;
+existing tool grants are preserved. Kinesin starts and checks its selected local
+llama.cpp server and stops the owned process tree when the session ends.
+
+`--model-path PATH` selects a GGUF directly and `--runtime-path PATH` selects its
+trusted backend executable. `--external` explicitly selects an externally
+managed URL/served-ID connection. These flags apply only to human terminal
+sessions without `--config`, `--json` or one-shot arguments. Explicit `--config
+PATH`, JSON sessions and piped input use fixed configuration and do not enter the
+personal setup flow. Existing explicit examples attach to separately started servers.
+
+The tracked [`kinesin.example.toml`](../kinesin.example.toml) is a root-relative,
+read-only checked-task example: copy it to `kinesin.toml` where you create
+`workspace` and private `state` for that workflow. The older examples under
+`examples/` use `../workspace` and `../state` instead; moving a configuration changes
+the base for relative paths. The interactive personal profile additionally grants
+search, directory creation, file creation/replacement and editing.
 
 ## One operator-controlled source
 
@@ -14,8 +29,49 @@ immutable deployment settings. Credentials are resolved separately and never
 serialized with those settings.
 
 All filesystem paths are relative to the configuration file's directory unless
-absolute. Workspace roots and the private state directory are disjoint. Model
-destinations are approved profiles, not URLs chosen by prompts.
+absolute. CLI model/runtime paths instead resolve from the launch directory.
+Workspace roots and the private state directory are disjoint. For managed local
+models, each workspace must also be disjoint in both directions from the GGUF's
+parent and the runtime executable's parent directory. This protects those inputs
+from workspace mutations; choosing an external GGUF path does not grant assistant
+tools access to that directory. Model destinations are approved profiles, not
+URLs chosen by prompts.
+
+The normal per-user model directory is `%LOCALAPPDATA%\Kinesin\models` on Windows,
+or `$XDG_DATA_HOME/kinesin/models` on Linux (default
+`~/.local/share/kinesin/models`). Its sibling `runtime` directory contains
+`llama-server.exe` or `llama-server` and companion runtime files. Bounded discovery
+also checks direct GGUF children of `model/` and `models/` under the launch
+directory and executable directory. A saved selected file outside those locations
+remains available from other launch directories. A portable installation may
+place `models/` and `runtime/` beside the installed Kinesin executable, with the
+backend executable directly inside `runtime/` alongside its dependencies.
+Runtime lookup accepts trusted
+absolute PATH entries as a fallback; the selected project is not an executable
+search path. See the guide for installation and path overrides.
+
+### Saved local runtime settings
+
+Personal local setup writes a `[managed_model]` table. It names one existing
+model profile with one verified slot. The backend's loopback port and served
+identity are assigned for each launch; a saved placeholder URL is not a port
+you should start or visit manually.
+
+| Field | Meaning | Default / bounds |
+| --- | --- | --- |
+| `model` | Existing model-profile alias | Exactly one matching model profile |
+| `executable` | Trusted llama-server executable | Existing absolute file after path resolution |
+| `model_path` | Selected GGUF file | Existing file with a GGUF header |
+| `startup_timeout_s` | Maximum wait for model readiness | 120 seconds; 1–600 |
+| `gpu_layers` | Layers requested for GPU offload | 99; 0–1000 (`0` requests CPU execution) |
+| `threads` | Generation and prompt-processing threads | 4; 1–256 |
+
+Changing local model/runtime selection saves the new choice and preserves a
+private backup of the previous settings. Runtime limits and tool grants stay
+operator-controlled. The managed profile does not enable shared-service startup
+or arbitrary model-provided process arguments.
+
+### External model transport
 
 Only loopback model origins may use HTTP. Every non-loopback origin requires
 HTTPS, including RFC1918, CGNAT/Tailscale and IPv6 unique-local addresses. Private
@@ -84,7 +140,7 @@ tools = []
 [[models]]
 id = "local"
 base_url = "http://127.0.0.1:8080"
-model_id = "kinesin-qwen25-coder-7b"
+model_id = "model-example"
 context_size = 4096
 verified_slots = 1
 temperature = 0.2

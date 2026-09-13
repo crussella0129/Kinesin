@@ -11,20 +11,63 @@ without opening configuration, storage, a workspace or a model connection.
 kinesin
 ```
 
-No arguments. It reads `kinesin.toml` from the working directory, then asks what
-to do. Each entry becomes its own run that cites the previous one, so a follow-up
-needs no run id and no flag:
+In a terminal, no arguments opens the introduction and working-folder selector,
+then a GGUF model selector. Move the caret with Up/Down and press Enter; later
+launches prefer the saved model. **Choose another GGUF file...** accepts a file
+outside the discovered locations. Kinesin starts the selected llama.cpp server,
+checks readiness and owns its cleanup on session exit or Ctrl+C. The
+[setup guide](getting-started.md#install-a-local-model-and-runtime) covers the
+one-time runtime/model installation and per-user directories.
+
+The banner makes the actual workspace, model and permissions visible. Requests
+show bounded tool activity and readable answers:
 
 ```text
-> what does project.txt say the language is?
-> and where else is that recorded?
+> make a folder called test 1
+> list the files in this folder
 ```
 
-A session takes no workspace or model alias. With one of each configured there is
-nothing to choose; with several, the operator names them in a single-run command
-instead, because guessing would silently pick an authority. `kinesin --config
-other.toml` opens a session against a different file. End it with Ctrl+C or by
-closing the input.
+| Human terminal option | Behavior |
+| --- | --- |
+| `--model-path PATH` | Select an existing local GGUF instead of showing the model chooser. |
+| `--runtime-path PATH` | Select a specific trusted `llama-server` executable. |
+| `--external` | Set up or reuse an external URL/served-ID connection; do not start or stop that server. |
+
+These options still ask for a working folder. They cannot be combined with
+`--config`, `--json`, piped input or one-shot task/prompt arguments. `--external`
+cannot be combined with either local path option. Quote shell paths containing
+spaces; relative paths resolve from the launch directory. `--model-path` is a
+file path, whereas the existing `--model` option selects a configured alias in
+an explicit one-shot command.
+
+Human setup requires both terminal input and terminal output. With redirected
+stdout, select an explicit profile and JSON output, such as
+`kinesin --config PATH --json > session.jsonl`; the setup flow does not run.
+
+Discovery reads direct GGUF entries in the per-user models directory and the
+`model/` or `models/` directories in the launch directory or beside the executable.
+It is bounded and nonrecursive. A saved explicitly selected file remains usable
+from other launch folders. The model's parent directory and runtime directory
+must be disjoint from the working folder; an overlap prompts for another folder.
+Selecting these inputs gives the assistant no additional filesystem authority.
+For a portable installation, place GGUFs in `models/` beside the installed
+Kinesin executable and the backend in `runtime/llama-server` (or
+`runtime/llama-server.exe` on Windows), together with its runtime dependencies.
+
+A personal session profile has one workspace and one model. `kinesin --config
+other.toml` instead uses the explicitly configured workspace and skips the folder
+selector. A fixed profile with several aliases requires a single-run command
+selecting them; startup does not guess authority. Piped input also skips setup
+and loads its explicit config or the current directory's `kinesin.toml`.
+
+`/help` lists commands, `/permissions` shows tool grants, `/status` shows the last
+run and its receipt status, `/new` (or `/clear`) starts without the previous answer,
+and `/exit` leaves. Ctrl+C requests cancellation and stops the session. Successful
+freeform answers do not print UUIDs or full receipts; failures remain visible.
+
+For session JSON Lines, select `kinesin --json --config PATH`. One-shot, batch and
+operator commands keep their existing JSON interfaces. Human display escapes
+terminal control and direction-changing characters from model/tool text.
 
 Each entry is a separate immutable run in the journal, linked by the answer it
 cites. Nothing rewrites an earlier run, so `inspect` and `export` work on any
@@ -37,15 +80,16 @@ The cited answer enters as reference data with its own entry in the input
 inventory, marked as earlier model output. It is information, not instruction,
 and grants no permission.
 
-Run these commands from the repository root after the getting-started setup.
-Single runs, sessions and `batch` require the verified model server. Configuration paths resolve
-relative to the configuration file; CLI input-file paths resolve from your current
+The commands below use an explicit example configuration prepared using the guide
+and a separately started, verified model server. Normal local terminal entry
+starts its own server. Configuration paths resolve relative to the configuration
+file; CLI input-file paths resolve from your current
 directory. Run execution uses the implicit local operator identity; `--owner`
 is limited to provisioning credentials for a configured service owner.
 
 The bundled examples expect a deliberately prepared `workspace/project.txt`;
 its synthetic contents are in [the checked-task setup](configuration.md#add-an-explicit-checked-task).
-They also expect the verified `kinesin-qwen25-coder-7b` model alias on loopback
+They also expect the example `model-example` model alias on loopback
 port 8080. Follow [the recorded server startup](model-preflight.md#reproduce-the-baseline)
 or edit your copied example to match the separately verified endpoint.
 
@@ -102,7 +146,7 @@ including when its model adapter assembles a streamed response.
 
 ## Output and exits
 
-Single and batch commands emit JSON Lines. A run line contains `kind: "run"`, its
+Single and batch commands, and sessions with `--json`, emit JSON Lines. A run line contains `kind: "run"`, its
 one-based input `index`, `run_id`, both `phase` and `acceptance_status`, the
 `receipt`, retained `result`, derived `task_accepted`, and per-item `exit_code`.
 Batch lines are emitted as completions are drained; use the index/run ID rather
@@ -117,10 +161,19 @@ one output operation is retained outside the bounded completion set.
 
 Exit codes follow [task acceptance](verification.md#cli-and-service-meaning):
 passed checked completion 0; execution/setup failure 1; failed acceptance 2;
-unchecked/inconclusive completion 3; cancellation 130. Explicit freeform opt-in
-allows exit 0 for `completed + unchecked`, while `task_accepted` stays false.
+unchecked/inconclusive completion 3; controller cancellation 130. For one-shot
+and batch runs, explicit freeform opt-in allows exit 0 for
+`completed + unchecked`, while `task_accepted` stays false. Human and `--json`
+sessions allow unchecked completion automatically, so a successful freeform
+session returns 0 without an extra flag.
 The batch aggregate uses priority **130, 1, 2, 3, 0** and preserves individual
 outcomes. An unchecked opt-in cannot excuse a failed checked task.
+
+In the arrow-key model selector, Esc or Ctrl+C cancels selection, restores the
+terminal and returns 130. During setup's ordinary line prompts, Ctrl+C uses the
+operating system's default termination behavior; on Windows this is native
+status `0xC000013A` (`-1073741510`). After setup, startup/session cancellation
+uses exit 130 and settles any owned model process.
 
 Ctrl+C stops new admission, requests cancellation for queued/active runs, and
 joins the controller and storage writer. Results already committed keep their
@@ -157,8 +210,9 @@ Summaries contain sequence, kind, and elapsed time; they exclude raw replay inpu
 `export` writes a versioned snapshot using bounded owner-filtered pages, with
 limits of 256 events and 32 MiB. It never silently truncates a capture or overwrites
 an existing file. A storage/write failure is an error; an I/O failure can leave an
-incomplete new file, which must not be treated as a successful export. New files
-inherit their destination directory's permissions; existing ACLs are not changed.
+incomplete new file, which must not be treated as a successful export. New Unix
+files are owner-only (0600); Windows files inherit the destination directory's
+ACL. Existing files and permissions are not changed.
 Replay exports include private instructions and observed evidence. Metadata
 exports also contain private final results and receipts, and explicitly state
 that exact replay and acceptance recomputation are unavailable.

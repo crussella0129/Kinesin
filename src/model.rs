@@ -263,6 +263,10 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
                     },
                     "required":["path","query"],"additionalProperties":false
                 })),
+                "create_directory" => ("Create one directory at a relative workspace path, including names with spaces. The parent must already exist; create missing parents in separate calls. Any existing file, directory, or symbolic link at the requested path is an error and is left unchanged. It cannot follow symbolic links or leave the workspace, and cites no evidence.", json!({
+                    "type":"object","properties":{"path":{"type":"string"}},
+                    "required":["path"],"additionalProperties":false
+                })),
                 "write_file" => ("Create or replace one text file at a relative workspace path. Provide the complete new contents; the write replaces the whole file atomically. It reports the bytes written and cites no evidence. It cannot create directories, write through a symbolic link, or leave the workspace.", json!({
                     "type":"object","properties":{
                         "path":{"type":"string"},
@@ -1210,6 +1214,23 @@ mod tests {
 
         let plain = body(&base(Vec::new(), None));
         assert!(plain.get("tools").is_none() && plain.get("response_format").is_none());
+    }
+
+    #[test]
+    fn directory_schema_is_offered_only_by_an_explicit_tool_grant() {
+        let allowed = tool_defs(
+            &[crate::config::ToolRef::Compiled(
+                crate::config::ToolName::CreateDirectory,
+            )],
+            &[],
+        );
+        let request = body(&base(allowed, None));
+        let function = &request["tools"][0]["function"];
+        assert_eq!(function["name"], "create_directory");
+        assert_eq!(function["parameters"]["required"], json!(["path"]));
+        assert_eq!(function["parameters"]["additionalProperties"], false);
+        let plain = body(&base(tool_defs(&[], &[]), None));
+        assert!(plain.get("tools").is_none());
     }
 
     #[test]

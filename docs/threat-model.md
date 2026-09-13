@@ -1,9 +1,10 @@
 # Threat model and security assurance
 
-- **Version:** 2 (2026-09-12).
+- **Version:** 3 (2026-09-12).
 - **Owner:** maintainers. **Review cadence:** every security-affecting sprint, dependency/target change and release.
 - **Current intent:** [INT-0021](intents/INT-0021-harness-contract-review.md).
 - **Historical evidence:** [INT-0015](intents/INT-0015-threat-model-assurance.md) and [sprint 8](sprints/s8/sprint-tests/test-report.md) retain version 1's claims and executed checks. Sprint 10 supersedes that assurance revision; it does not rewrite its measurements.
+- **Version 3 scope:** interactive personal setup, private-directory provisioning, private creation modes for Unix journal/export/backup files, and the explicitly granted `create_directory` tool. Earlier sprint evidence remains historical; [interactive repair verification](interactive-entry-repair.md) and the named new tests below exercise these additions.
 - **Boundary details:** [security](security.md), [dependency policy](supply-chain.md), [sprint 10 audit](sprints/s10/sprint-research/assurance-audit.md).
 
 A mechanism is an implemented gate with a named proving case. A gap is an
@@ -20,6 +21,22 @@ and MCP descriptions/results do not enlarge that grant. They can still
 influence what a model asks to do **within** the grant. Checked acceptance uses
 a frozen task contract and independent observed-byte checker; a freeform coding
 result stays unchecked.
+
+Interactive personal setup saves the selected model and tool grants outside the
+chosen working folder. Its default grant includes read/search, directory
+creation, and file write/edit operations; it excludes delete/move, commands, and
+MCP servers. The session displays the effective folder and capabilities before
+the first task. Existing profiles retain their grants, and an explicit `--config`
+bypasses this setup. Selecting another folder changes that session's workspace
+root without rewriting the saved profile. These are operator-level grants;
+model text cannot enlarge them and per-action approval remains INT-0017.
+
+New personal directories are created with private Unix modes or protected
+Windows DACLs; existing permissions are checked without alteration. Startup
+rejects overlap between tool roots and its configuration/private state before
+saving settings. Creating the settings file uses no-replace semantics. Ancestor
+directories and other processes with the operator's full OS authority remain
+trusted; this provisioning is not a sandbox against that account.
 
 The service authenticates owners over loopback and scopes every run query and
 action to its verified principal. Moving model inference to another host does
@@ -97,6 +114,7 @@ to an issued NIST certification or a complete normative NIST agent standard.
 | Policy authorization | Config-derived immutable authority and both MCP gates; discovery/content cannot enlarge permissions. |
 | Scoped tasks / least privilege | Owner/workspace/model/tool aliases and bounded contracts; read, mutation and command classes remain distinct. |
 | Workspace mutation concurrency | Move publishes its destination with a capability-scoped no-replace hard link, then removes the source. A failed source cleanup is reported explicitly. The two-name operation is not atomic, and namespace/source races or stale writers still require INT-0010's lease/fencing work. |
+| Directory creation | `create_directory` opens each existing parent without following links, then creates one leaf relative to the retained capability. Existing entries are not replaced and missing parents are not implicitly created. The tool requires a write grant, is barred from checked tasks, and mints no evidence. This does not add leases or fencing for other mutating tools. |
 | Just-in-time privilege | Gap: INT-0017. Current grants last for the run. |
 | Human approval | Gap: INT-0017. Existing operator configuration is not a per-effect approval protocol. |
 | Dev/test/prod separation | Operator responsibility. Use separate credentials, models, workspace roots and private state; the runtime does not isolate multiple environments sharing a controller. |
@@ -114,6 +132,7 @@ OS operation so each boundary has a review owner.
 |---|---|
 | `private_state.rs`: Windows `LocalAllocation::drop`, `Policy::current`, `current_sid`, `sid_string`, `descriptor_owner`, `inspect` | Native ownership/ACL/token queries and security-descriptor parsing. LocalFree-owned allocations and OwnedHandle manage lifetimes; SID/descriptor/ACE lengths and types are checked before interpretation. These checks are an FFI boundary, not a claim of formal memory-safety proof. |
 | `private_state.rs`: Unix `Policy::current` | `libc::geteuid` reads the effective identity for mode/owner validation. |
+| `onboarding.rs`: Windows `Allocation::drop`, `create_private_directory`, `current_sid` | Queries the current token SID and converts a fixed-shape protected DACL before `CreateDirectoryW` creates a new personal directory. SID buffer lengths are bounded; aligned token storage, OwnedHandle, and LocalFree-owned allocations delimit the FFI lifetimes. Existing directories and settings files are not replaced. |
 | `signal.rs`: `ctrl_c` on Windows | Clears the inherited Ctrl+C-ignore attribute after listener registration. No workspace/model bytes are interpreted by the OS callback. |
 | `tools.rs`: Linux sandbox `arm` / child `pre_exec` | The parent prepares the Landlock ruleset and seccomp program; child setup applies the policy and marks non-stdio descriptors close-on-exec before executing the selected command. Unavailable enforcement is refused. New work in the forked child must remain async-signal-safe. |
 | `process.rs`: Unix `OwnedProcess::peek_leader_status`, `terminate`; Windows `Job::new`, `assign_and_resume`, `terminate`, `wait_empty` | `waitid(WNOWAIT)` observes the owned leader through an initialized `siginfo_t` without consuming its status; retaining that PID prevents unrelated process-group reuse before `killpg`. Tokio reaps the direct child after group termination. Windows creates a kill-on-close Job, assigns the suspended child, resumes its thread, terminates the Job and queries active members; native handles are OwnedHandle-managed. Group/job termination stops descendant effects. Unix orphan-zombie reaping belongs to the OS; no subreaper guarantee is made. |
@@ -128,8 +147,8 @@ Test-only unsafe includes Windows ACL/directory fixtures in `private_state.rs`
 and `storage.rs`, console-signal injection in `tests/windows_signal.rs`, and
 fixture PATH environment setup in command/red-team/runner/sandbox/CLI test
 binaries, and deliberate syscall/descriptor probes in command/sandbox fixtures.
-The `CreateDirectoryW` block in `storage.rs` is a test fixture,
-not a production state-directory creation mechanism. Tests must not present
+The `CreateDirectoryW` block in `storage.rs` is a test fixture; production
+personal-directory provisioning is in `onboarding.rs` as listed above. Tests must not present
 an unsafe environment update as evidence of runtime credential isolation.
 
 Maintain this inventory with `rg -n 'unsafe|extern' src tests examples`, inspect
@@ -147,9 +166,11 @@ stewardship remain proposed in INT-0025.
 | [security.md](security.md#evidence-required-before-each-release) row | Proving cases/suites |
 |---|---|
 | Tool authority | `redteam_denies_unauthorized`, `command_tool`, `sandbox_linux`, `runner_tools`, `mcp_unapproved_call_denied`, `mcp_startup_capture_rejects_removed_altered_and_ungranted_schemas`. Linux probes cover truncation, executable siblings/proc, io_uring, namespaces, inherited descriptors and `sandbox_denies_x32_syscalls_before_kernel_abi_dispatch`; the production BPF interpreter test does not depend on kernel x32 support. |
+| Directory creation | `create_directory_requires_a_grant_and_records_its_real_effect`, `create_directory_never_follows_parent_or_leaf_links`, `create_directory_refuses_escapes_missing_parents_and_read_only_capability`, and `create_directory_preserves_spaced_names_and_existing_contents` exercise actual effects and refusals. `directory_creation_capture_replays_without_repeating_the_mutation` verifies replay creates no new directory. |
 | Untrusted content | `redteam_treats_content_as_data` proves literal argv; `mcp_poison_description_and_result_are_data` proves no grant expansion; `mcp_protocol_and_discovery_are_bounded` and `mcp_tiny_frame_flood_is_refused_and_all_descendants_settle` exercise byte/count/deadline limits; `scripted_task_cards` proves deterministic checker behavior. |
 | Task acceptance | `runner_tools`, `settlement`, `replay`: invalid/forged candidates, wrong facts and cross-owner/run evidence cannot manufacture acceptance. |
 | Data handling | `metadata_rejects_private_observations_but_replay_retains_them_once`, `cli_inspect`, owner-scoped export, `mcp_process_environment_and_stderr_are_scrubbed`, and Linux `command_runtime_grants_cannot_cover_credential_verifiers`. |
+| Personal setup | `first_use_creates_private_settings_and_never_changes_workspace_contents`, `existing_settings_preserve_model_tools_and_bytes_when_selecting_another_root`, `overlapping_workspace_and_invalid_server_never_save_settings`, and `settings_write_does_not_clobber_a_competing_first_run` cover provisioning and preservation. `permissive_existing_directory_is_rejected_without_changing_permissions` is Unix-specific; `platform_paths_are_independent_of_current_project_and_ignore_relative_xdg` covers path selection. |
 | Concurrent runs | Scheduler tests, `adversarial_runtime`, `service_load`: ownership, quotas, storage failure and bounded settlement. `mcp_controller_capacity_queue_cancel_and_idempotency_never_start_extra_processes`, `mcp_preparation_cancel_deadline_and_pre_cancel_settle_and_replay_without_model`, and observed-marker shutdown tests cover MCP ownership. `leader_observation_retains_pid_until_group_cleanup` checks Unix PID retention. |
 | Shared owners | `owner_scope_covers_all_routes_and_body_cannot_claim_identity`; authority aliases remain owner constrained. |
 | Authentication | `every_route_authenticates_before_body_or_storage_and_rejects_ambiguous_credentials`, auth unit tests and verifier reload/readiness tests. |

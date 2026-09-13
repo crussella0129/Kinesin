@@ -270,7 +270,7 @@ requires a new run/key.
 
 ## CLI and service meaning
 
-The strict CLI default returns:
+The strict one-shot and batch CLI defaults return:
 
 | Outcome | Exit |
 |---------|------|
@@ -283,8 +283,10 @@ The strict CLI default returns:
 For an intentional freeform demonstration, `--allow-unchecked` permits exit zero
 for `completed + unchecked` only. It never applies to a checked task, changes
 the receipt, or labels it accepted. Reject that flag with a checked-task selection.
-Display “Completed; unchecked” even with the opt-in. Machine consumers should
-read the receipt; exit policy is not an acceptance claim.
+Machine consumers should read the receipt; exit policy is not an acceptance
+claim. Human and JSON sessions allow completed unchecked work automatically and
+return 0. Human answers remain readable, with the unchecked status available
+through `/status`; JSON results retain the receipt and `task_accepted: false`.
 
 A batch returns zero only if every item satisfies its applicable exit rule.
 Otherwise use priority cancellation, execution failure, failed acceptance, then

@@ -1,5 +1,10 @@
 # Native state and service-process audit
 
+Machine-local account names, host identifiers, and absolute paths in this
+historical report are normalized to role labels or explicit placeholders for
+privacy. Recorded outcomes and source-evidence references are unchanged. Replace
+the placeholders in reproduction commands with your own operator and state path.
+
 The existing development `state` directory does **not** meet the private-state
 startup policy. On 2026-09-08 the read-only Rust auditor rejected it with
 `private_state_inherits_parent_permissions`. Its records at this checkpoint are
@@ -8,17 +13,17 @@ shared-service deployment result.
 
 ## Observed Windows permissions
 
-The current tool process runs as `TEC-XX\CodexSandboxOffline`, account RID 1005.
-The actual enabled operator account is `TEC-XX\charl`, RID 1001. These are
-different principals. `CodexSandboxUsers`, RID 1004, contains both
-`CodexSandboxOffline` and `CodexSandboxOnline` (RID 1006).
+The tool process ran as the Windows audit host's offline sandbox account,
+distinct from its enabled operator account. A sandbox-users group contained
+separate offline and online sandbox accounts. These role labels replace the
+machine-local account names and identifiers.
 
 | Object | Owner | Observed DACL |
 |---|---|---|
-| Project directory | Administrators | Inherits SYSTEM, Administrators, and charl FullControl; additionally grants Modify/Synchronize to CodexSandboxUsers and two unresolved sandbox SIDs |
-| `state` | CodexSandboxOffline | Unprotected; inherits all six grants above |
-| `validation-output` | CodexSandboxOffline | Unprotected; inherits the same grants |
-| `C:\Users\charl` | Not inspected | Reading its ACL was denied to the current sandbox token |
+| Project directory | Administrators | Inherits SYSTEM, Administrators, and the operator account's FullControl; additionally grants Modify/Synchronize to the sandbox-users group and two unresolved sandbox SIDs |
+| `state` | Offline sandbox account | Unprotected; inherits all six grants above |
+| `validation-output` | Offline sandbox account | Unprotected; inherits the same grants |
+| `C:\Users\<operator>` | Not inspected | Reading its ACL was denied to the current sandbox token |
 
 The state, validation-output, and practice workspace entries were ordinary
 directories, without a reparse attribute at those named entries. That does not
@@ -32,7 +37,7 @@ existing owner was changed.
 
 The subsequent service test created a new
 `validation-output/service-validation/private` directory with a protected DACL
-at creation. It trusts only the current controller account, charl, SYSTEM and
+at creation. It trusts only the current controller account, the operator, SYSTEM and
 Administrators, with inheritable grants for SQLite sidecars and the verifier
 file. The service accepted the tree through its production startup validator,
 provisioned two synthetic-owner credentials, and served a real checked task.
@@ -94,7 +99,7 @@ present but was **not run on this Windows host**.
 Four native Windows tests passed, including actual filesystem/descriptor calls:
 
 - A fresh temporary directory was created with a protected DACL at creation,
-  granting the current process, charl, SYSTEM, and Administrators access.
+  granting the current process, the operator, SYSTEM, and Administrators access.
   A normally created child file inherited private permissions and passed.
 - A different fresh child was created with an explicit broad read ACE; checking
   the whole tree rejected it despite its private parent.
@@ -108,14 +113,14 @@ change any preexisting object's ACL.
 
 ```powershell
 # Optional when the operator differs from the account executing the test:
-$env:KINESIN_TEST_OPERATOR_SID = (Get-LocalUser -Name charl).SID.Value
+$env:KINESIN_TEST_OPERATOR_SID = (Get-LocalUser -Name 'YOUR_OPERATOR_ACCOUNT').SID.Value
 cargo test --lib private_state:: -- --nocapture
 
 # Read-only audit of an existing, explicitly chosen tree:
-cargo run --example audit-private-state -- C:\Users\charl\Kinesin\state --trust-sid $env:KINESIN_TEST_OPERATOR_SID
+cargo run --example audit-private-state -- 'C:\path\to\private-state' --trust-sid $env:KINESIN_TEST_OPERATOR_SID
 ```
 
-The second command was run against the current development state and exited
+The audit command was run against the development state recorded above and exited
 with `private_state_inherits_parent_permissions`. Passing a known operator SID
 does not suppress the inherited-root check. The
 [example auditor](../examples/audit-private-state.rs) reports the stable failure
@@ -131,14 +136,14 @@ directory; the proposal has not been applied to the existing state.
 | Property | Current development state | Proposed fresh private directory |
 |---|---|---|
 | Root inheritance | Enabled | Disabled with a protected DACL |
-| Allow principals | Inherited sandbox group, two unresolved sandbox SIDs, charl, SYSTEM, Administrators | Explicit controller SID, operator charl SID, SYSTEM, Administrators |
+| Allow principals | Inherited sandbox group, two unresolved sandbox SIDs, operator, SYSTEM, Administrators | Explicit controller SID, operator SID, SYSTEM, Administrators |
 | Propagation | Broad inherited grants propagate | Only selected grants propagate to files and subdirectories |
 | Owner | Sandbox account | Deliberately selected trusted controller or operator account |
 | Existing objects | Synthetic journal already exists | None until the descriptor and audit pass |
 
 Resolve the exact operator and intended service SIDs administratively. Preserve
 the operator's explicit access; do not confuse the Codex sandbox identity with
-charl. Windows provisioning can supply a security descriptor at directory
+the operator account. Windows provisioning can supply a security descriptor at directory
 creation, as the native test does. A new empty directory may alternatively be
 created and tightened before **any** sensitive file is written. Do not copy the
 old inherited grants merely to make the audit pass. Protect every destination

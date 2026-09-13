@@ -1,5 +1,9 @@
 # Adversarial review: execution is not task correctness
 
+The machine-local temporary path in this historical report is normalized to an
+explicit placeholder for privacy. Review timestamps, outcomes, and evidence
+references are unchanged.
+
 Reviewed **2026-09-08 UTC**. This is a review and revision of the design, not a
 penetration test or a claim that an unbuilt Rust runtime has passed its tests.
 
@@ -156,4 +160,4 @@ No runtime checker, Rust tests, live model benchmark, or deployed security test
 has run. All implementation milestone checkboxes remain unchecked.
 
 The preceding uncommitted draft was copied before edits to
-`C:\Users\charl\AppData\Local\Temp\Kinesin-before-adversarial-i9vlwjzp`.
+`<TEMP_DIR>\Kinesin-before-adversarial-i9vlwjzp`.

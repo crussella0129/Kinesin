@@ -20,7 +20,7 @@ tools = ["list_files", "read_file"]
 [[models]]
 id = "local"
 base_url = "http://127.0.0.1:8080"
-model_id = "kinesin-qwen25-coder-7b"
+model_id = "model-example"
 context_size = 4096
 verified_slots = 1
 temperature = 0.0

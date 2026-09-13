@@ -134,7 +134,7 @@ The real request includes this in its `tools` array, with the other chat fields.
 Use typed structs with unknown-field rejection and a shared lexical path
 validator. Do not write a general JSON Schema engine for a fixed tool set.
 
-Eight compiled tools are offered, alongside explicitly allow-listed MCP tools.
+Nine compiled tools are offered, alongside explicitly allow-listed MCP tools.
 The first three only read; file mutations and command execution are gated
 separately (see below and [security](security.md)).
 
@@ -143,6 +143,7 @@ separately (see below and [security](security.md)).
 | `read_file` | `path` | A bounded UTF-8 prefix of one file | Checked runs only |
 | `list_files` | `path` | A bounded nonrecursive listing | No |
 | `search_files` | `path`, `query`, optional `case_sensitive` | Matching file names and one-based line numbers below `path` | No |
+| `create_directory` | `path` | Creates one directory under an existing workspace parent; refuses an existing destination | No |
 | `write_file` | `path`, `content` | Bytes written; replaces one file atomically | No |
 | `edit_file` | `path`, `find`, `replace` | Bytes written; replaces one unique passage | No |
 | `delete_file` | `path` | Removes one regular file | No |
@@ -188,6 +189,13 @@ sibling then renaming into place; and it refuses to leave the root, write throug
 a symbolic link, overwrite a directory, or create parent directories. It mints no
 evidence. Content is bounded, and it arrives inside the tool arguments so it is
 already under the argument limit.
+
+`create_directory` uses the same separate writer capability and explicit mutation
+grant. It opens each existing parent component without following symlinks, then
+creates one final directory through that parent capability. It does not create
+missing parents, replace an existing entry or launch a command shell. Spaces in
+the directory name are accepted. Checked runs do not receive this mutation grant;
+replay consumes recorded observations without creating the directory again.
 
 `edit_file` replaces one exact passage. The `find` text must occur **exactly
 once**: an absent passage cannot edit, and an ambiguous one is refused rather than

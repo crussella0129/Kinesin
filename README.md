@@ -6,48 +6,76 @@ A Rust agent harness with explicit authority and bounded resources.
 
 ## Start here
 
-Kinesin is a **terminal application**. Cloning this repository does not install
-a `kinesin` command on PATH, and Kinesin does not start its own model server.
-The [complete getting-started guide](docs/getting-started.md) provides separate
-[Windows PowerShell](docs/getting-started.md#windows-powershell) and
-[Linux](docs/getting-started.md#linux) instructions, including prerequisites,
-configuration, private state, a first prompt and an existing nighthawk deployment.
+Install Kinesin, a llama.cpp runtime and a GGUF model once, then type
+**`kinesin` from any folder**. Choose a working folder, use the arrow keys to
+choose a model, and press Enter. Kinesin starts the local model server, waits
+for it to become ready, and stops its server when you leave. Sessions show the
+selected folder, model, permitted actions, tool activity and readable answers.
 
-Already have Rust and this checkout? Confirm the CLI starts:
+From an existing checkout with Rust installed:
 
 **Windows PowerShell**
 
 ```powershell
 cd "$HOME\Kinesin"
-cargo run --locked -- --help
+cargo install --locked --path . --bin kinesin
+$env:Path = "$HOME\.cargo\bin;$env:Path"
+kinesin
 ```
 
 **Linux**
 
 ```bash
 cd "$HOME/Kinesin"
-cargo run --locked -- --help
+cargo install --locked --path . --bin kinesin
+export PATH="$HOME/.cargo/bin:$PATH"
+kinesin
 ```
 
-`cargo run` now selects the `kinesin` executable automatically. Help works
-without a model or configuration. Next, follow the guide to copy
-[`kinesin.example.toml`](kinesin.example.toml) to `kinesin.toml`, prepare its
-`workspace` and private `state`, and start or connect the model server. Then:
+For a faster development installation, append `--debug` to the install command.
+`cargo run --locked` from the checkout opens the same entry point, and
+`kinesin --help` needs no configuration or model. Cloning alone does not install
+the command. See the [Windows and Linux guide](docs/getting-started.md) for build
+prerequisites, persistent PATH and the complete first session. Before asking for
+work, follow [the one-time local model setup](docs/getting-started.md#install-a-local-model-and-runtime).
+
+Put GGUF files in `%LOCALAPPDATA%\Kinesin\models` on Windows or
+`~/.local/share/kinesin/models` on Linux (or `$XDG_DATA_HOME/kinesin/models` when
+configured). Install `llama-server` and its runtime dependencies in the sibling
+`runtime` directory. A portable installation can instead keep `models/` and
+`runtime/` beside the installed Kinesin executable, with `llama-server` directly
+inside `runtime/`. Existing `model/` and `models/` folders in the launch directory
+are also checked. To use files elsewhere:
 
 ```text
-cargo run --locked -- --workspace practice --model local --prompt "Say hello" --allow-unchecked
-cargo run --locked
+kinesin --model-path "PATH/TO/model-example.gguf" --runtime-path "PATH/TO/llama-server"
 ```
 
-The first command runs one prompt; the second opens the interactive `> ` session.
-There is no `run` subcommand. `kinesin.toml` is read from the current directory,
-or selected explicitly with `--config PATH`. The guide shows the expected JSON
-and how to distinguish a completed answer from checked task acceptance.
+Use `llama-server.exe` on Windows. These terminal-session options select local
+files; they do not grant the assistant access to the folders containing them.
+Model/runtime directories must be disjoint from the working folder; an overlap
+asks you to choose another working folder.
 
-To install the program, run `cargo install --locked --path . --bin kinesin`
-from the checkout, then ensure Cargo's `bin` directory is on PATH as shown in
-the guide. After that, `kinesin --help` works from any directory; starting a
-session elsewhere still requires the correct `--config` path.
+Choose a working folder at the prompt, then ask for work there:
+
+```text
+> make a folder called test 1
+> list the files in this folder
+```
+
+The personal profile allows read/search, folder creation and file writing/editing
+inside that selected folder. `/help`, `/permissions`, `/status`, `/new` and `/exit`
+control the session. Normal local use needs no SSH or second terminal.
+`kinesin --external` explicitly attaches to a separately managed model server;
+see [optional remote-server connections](docs/getting-started.md#optional-remote-server-connection).
+
+Normal terminal entry uses private per-user settings, so projects do not need
+their own `kinesin.toml`. `--config PATH` explicitly selects a fixed profile and
+skips folder selection; `--json` exposes session receipts for automation.
+Human setup requires terminal input and output; use `--config PATH --json` when
+redirecting session output.
+The tracked [`kinesin.example.toml`](kinesin.example.toml) remains a read-only
+checked-task example. One-shot and operator commands retain structured output.
 
 **Why are there three binaries?** `kinesin` is the product. `cmd-fixture` is a
 test child process for command execution and cleanup; `mcp-fixture` is a test
@@ -117,9 +145,11 @@ CLI / authenticated loopback API
 ```
 
 The existing names remain useful: **K-Core** is the pure decision logic,
-**Koil** names the model-adapter responsibility. **Kineserve** managed model
-supervision and the separate Koil encrypted-overlay project remain proposed;
-the current harness attaches to an externally started model endpoint.
+**Koil** names the model-adapter responsibility. Local terminal sessions now
+supervise their selected llama.cpp server through **Kineserve** ownership.
+Remote process management is outside that scope; the separate Koil
+encrypted-overlay project remains proposed.
+Explicit profiles can still attach to an externally started model endpoint.
 
 ## Main choices
 

@@ -377,16 +377,42 @@ impl Store {
             .filter(|p| !p.as_os_str().is_empty())
             .ok_or_else(|| error("storage_invalid_path"))?;
         std::fs::create_dir_all(parent).map_err(|_| error("storage_directory"))?;
-        let controller_lock = OpenOptions::new()
+        let mut lock_options = OpenOptions::new();
+        lock_options
             .read(true)
             .write(true)
             .create(true)
-            .truncate(false)
+            .truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            // A private directory alone does not satisfy the retained-tree
+            // policy: its newly created files must also be owner-only.
+            lock_options.mode(0o600);
+        }
+        let controller_lock = lock_options
             .open(parent.join("controller.lock"))
             .map_err(|_| error("storage_lock_open"))?;
         controller_lock
             .try_lock()
             .map_err(|_| error("storage_controller_locked"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            // SQLite defaults a new database to 0644. Precreate it owner-only
+            // so SQLite's WAL/SHM files inherit that mode. create_new preserves
+            // every existing database and its administrator-provided mode.
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(path)
+            {
+                Ok(file) => drop(file),
+                Err(problem) if problem.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(_) => return Err(error("storage_database_create")),
+            }
+        }
         let connection = Connection::open(path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.pragma_update(None, "foreign_keys", true)?;
@@ -496,9 +522,14 @@ impl Store {
                 {
                     return Err(error("storage_invalid_backup_destination"));
                 }
-                OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
+                let mut options = OpenOptions::new();
+                options.write(true).create_new(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                options
                     .open(&destination)
                     .map_err(|_| error("storage_backup_create"))?;
                 let mut target = Connection::open(&destination)?;
