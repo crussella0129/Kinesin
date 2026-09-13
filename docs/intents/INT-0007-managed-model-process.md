@@ -2,12 +2,12 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0007
-- **State:** active
-- **Work evidence:** [T-109](../work/tasks.md), [implementation and validation plan](../managed-model-entry.md)
-- **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** none
-- **Documentation evidence:** none
+- **State:** realized
+- **Work evidence:** [implementation and validation plan](../managed-model-entry.md#implementation-plan)
+- **Completion evidence:** [T-109 direct follow-up](../work/completed-tasks.md#t-109-direct-follow-up)
+- **Code evidence:** [owned backend](../../src/managed_model.rs), [local selection](../../src/model_selection.rs), [onboarding](../../src/onboarding.rs), [CLI lifecycle](../../src/cli.rs)
+- **Test evidence:** [managed process tests](../../tests/managed_model.rs), [CLI lifecycle tests](../../tests/managed_cli.rs), [native verification](../managed-model-entry.md#results)
+- **Documentation evidence:** [installation and usage](../getting-started.md), [configuration](../configuration.md), [security boundaries](../security.md)
 
 > **Roadmap:** theme C (operability) — see [the roadmap](../roadmap.md) (INT-0011).
 
@@ -48,7 +48,7 @@ hand-launch the pinned server). Managed supervision closes the "serve locally"
 half of the model-serving architecture goal without weakening the attach path.
 
 ## Alternatives
-Keep attach-only (current; smallest surface, but manual). A shell/PowerShell
+Keep attach-only (the prior implementation; smallest surface, but manual). A shell/PowerShell
 launcher script outside the binary (the original scaffold's `run-harness.ps1`;
 rejected because process ownership and cleanup then live outside Rust). Relates
 to INT-0008, which owns the remote-endpoint half.
@@ -66,3 +66,4 @@ managed model ownership requires separately tested behavior.
 - 2026-09-12: proposed implementation guidance updated to the shared owned-process primitive after the unused command-group dependency was removed; capability remains proposed.
 - 2026-09-12: proposed → planned under direct user follow-up T-109, with local selection, private runtime inputs and explicit external mode added to acceptance criteria.
 - 2026-09-12: planned → active after the scoped implementation and validation plan was recorded; managed lifecycle, discovery and CLI integration are being built before PR12 merge.
+- 2026-09-13: active → realized; T-109 passed native Windows/Linux lifecycle and actual local-model terminal/filesystem checks, dependency gates and independent review for the scoped one-backend CLI implementation. PR12 remains unmerged.

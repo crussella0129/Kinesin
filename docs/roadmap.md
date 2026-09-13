@@ -55,7 +55,7 @@ evaluations, telemetry and verified encrypted two-host deployment. Read the
 |---|---|
 | [INT-0023](intents/INT-0023-lifecycle-data-stewardship.md) | Proposed complete lifecycle/data stewardship, restore drills and version-compatibility matrix. Existing recovery, backup, retention and owner isolation are the starting point. |
 | [INT-0016](intents/INT-0016-observability.md) | Proposed off-by-default OpenTelemetry export with content-free labels and measured runtime overhead. Existing counters are not exported OTel traces. |
-| [INT-0007](intents/INT-0007-managed-model-process.md) | Active local-entry follow-up: bounded GGUF selection and protected model/runtime inputs, managed llama-server readiness and owned cleanup, with explicit external connections retained. [Implementation and verification](managed-model-entry.md) own completion evidence. |
+| [INT-0007](intents/INT-0007-managed-model-process.md) | Realized for one local CLI backend/slot: bounded GGUF selection, protected model/runtime inputs, readiness and owned cleanup, with explicit external connections retained. [Native verification](managed-model-entry.md) records scope and evidence. |
 | [INT-0027](intents/INT-0027-encrypted-remote-deployment.md) | Proposed verified encrypted deployment between two physical hosts. HTTPS URL validation is implemented separately from server binding/firewall/tunnel evidence. |
 
 ### D. Harness capability
@@ -110,8 +110,9 @@ current revision. Their earlier roadmap and assurance evidence stays linked.
 4. Complete INT-0023/0025's data/credential lifecycle and INT-0016 observability.
    Extend INT-0027 from the verified nighthawk configuration to its remaining
    deployment and capacity criteria; preserve the scope of the existing proof.
-5. Add skills (INT-0006), managed inference (INT-0007) and remote MCP (INT-0020)
-   as measured workloads justify them, preserving their prerequisite boundaries.
+5. Add skills (INT-0006) and remote MCP (INT-0020) as measured workloads justify
+   them. Preserve the tested single-backend CLI boundary of managed inference
+   (INT-0007) when planning any wider serving lifecycle.
 6. Add signed journal authenticity (INT-0014) with an explicit deployment-key
    policy. Consider Koil (INT-0009) only after a verified remote deployment
    establishes a need beyond the adopted transport. Subagents (INT-0018) follow

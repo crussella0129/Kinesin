@@ -1,7 +1,5 @@
 # Agent Tasks (Persistent Backlog)
 
-- [ ] T-109 (active) [intent: INT-0007, INT-0029]: Make local GGUF selection and supervised serving the normal entry path; preserve private workspace boundaries, remove personal environment examples, clarify explicit external SSH authentication, and verify Windows/Linux cancellation and cleanup — touches: src/onboarding.rs; src/model_selection.rs; src/managed_model.rs; src/cli.rs; src/config.rs; src/process.rs; lifecycle tests; usage and evidence docs
-
 - [ ] T-101 (backlog) [intent: INT-0019]: Plan and verify mandatory Windows AppContainer/LPAC isolation alongside owned Jobs — touches: src/process.rs; src/tools.rs; tests/command_tool.rs; Windows isolation tests; docs/security.md
 - [ ] T-102 (backlog) [intent: INT-0026]: Define session continuity and model token admission, then test branching and mixed-owner slot reassignment with actual prepared requests — touches: src/cli.rs; src/policy.rs; src/model.rs; src/replay.rs; tests/live_evaluation.rs
 - [ ] T-103 (backlog) [intent: INT-0024]: Build versioned coding-task and adversarial evaluation cards with reproducible scoring and model/workload provenance — touches: tests/live_evaluation.rs; evaluation fixtures; docs/live-evaluation.md

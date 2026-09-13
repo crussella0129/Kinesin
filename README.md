@@ -146,8 +146,9 @@ CLI / authenticated loopback API
 
 The existing names remain useful: **K-Core** is the pure decision logic,
 **Koil** names the model-adapter responsibility. Local terminal sessions now
-supervise their selected llama.cpp server. Broader **Kineserve** deployment
-management and the separate Koil encrypted-overlay project remain proposed.
+supervise their selected llama.cpp server through **Kineserve** ownership.
+Remote process management is outside that scope; the separate Koil
+encrypted-overlay project remains proposed.
 Explicit profiles can still attach to an externally started model endpoint.
 
 ## Main choices
