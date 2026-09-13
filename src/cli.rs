@@ -24,7 +24,9 @@ mod presentation;
 pub const USAGE: &str = "Kinesin - bounded local harness
 
 Usage:
-  kinesin [--config PATH] [--json]
+  kinesin [--model-path GGUF] [--runtime-path EXECUTABLE]
+  kinesin --external
+  kinesin --config PATH [--json]
   kinesin [--config PATH] --workspace ALIAS --model ALIAS --prompt TEXT [--allow-unchecked] [--capture MODE]
   kinesin [--config PATH] --task ALIAS --model ALIAS [--capture MODE]
   kinesin batch --config PATH --input PATH
@@ -39,7 +41,11 @@ Usage:
 
 Bare kinesin starts an interactive session. Each entry continues the previous answer.
 Sessions show readable answers; --json selects JSONL receipts and provisional deltas.
-Interactive startup offers a working folder and uses saved user settings.
+Interactive startup requires a working folder and offers local GGUF models.
+Enter uses the selected model; arrow keys choose another. Kinesin starts its local server.
+--model-path skips the model chooser; --runtime-path selects llama-server.
+--external explicitly connects to a separately managed server.
+These setup options require a terminal and cannot combine with --config, --json or run inputs.
 Piped/JSON sessions and one-shot runs default to kinesin.toml in the current working directory.
 Use --config PATH to select another configuration file. Aliases come from that file.
 Capture MODE is metadata or replay; replay capture retains private inputs and outputs.
@@ -87,6 +93,7 @@ pub enum CliCommand {
         config: PathBuf,
         json: bool,
         explicit_config: bool,
+        options: crate::onboarding::SessionOptions,
     },
     Run(RunCommand),
     Batch(BatchCommand),
@@ -114,6 +121,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<CliCommand, Str
             config: PathBuf::from(DEFAULT_CONFIG),
             json: false,
             explicit_config: false,
+            options: crate::onboarding::SessionOptions::default(),
         });
     };
     let command = first.into_string().map_err(|_| USAGE)?;
@@ -253,10 +261,18 @@ fn parse_default(
     let mut values = BTreeMap::new();
     let mut allow_unchecked = false;
     let mut json = false;
+    let mut external = false;
     let mut flags = std::iter::once(OsString::from(first_flag)).chain(rest);
     for _ in 0..16 {
         let Some(flag) = flags.next() else { break };
         let flag = flag.into_string().map_err(|_| "flag must be UTF-8")?;
+        if flag == "--external" {
+            if external {
+                return Err("duplicate --external".into());
+            }
+            external = true;
+            continue;
+        }
         if flag == "--json" {
             if json {
                 return Err("duplicate --json".into());
@@ -278,6 +294,8 @@ fn parse_default(
             "--prompt",
             "--task",
             "--capture",
+            "--model-path",
+            "--runtime-path",
         ]
         .contains(&flag.as_str())
         {
@@ -294,6 +312,15 @@ fn parse_default(
         return Err("too many arguments".into());
     }
     let explicit_config = values.contains_key("--config");
+    let options = crate::onboarding::SessionOptions {
+        model_path: values.remove("--model-path").map(PathBuf::from),
+        runtime_path: values.remove("--runtime-path").map(PathBuf::from),
+        external,
+    };
+    let setup_options = options.model_path.is_some() || options.runtime_path.is_some() || external;
+    if external && (options.model_path.is_some() || options.runtime_path.is_some()) {
+        return Err("--external cannot combine with local model/runtime paths".into());
+    }
     let config = values
         .remove("--config")
         .map(PathBuf::from)
@@ -304,6 +331,9 @@ fn parse_default(
         || values.contains_key("--workspace")
         || values.contains_key("--prompt")
         || values.contains_key("--task");
+    if setup_options && (explicit_config || json || has_run_input) {
+        return Err("model setup options require an interactive session without --config, --json or run inputs".into());
+    }
     if !has_run_input {
         if !values.is_empty() {
             return Err(USAGE.into());
@@ -312,6 +342,7 @@ fn parse_default(
             config,
             json,
             explicit_config,
+            options,
         });
     }
     if json {
@@ -645,13 +676,18 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
             unreachable!("command handled before startup")
         }
     };
-    let config = if let CliCommand::Session {
+    let mut config = if let CliCommand::Session {
         explicit_config,
         json,
+        options,
         ..
     } = &command
     {
-        crate::onboarding::load_session(path, *explicit_config, *json)?
+        match crate::onboarding::load_session_with_options(path, *explicit_config, *json, options) {
+            Ok(config) => config,
+            Err(reason) if reason == crate::onboarding::SETUP_CANCELLED => return Ok(130),
+            Err(reason) => return Err(reason),
+        }
     } else {
         BoundedConfig::load(path)?
     };
@@ -660,6 +696,85 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
         CliCommand::Session { .. } | CliCommand::Run(_) | CliCommand::Batch(_)
     ) {
         return execute_operator(command, config);
+    }
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| "runtime initialization failed")?;
+    runtime.block_on(async move {
+        let interrupted = CancellationToken::new();
+        let done = CancellationToken::new();
+        let mut listener = crate::signal::ctrl_c_listener()
+            .map_err(|_| "cannot register cancellation before model startup")?;
+        let signal = {
+            let (interrupt, finished) = (interrupted.clone(), done.clone());
+            tokio::spawn(async move {
+                tokio::select! {
+                    _ = finished.cancelled() => Ok(()),
+                    result = listener.recv() => {
+                        interrupt.cancel();
+                        result.map_err(|_| "signal handler failed".to_owned())
+                    }
+                }
+            })
+        };
+        let mut server = None;
+        let outcome = async {
+            if let Some(spec) = config.managed_model() {
+                if matches!(&command, CliCommand::Session { json: false, .. }) {
+                    eprintln!("Loading local model... Ctrl+C cancels startup.");
+                }
+                let owned = crate::managed_model::ManagedServer::start(
+                    spec, config.model(&spec.model).ok_or("managed profile missing")?, &interrupted,
+                ).await?;
+                // Keep ownership even if subsequent preparation fails.
+                server = Some(owned);
+                config.bind_managed_model(server.as_ref().expect("owned server").profile())?;
+            }
+            let running = execute_runs(command, config, &interrupted);
+            tokio::pin!(running);
+            if let Some(owned) = &mut server {
+                tokio::select! {
+                    outcome = &mut running => outcome,
+                    exited = owned.wait_for_exit() => {
+                        interrupted.cancel();
+                        let _ = running.await;
+                        match exited {
+                            Ok(status) => Err(format!("local model server exited ({status}); session stopped")),
+                            Err(reason) => Err(reason),
+                        }
+                    }
+                }
+            } else {
+                running.await
+            }
+        }.await;
+        let cleanup = match &mut server {
+            Some(owned) => owned.shutdown().await,
+            None => Ok(()),
+        };
+        done.cancel();
+        let signaled = signal.await.map_err(|_| "signal task failed")?;
+        cleanup?;
+        signaled?;
+        // Backend death keeps its diagnostic; user interruption is exit 130.
+        if interrupted.is_cancelled() && outcome.is_ok() {
+            return Ok(130);
+        }
+        if interrupted.is_cancelled() && outcome.as_ref().is_err_and(|reason| reason.starts_with("local model startup cancelled")) {
+            return Ok(130);
+        }
+        outcome
+    })
+}
+
+async fn execute_runs(
+    command: CliCommand,
+    config: Config,
+    interrupted: &CancellationToken,
+) -> Result<u8, String> {
+    if interrupted.is_cancelled() {
+        return Ok(130);
     }
     let resources = RunResources::from_config(&config)?;
     let models = config
@@ -690,10 +805,6 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
         _ => unreachable!("operator commands handled before model startup"),
     };
     let limits = startup.config.concurrency().clone();
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .map_err(|_| "runtime initialization failed")?;
     let storage = Storage::start_with_policy(
         startup.config.storage().path.clone(),
         QueueLimits {
@@ -707,27 +818,32 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
         startup.config.storage().policy.clone(),
     )
     .map_err(|error| error.to_string())?;
-    runtime.block_on(async move {
-        let (handle, controller) = Controller::start(limits, storage.client(), false)?;
-        let interrupted = CancellationToken::new();
-        let done = CancellationToken::new();
-        let signal: tokio::task::JoinHandle<Result<(), String>> = {
-            let (signal_handle, signal_interrupt, signal_done) =
-                (handle.clone(), interrupted.clone(), done.clone());
-            tokio::spawn(async move {
-                tokio::select! {
-                    _ = signal_done.cancelled() => Ok(()),
-                    result = crate::signal::ctrl_c() => {
-                        result.map_err(|_| "signal handler failed".to_owned())?;
-                        signal_interrupt.cancel();
-                        signal_handle.shutdown();
-                        Ok(())
-                    }
+    let (handle, controller) = match Controller::start(limits, storage.client(), false) {
+        Ok(controller) => controller,
+        Err(reason) => {
+            storage
+                .shutdown()
+                .await
+                .map_err(|error| error.to_string())?;
+            return Err(reason);
+        }
+    };
+    let done = CancellationToken::new();
+    let cancellation = {
+        let (signal_handle, signal_interrupt, signal_done) =
+            (handle.clone(), interrupted.clone(), done.clone());
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = signal_done.cancelled() => {},
+                _ = signal_interrupt.cancelled() => {
+                    signal_handle.shutdown();
                 }
-            })
-        };
-        let outcome = if let Some(json) = session {
-            run_session(&handle, &startup, &storage.client(), &interrupted, json).await
+            }
+        })
+    };
+    let outcome = async {
+        if let Some(json) = session {
+            run_session(&handle, &startup, &storage.client(), interrupted, json).await
         } else {
             match (single, batch) {
                 (Some((mut submission, allow_unchecked)), None) => {
@@ -735,21 +851,24 @@ pub fn execute(command: CliCommand) -> Result<u8, String> {
                     let job = startup.job_continued(submission, prior)?;
                     run_single(&handle, job, allow_unchecked, None).await
                 }
-                (None, Some(reader)) => run_batch(&handle, &startup, reader, &interrupted).await,
+                (None, Some(reader)) => run_batch(&handle, &startup, reader, interrupted).await,
                 _ => Err("invalid prepared command".into()),
             }
-        };
-        // This also handles input/output failure without detaching live effects.
-        handle.shutdown();
-        let joined = controller.join().await;
-        done.cancel();
-        let signal_result = signal.await.map_err(|_| "signal task failed".to_owned());
-        let storage_result = storage.shutdown().await.map_err(|error| error.to_string());
-        joined?;
-        signal_result??;
-        storage_result?;
-        outcome
-    })
+        }
+    }
+    .await;
+    // This also handles input/output failure without detaching live effects.
+    handle.shutdown();
+    let joined = controller.join().await;
+    done.cancel();
+    let cancellation_result = cancellation
+        .await
+        .map_err(|_| "cancellation task failed".to_owned());
+    let storage_result = storage.shutdown().await.map_err(|error| error.to_string());
+    joined?;
+    cancellation_result?;
+    storage_result?;
+    outcome
 }
 
 fn emit_sync(line: OutputLine) -> Result<(), String> {
@@ -1257,8 +1376,16 @@ async fn run_session(
             .config
             .workspace(&workspace)
             .ok_or("unknown workspace")?;
-        let model_config = startup.config.model(&model).ok_or("unknown model")?;
-        emit_human(presentation::session_intro(workspace_config, model_config)).await?;
+        let mut model_config = startup.config.model(&model).ok_or("unknown model")?.clone();
+        if let Some(managed) = startup.config.managed_model() {
+            model_config.model_id = managed
+                .model_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+        }
+        emit_human(presentation::session_intro(workspace_config, &model_config)).await?;
     }
     let mut previous: Option<String> = None;
     let mut last_run: Option<String> = None;
@@ -1596,6 +1723,44 @@ pub fn aggregate_exit(current: u8, next: u8) -> u8 {
 mod tests {
 
     #[test]
+    fn model_setup_flags_are_confined_to_human_sessions() {
+        let args = |items: &[&str]| items.iter().map(OsString::from).collect::<Vec<_>>();
+        let CliCommand::Session { options, .. } = parse(args(&[
+            "--model-path",
+            "other.gguf",
+            "--runtime-path",
+            "llama-server",
+        ]))
+        .unwrap() else {
+            panic!("local path flags must prepare a session");
+        };
+        assert_eq!(options.model_path, Some(PathBuf::from("other.gguf")));
+        assert!(!options.external);
+        for flags in [
+            vec!["--external", "--model-path", "model.gguf"],
+            vec!["--model-path", "model.gguf", "--json"],
+            vec!["--external", "--config", "config.toml"],
+            vec![
+                "--runtime-path",
+                "llama-server",
+                "--workspace",
+                "w",
+                "--model",
+                "m",
+                "--prompt",
+                "p",
+            ],
+            vec!["--external", "--external"],
+            vec!["--model-path"],
+        ] {
+            assert!(
+                parse(args(&flags)).is_err(),
+                "accepted conflicting setup flags"
+            );
+        }
+    }
+
+    #[test]
     fn session_input_stops_reading_at_the_prompt_bound() {
         let oversized = vec![b'x'; crate::config::MAX_PROMPT_BYTES * 4];
         let mut input = std::io::Cursor::new(oversized);
@@ -1634,6 +1799,7 @@ mod tests {
             config,
             json,
             explicit_config,
+            ..
         } = parse(args(&[])).unwrap()
         else {
             panic!("no arguments opens a session");
@@ -1646,6 +1812,7 @@ mod tests {
             config,
             json,
             explicit_config,
+            ..
         } = parse(args(&["--config", "other.toml"])).unwrap()
         else {
             panic!("a config override still opens a session");

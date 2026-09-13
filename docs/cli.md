@@ -11,10 +11,14 @@ without opening configuration, storage, a workspace or a model connection.
 kinesin
 ```
 
-In a terminal, no arguments opens the introduction and working-folder selector.
-First use saves a model connection and file-tool profile in the per-user settings
-described in [getting started](getting-started.md#where-settings-live). Later
-entries keep those model/tool choices and select a folder for the current session.
+In a terminal, no arguments opens the introduction and working-folder selector,
+then a GGUF model selector. Move the caret with Up/Down and press Enter; later
+launches prefer the saved model. **Choose another GGUF file...** accepts a file
+outside the discovered locations. Kinesin starts the selected llama.cpp server,
+checks readiness and owns its cleanup on session exit or Ctrl+C. The
+[setup guide](getting-started.md#install-a-local-model-and-runtime) covers the
+one-time runtime/model installation and per-user directories.
+
 The banner makes the actual workspace, model and permissions visible. Requests
 show bounded tool activity and readable answers:
 
@@ -22,6 +26,33 @@ show bounded tool activity and readable answers:
 > make a folder called test 1
 > list the files in this folder
 ```
+
+| Human terminal option | Behavior |
+| --- | --- |
+| `--model-path PATH` | Select an existing local GGUF instead of showing the model chooser. |
+| `--runtime-path PATH` | Select a specific trusted `llama-server` executable. |
+| `--external` | Set up or reuse an external URL/served-ID connection; do not start or stop that server. |
+
+These options still ask for a working folder. They cannot be combined with
+`--config`, `--json`, piped input or one-shot task/prompt arguments. `--external`
+cannot be combined with either local path option. Quote shell paths containing
+spaces; relative paths resolve from the launch directory. `--model-path` is a
+file path, whereas the existing `--model` option selects a configured alias in
+an explicit one-shot command.
+
+Human setup requires both terminal input and terminal output. With redirected
+stdout, select an explicit profile and JSON output, such as
+`kinesin --config PATH --json > session.jsonl`; the setup flow does not run.
+
+Discovery reads direct GGUF entries in the per-user models directory and the
+`model/` or `models/` directories in the launch directory or beside the executable.
+It is bounded and nonrecursive. A saved explicitly selected file remains usable
+from other launch folders. The model's parent directory and runtime directory
+must be disjoint from the working folder; an overlap prompts for another folder.
+Selecting these inputs gives the assistant no additional filesystem authority.
+For a portable installation, place GGUFs in `models/` beside the installed
+Kinesin executable and the backend in `runtime/llama-server` (or
+`runtime/llama-server.exe` on Windows), together with its runtime dependencies.
 
 A personal session profile has one workspace and one model. `kinesin --config
 other.toml` instead uses the explicitly configured workspace and skips the folder
@@ -49,15 +80,16 @@ The cited answer enters as reference data with its own entry in the input
 inventory, marked as earlier model output. It is information, not instruction,
 and grants no permission.
 
-The commands below use an explicit example configuration prepared using the guide.
-Single runs, sessions and `batch` require the verified model server. Configuration paths resolve
-relative to the configuration file; CLI input-file paths resolve from your current
+The commands below use an explicit example configuration prepared using the guide
+and a separately started, verified model server. Normal local terminal entry
+starts its own server. Configuration paths resolve relative to the configuration
+file; CLI input-file paths resolve from your current
 directory. Run execution uses the implicit local operator identity; `--owner`
 is limited to provisioning credentials for a configured service owner.
 
 The bundled examples expect a deliberately prepared `workspace/project.txt`;
 its synthetic contents are in [the checked-task setup](configuration.md#add-an-explicit-checked-task).
-They also expect the verified `kinesin-qwen25-coder-7b` model alias on loopback
+They also expect the example `model-example` model alias on loopback
 port 8080. Follow [the recorded server startup](model-preflight.md#reproduce-the-baseline)
 or edit your copied example to match the separately verified endpoint.
 
@@ -137,9 +169,11 @@ session returns 0 without an extra flag.
 The batch aggregate uses priority **130, 1, 2, 3, 0** and preserves individual
 outcomes. An unchecked opt-in cannot excuse a failed checked task.
 
-Before controller startup, Ctrl+C during personal setup uses the operating
-system's default termination behavior. On Windows this is native status
-`0xC000013A` (`-1073741510`), rather than the running controller's exit 130.
+In the arrow-key model selector, Esc or Ctrl+C cancels selection, restores the
+terminal and returns 130. During setup's ordinary line prompts, Ctrl+C uses the
+operating system's default termination behavior; on Windows this is native
+status `0xC000013A` (`-1073741510`). After setup, startup/session cancellation
+uses exit 130 and settles any owned model process.
 
 Ctrl+C stops new admission, requests cancellation for queued/active runs, and
 joins the controller and storage writer. Results already committed keep their

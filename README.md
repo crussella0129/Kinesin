@@ -6,10 +6,11 @@ A Rust agent harness with explicit authority and bounded resources.
 
 ## Start here
 
-Install Kinesin once, then type **`kinesin` from any folder**. The terminal entry
-introduces the assistant and asks which project folder to work in. First use
-also saves your model connection. Sessions show the selected folder, model,
-permitted actions, tool activity and readable answers.
+Install Kinesin, a llama.cpp runtime and a GGUF model once, then type
+**`kinesin` from any folder**. Choose a working folder, use the arrow keys to
+choose a model, and press Enter. Kinesin starts the local model server, waits
+for it to become ready, and stops its server when you leave. Sessions show the
+selected folder, model, permitted actions, tool activity and readable answers.
 
 From an existing checkout with Rust installed:
 
@@ -35,7 +36,25 @@ For a faster development installation, append `--debug` to the install command.
 `cargo run --locked` from the checkout opens the same entry point, and
 `kinesin --help` needs no configuration or model. Cloning alone does not install
 the command. See the [Windows and Linux guide](docs/getting-started.md) for build
-prerequisites, persistent PATH and the complete first session.
+prerequisites, persistent PATH and the complete first session. Before asking for
+work, follow [the one-time local model setup](docs/getting-started.md#install-a-local-model-and-runtime).
+
+Put GGUF files in `%LOCALAPPDATA%\Kinesin\models` on Windows or
+`~/.local/share/kinesin/models` on Linux (or `$XDG_DATA_HOME/kinesin/models` when
+configured). Install `llama-server` and its runtime dependencies in the sibling
+`runtime` directory. A portable installation can instead keep `models/` and
+`runtime/` beside the installed Kinesin executable, with `llama-server` directly
+inside `runtime/`. Existing `model/` and `models/` folders in the launch directory
+are also checked. To use files elsewhere:
+
+```text
+kinesin --model-path "PATH/TO/model-example.gguf" --runtime-path "PATH/TO/llama-server"
+```
+
+Use `llama-server.exe` on Windows. These terminal-session options select local
+files; they do not grant the assistant access to the folders containing them.
+Model/runtime directories must be disjoint from the working folder; an overlap
+asks you to choose another working folder.
 
 Choose a working folder at the prompt, then ask for work there:
 
@@ -46,12 +65,15 @@ Choose a working folder at the prompt, then ask for work there:
 
 The personal profile allows read/search, folder creation and file writing/editing
 inside that selected folder. `/help`, `/permissions`, `/status`, `/new` and `/exit`
-control the session. Model serving remains separate; the guide includes the
-[existing Nighthawk connection](docs/getting-started.md#use-the-existing-nighthawk-model).
+control the session. Normal local use needs no SSH or second terminal.
+`kinesin --external` explicitly attaches to a separately managed model server;
+see [optional remote-server connections](docs/getting-started.md#optional-remote-server-connection).
 
 Normal terminal entry uses private per-user settings, so projects do not need
 their own `kinesin.toml`. `--config PATH` explicitly selects a fixed profile and
 skips folder selection; `--json` exposes session receipts for automation.
+Human setup requires terminal input and output; use `--config PATH --json` when
+redirecting session output.
 The tracked [`kinesin.example.toml`](kinesin.example.toml) remains a read-only
 checked-task example. One-shot and operator commands retain structured output.
 
@@ -123,9 +145,10 @@ CLI / authenticated loopback API
 ```
 
 The existing names remain useful: **K-Core** is the pure decision logic,
-**Koil** names the model-adapter responsibility. **Kineserve** managed model
-supervision and the separate Koil encrypted-overlay project remain proposed;
-the current harness attaches to an externally started model endpoint.
+**Koil** names the model-adapter responsibility. Local terminal sessions now
+supervise their selected llama.cpp server. Broader **Kineserve** deployment
+management and the separate Koil encrypted-overlay project remain proposed.
+Explicit profiles can still attach to an externally started model endpoint.
 
 ## Main choices
 

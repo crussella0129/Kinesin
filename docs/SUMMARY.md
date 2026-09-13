@@ -1,6 +1,7 @@
 # Summary
 - [Project Book](README.md)
 - [Install and use Kinesin](getting-started.md)
+- [Local model entry verification](managed-model-entry.md)
 - [Intents](intents/README.md)
   - [INT-0001 Token accounting](intents/INT-0001-token-accounting.md)
   - [INT-0002 Context compaction](intents/INT-0002-context-compaction.md)

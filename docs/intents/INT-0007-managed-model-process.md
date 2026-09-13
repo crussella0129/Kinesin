@@ -2,8 +2,8 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0007
-- **State:** proposed
-- **Work evidence:** none
+- **State:** active
+- **Work evidence:** [T-109](../work/tasks.md), [implementation and validation plan](../managed-model-entry.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -12,16 +12,17 @@
 > **Roadmap:** theme C (operability) — see [the roadmap](../roadmap.md) (INT-0011).
 
 ## Intent
-Optionally start and supervise the local `llama-server` process instead of
-requiring an operator to launch it by hand (today's attach-only profile). When
+Start and supervise a local `llama-server` process after interactive GGUF selection,
+with an explicit external-server alternative. When
 the operator selects a managed model, Kinesin spawns `llama-server` with the
 configured model file and flags, gates run admission on `/health` readiness,
 and owns the child's lifecycle: whole-process-tree cleanup on shutdown, and a
 defined outcome when the child dies or never becomes ready. This is the
-"Kineserve" responsibility named in the README, currently unimplemented.
+"Kineserve" responsibility named in the README.
 Non-goal: managing a remote server's process (that host owns its own process);
 downloading or building models; supervising more than the configured local
-backends.
+backends. The initial managed scope is one local CLI backend with one verified
+slot; service mode continues to require an external server.
 
 ## Acceptance criteria
 - With a managed model configured, `kinesin` starts `llama-server`, waits for
@@ -33,6 +34,12 @@ backends.
   attach mode remains available and is the default for a remote endpoint.
 - Tests cover ready-gating, a never-ready failure, child death mid-run, and
   clean tree teardown.
+- Normal entry requires a working folder and offers discovered or saved GGUF
+  files using arrow keys and Enter, with a custom file option and explicit path
+  flags. It does not require server URL or model-ID input.
+- Model/runtime directories remain disjoint from the assistant's workspace;
+  selection grants runtime loading authority only. Existing profile changes
+  preserve unrelated settings and create a private backup atomically.
 
 ## Rationale
 Serving locally is the common case, and the manual launch documented in
@@ -57,3 +64,5 @@ managed model ownership requires separately tested behavior.
 ## Transition history
 - 2026-09-11: created as `proposed`.
 - 2026-09-12: proposed implementation guidance updated to the shared owned-process primitive after the unused command-group dependency was removed; capability remains proposed.
+- 2026-09-12: proposed → planned under direct user follow-up T-109, with local selection, private runtime inputs and explicit external mode added to acceptance criteria.
+- 2026-09-12: planned → active after the scoped implementation and validation plan was recorded; managed lifecycle, discovery and CLI integration are being built before PR12 merge.

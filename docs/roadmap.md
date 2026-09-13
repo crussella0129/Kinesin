@@ -55,7 +55,7 @@ evaluations, telemetry and verified encrypted two-host deployment. Read the
 |---|---|
 | [INT-0023](intents/INT-0023-lifecycle-data-stewardship.md) | Proposed complete lifecycle/data stewardship, restore drills and version-compatibility matrix. Existing recovery, backup, retention and owner isolation are the starting point. |
 | [INT-0016](intents/INT-0016-observability.md) | Proposed off-by-default OpenTelemetry export with content-free labels and measured runtime overhead. Existing counters are not exported OTel traces. |
-| [INT-0007](intents/INT-0007-managed-model-process.md) | Proposed managed local llama-server startup/readiness/cleanup. Existing model support attaches to an externally managed endpoint. |
+| [INT-0007](intents/INT-0007-managed-model-process.md) | Active local-entry follow-up: bounded GGUF selection and protected model/runtime inputs, managed llama-server readiness and owned cleanup, with explicit external connections retained. [Implementation and verification](managed-model-entry.md) own completion evidence. |
 | [INT-0027](intents/INT-0027-encrypted-remote-deployment.md) | Proposed verified encrypted deployment between two physical hosts. HTTPS URL validation is implemented separately from server binding/firewall/tunnel evidence. |
 
 ### D. Harness capability

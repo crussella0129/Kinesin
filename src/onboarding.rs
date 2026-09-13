@@ -5,10 +5,19 @@ use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::config::{BoundedConfig, Config, MAX_CONFIG_BYTES, MAX_PATH_BYTES};
+use crate::model_selection::{self, ModelChoice, ModelFile};
 use crate::private_state::{PrivateStatePolicy, validate_private_tree};
 
 const DEFAULT_ORIGIN: &str = "http://127.0.0.1:8080";
-const DEFAULT_MODEL: &str = "kinesin-qwen25-coder-7b";
+const DEFAULT_MODEL: &str = "model-example";
+pub const SETUP_CANCELLED: &str = "setup_cancelled";
+
+#[derive(Clone, Debug, Default)]
+pub struct SessionOptions {
+    pub model_path: Option<PathBuf>,
+    pub runtime_path: Option<PathBuf>,
+    pub external: bool,
+}
 
 /// Explicit configuration and machine input retain their existing startup
 /// behavior. Only an unconfigured human session performs personal setup.
@@ -17,17 +26,44 @@ pub fn load_session(
     explicit_config: bool,
     json: bool,
 ) -> Result<Config, String> {
+    load_session_with_options(
+        config_path,
+        explicit_config,
+        json,
+        &SessionOptions::default(),
+    )
+}
+
+pub fn load_session_with_options(
+    config_path: &Path,
+    explicit_config: bool,
+    json: bool,
+    options: &SessionOptions,
+) -> Result<Config, String> {
     if explicit_config || json || !io::stdin().is_terminal() {
+        if options.model_path.is_some() || options.runtime_path.is_some() || options.external {
+            return Err("--model-path, --runtime-path and --external require an interactive session without --config or --json".into());
+        }
         return BoundedConfig::load(config_path);
+    }
+    if !io::stdout().is_terminal() {
+        return Err("interactive setup needs terminal input and output; use --config PATH or --json when redirecting output".into());
+    }
+    if options.external && (options.model_path.is_some() || options.runtime_path.is_some()) {
+        return Err("--external cannot be combined with local model or runtime paths".into());
     }
     crate::signal::enable_setup_ctrl_c().map_err(|_| "cannot enable setup cancellation")?;
     let paths = UserPaths::from_environment()?;
     let cwd = std::env::current_dir().map_err(|_| "cannot resolve current directory")?;
-    interactive_setup(
+    let executable = std::env::current_exe().map_err(|_| "cannot locate Kinesin executable")?;
+    interactive_setup_options(
         &paths,
         &cwd,
         &mut io::stdin().lock(),
         &mut io::stdout().lock(),
+        options,
+        &executable,
+        &mut model_selection::choose_model,
     )
     .map_err(|error| terminal_label(&error))
 }
@@ -36,6 +72,7 @@ pub fn load_session(
 struct UserPaths {
     settings: PathBuf,
     state: PathBuf,
+    data_root: PathBuf,
 }
 
 impl UserPaths {
@@ -49,11 +86,18 @@ impl UserPaths {
         }
         #[cfg(unix)]
         {
-            Self::unix(
+            let mut paths = Self::unix(
                 std::env::var_os("HOME").map(PathBuf::from),
                 std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
                 std::env::var_os("XDG_STATE_HOME").map(PathBuf::from),
-            )
+            )?;
+            if let Some(data) = std::env::var_os("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .filter(|path| path.is_absolute())
+            {
+                paths.data_root = data.join("kinesin");
+            }
+            Ok(paths)
         }
     }
 
@@ -64,6 +108,7 @@ impl UserPaths {
         Ok(Self {
             settings: roaming.join("Kinesin/settings.toml"),
             state: local.join("Kinesin/state/kinesin.sqlite"),
+            data_root: local.join("Kinesin"),
         })
     }
 
@@ -78,6 +123,11 @@ impl UserPaths {
         let config = config.filter(|path| path.is_absolute());
         let state = state.filter(|path| path.is_absolute());
         let fallback = || absolute_home(home.clone(), "HOME");
+        let data_root = home
+            .clone()
+            .filter(|path| path.is_absolute())
+            .map(|path| path.join(".local/share/kinesin"))
+            .unwrap_or_else(|| state.clone().unwrap_or_default().join("kinesin"));
         Ok(Self {
             settings: match config {
                 Some(path) => path,
@@ -89,6 +139,7 @@ impl UserPaths {
                 None => fallback()?.join(".local/state"),
             }
             .join("kinesin/kinesin.sqlite"),
+            data_root,
         })
     }
 }
@@ -99,11 +150,35 @@ fn absolute_home(path: Option<PathBuf>, variable: &str) -> Result<PathBuf, Strin
     })
 }
 
+#[cfg(test)]
 fn interactive_setup(
     paths: &UserPaths,
     cwd: &Path,
     input: &mut impl BufRead,
     output: &mut impl Write,
+) -> Result<Config, String> {
+    interactive_setup_options(
+        paths,
+        cwd,
+        input,
+        output,
+        &SessionOptions {
+            external: true,
+            ..SessionOptions::default()
+        },
+        &std::env::current_exe().unwrap(),
+        &mut model_selection::choose_model,
+    )
+}
+
+fn interactive_setup_options(
+    paths: &UserPaths,
+    cwd: &Path,
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+    options: &SessionOptions,
+    executable: &Path,
+    picker: &mut impl FnMut(&[ModelFile], Option<&Path>) -> Result<ModelChoice, String>,
 ) -> Result<Config, String> {
     writeln!(
         output,
@@ -116,22 +191,17 @@ fn interactive_setup(
         Err(SettingsError::Absent) => None,
         Err(SettingsError::Invalid(error)) => return Err(error),
     };
-    if existing.is_none() {
+    if options.external && existing.is_none() {
         writeln!(
             output,
-            "First use: Kinesin connects to a separately running model server."
+            "External mode: connect to a separately running model server."
         )
-        .and_then(|()| {
-            writeln!(
-                output,
-                "The defaults use a local server or SSH tunnel on port 8080."
-            )
-        })
         .map_err(|_| "cannot write setup introduction")?;
     }
 
-    let mut profile = existing;
+    let mut profile = existing.clone();
     let first_use = profile.is_none();
+    let mut prepared = false;
     let config = loop {
         let answer = prompt(input, output, "Working folder", &cwd.display().to_string())?;
         let root = match choose_directory(cwd, &answer) {
@@ -141,24 +211,68 @@ fn interactive_setup(
                 continue;
             }
         };
-        if profile.is_none() {
-            let defaults = default_profile(paths, &root, DEFAULT_ORIGIN, DEFAULT_MODEL)?;
-            if let Err(error) = selected_profile(&defaults, &paths.settings, &root) {
+        if !prepared {
+            let mut defaults = match &profile {
+                Some(value) => value.clone(),
+                None => default_profile(
+                    paths,
+                    &root,
+                    DEFAULT_ORIGIN,
+                    if options.external {
+                        DEFAULT_MODEL
+                    } else {
+                        "local-model"
+                    },
+                )?,
+            };
+            // Check the folder before model selection. A stale saved model path
+            // must not stop the user selecting a new valid model.
+            let mut preflight = defaults.clone();
+            preflight
+                .as_table_mut()
+                .ok_or("invalid personal settings")?
+                .remove("managed_model");
+            if let Err(error) = selected_profile(&preflight, &paths.settings, &root) {
                 if is_workspace_separation_error(&error) {
                     explain_private_overlap(output)?;
                     continue;
                 }
                 return Err(error);
             }
-            let origin = prompt(input, output, "Model server URL", DEFAULT_ORIGIN)?;
-            let model = prompt(
-                input,
-                output,
-                "Model ID served by that server",
-                DEFAULT_MODEL,
-            )?;
-            let value = default_profile(paths, &root, &origin, &model)?;
-            profile = Some(value);
+            if options.external {
+                if first_use || defaults.get("managed_model").is_some() {
+                    let origin = prompt(input, output, "Model server URL", DEFAULT_ORIGIN)?;
+                    let model = prompt(
+                        input,
+                        output,
+                        "Model ID served by that server",
+                        DEFAULT_MODEL,
+                    )?;
+                    let model_config = one_model_mut(&mut defaults)?;
+                    model_config.insert("base_url".into(), toml::Value::String(origin));
+                    model_config.insert("model_id".into(), toml::Value::String(model));
+                    defaults
+                        .as_table_mut()
+                        .ok_or("invalid personal settings")?
+                        .remove("managed_model");
+                }
+            } else {
+                prepare_local_profile(
+                    &mut defaults,
+                    LocalSetup {
+                        paths,
+                        cwd,
+                        workspace: &root,
+                        executable,
+                        options,
+                    },
+                    input,
+                    output,
+                    picker,
+                )?;
+            }
+            profile = Some(defaults);
+            prepared = true;
         }
         match selected_profile(
             profile.as_ref().expect("profile prepared"),
@@ -195,18 +309,272 @@ fn interactive_setup(
             terminal_label(&paths.settings.display().to_string())
         )
         .map_err(|_| "cannot write setup result")?;
+    } else if existing.as_ref() != profile.as_ref() {
+        let backup = replace_settings(
+            &paths.settings,
+            existing.as_ref().ok_or("missing original settings")?,
+            &toml::to_string_pretty(&config).map_err(|_| "cannot serialize settings")?,
+        )?;
+        writeln!(
+            output,
+            "Model settings saved. Previous settings: {}",
+            terminal_label(&backup.display().to_string())
+        )
+        .map_err(|_| "cannot write setup result")?;
     }
     Ok(config)
 }
 
+struct LocalSetup<'a> {
+    paths: &'a UserPaths,
+    cwd: &'a Path,
+    workspace: &'a Path,
+    executable: &'a Path,
+    options: &'a SessionOptions,
+}
+
+fn one_model_mut(value: &mut toml::Value) -> Result<&mut toml::Table, String> {
+    let models = value
+        .get_mut("models")
+        .and_then(toml::Value::as_array_mut)
+        .ok_or("settings must declare one model")?;
+    if models.len() != 1 {
+        return Err(
+            "interactive settings need exactly one model; use --config for another profile".into(),
+        );
+    }
+    models[0]
+        .as_table_mut()
+        .ok_or("invalid model settings".into())
+}
+
+fn prepare_local_profile(
+    profile: &mut toml::Value,
+    setup: LocalSetup<'_>,
+    input: &mut impl BufRead,
+    output: &mut impl Write,
+    picker: &mut impl FnMut(&[ModelFile], Option<&Path>) -> Result<ModelChoice, String>,
+) -> Result<(), String> {
+    let preferred = profile
+        .get("managed_model")
+        .and_then(|managed| managed.get("model_path"))
+        .and_then(toml::Value::as_str)
+        .map(PathBuf::from);
+    let model = if let Some(path) = &setup.options.model_path {
+        model_selection::resolve_model_path(path, setup.cwd)?
+    } else {
+        let roots = model_selection::model_directories(
+            &setup.paths.data_root,
+            setup.cwd,
+            setup.executable,
+        )?;
+        let mut models = model_selection::discover_ggufs(&roots)?;
+        if let Some(path) = &preferred
+            && let Ok(previous) = model_selection::resolve_model_path(path, setup.cwd)
+            && !models.iter().any(|model| model.path == previous.path)
+            && models.len() < model_selection::MAX_MODELS
+        {
+            models.insert(0, previous);
+        }
+        if models.is_empty() {
+            writeln!(
+                output,
+                "No GGUF models found. Place a model in {} or choose another file.",
+                terminal_label(&setup.paths.data_root.join("models").display().to_string())
+            )
+            .map_err(|_| "cannot write model discovery result")?;
+        }
+        match picker(&models, preferred.as_deref()).map_err(|error| {
+            if error.contains("cancelled") {
+                SETUP_CANCELLED.to_owned()
+            } else {
+                error
+            }
+        })? {
+            ModelChoice::File(model) => {
+                model_selection::resolve_model_path(&model.path, setup.cwd)?
+            }
+            ModelChoice::Other => loop {
+                let answer = prompt(
+                    input,
+                    output,
+                    "GGUF file path",
+                    preferred.as_deref().and_then(Path::to_str).unwrap_or(""),
+                )?;
+                let answer = answer
+                    .strip_prefix('"')
+                    .and_then(|path| path.strip_suffix('"'))
+                    .unwrap_or(&answer);
+                match model_selection::resolve_model_path(Path::new(answer), setup.cwd) {
+                    Ok(model) => break model,
+                    Err(error) => writeln!(output, "{}", terminal_label(&error))
+                        .map_err(|_| "cannot write model path error")?,
+                }
+            },
+        }
+    };
+    let previous_runtime = profile
+        .get("managed_model")
+        .and_then(|managed| managed.get("executable"))
+        .and_then(toml::Value::as_str)
+        .map(PathBuf::from);
+    let runtime = resolve_runtime(&setup, previous_runtime.as_deref())?;
+    let converting_external = profile.get("managed_model").is_none();
+    let model_config = one_model_mut(profile)?;
+    let alias = model_config
+        .get("id")
+        .and_then(toml::Value::as_str)
+        .ok_or("model alias missing")?
+        .to_owned();
+    model_config.insert(
+        "base_url".into(),
+        toml::Value::String("http://127.0.0.1:1".into()),
+    );
+    model_config.insert("verified_slots".into(), toml::Value::Integer(1));
+    if converting_external {
+        model_config.insert("model_id".into(), toml::Value::String("local-model".into()));
+    }
+    let mut managed = profile
+        .get("managed_model")
+        .and_then(toml::Value::as_table)
+        .cloned()
+        .unwrap_or_default();
+    managed.insert("model".into(), toml::Value::String(alias));
+    managed.insert("model_path".into(), path_value(&model.path)?);
+    managed.insert("executable".into(), path_value(&runtime)?);
+    for (key, value) in [
+        ("startup_timeout_s", 120),
+        ("gpu_layers", 99),
+        ("threads", 4),
+    ] {
+        managed
+            .entry(key.to_owned())
+            .or_insert(toml::Value::Integer(value));
+    }
+    profile
+        .as_table_mut()
+        .ok_or("invalid personal settings")?
+        .insert("managed_model".into(), toml::Value::Table(managed));
+    writeln!(
+        output,
+        "Model: {}",
+        terminal_label(&model.path.display().to_string())
+    )
+    .map_err(|_| "cannot write selected model")?;
+    Ok(())
+}
+
+fn runtime_file(path: &Path) -> Result<PathBuf, String> {
+    let path = path
+        .canonicalize()
+        .map_err(|_| "runtime path must name an existing llama-server executable")?;
+    let metadata = std::fs::metadata(&path).map_err(|_| "cannot inspect runtime executable")?;
+    if !metadata.is_file() {
+        return Err("runtime path must name a regular executable file".into());
+    }
+    #[cfg(windows)]
+    if !path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case("exe"))
+    {
+        return Err("Windows runtime path must name llama-server.exe".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err("runtime file is not executable".into());
+        }
+    }
+    Ok(path)
+}
+
+fn resolve_runtime(setup: &LocalSetup<'_>, previous: Option<&Path>) -> Result<PathBuf, String> {
+    if let Some(path) = &setup.options.runtime_path {
+        return runtime_file(&if path.is_absolute() {
+            path.to_owned()
+        } else {
+            setup.cwd.join(path)
+        });
+    }
+    if let Some(path) = previous
+        && let Ok(path) = runtime_file(path)
+    {
+        return Ok(path);
+    }
+    let name = if cfg!(windows) {
+        "llama-server.exe"
+    } else {
+        "llama-server"
+    };
+    let mut candidates = vec![setup.paths.data_root.join("runtime").join(name)];
+    candidates.push(
+        setup
+            .paths
+            .data_root
+            .join("runtime")
+            .join(std::env::consts::OS)
+            .join(name),
+    );
+    if let Some(parent) = setup.executable.parent() {
+        candidates.push(parent.join("runtime").join(name));
+        candidates.push(parent.join(name));
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        if path.len() > 65_536 {
+            return Err("PATH is too large for runtime discovery; use --runtime-path".into());
+        }
+        candidates.extend(
+            std::env::split_paths(&path)
+                .filter(|entry| entry.is_absolute())
+                .take(256)
+                .map(|entry| entry.join(name)),
+        );
+    }
+    if let Some(path) = find_trusted_runtime(candidates, setup.cwd, setup.workspace)? {
+        return Ok(path);
+    }
+    Err(format!(
+        "No trusted llama-server runtime found. Install it in {} or pass --runtime-path with its full executable path.",
+        terminal_label(&setup.paths.data_root.join("runtime").display().to_string())
+    ))
+}
+
+fn find_trusted_runtime(
+    candidates: impl IntoIterator<Item = PathBuf>,
+    launch_directory: &Path,
+    workspace: &Path,
+) -> Result<Option<PathBuf>, String> {
+    let launch_directory = launch_directory
+        .canonicalize()
+        .map_err(|_| "cannot resolve launch directory for runtime discovery")?;
+    for candidate in candidates {
+        let Ok(path) = runtime_file(&candidate) else {
+            continue;
+        };
+        let parent = path.parent().ok_or("runtime needs a parent directory")?;
+        if parent == launch_directory
+            || path.starts_with(workspace)
+            || workspace.starts_with(parent)
+        {
+            continue;
+        }
+        return Ok(Some(path));
+    }
+    Ok(None)
+}
+
 fn is_workspace_separation_error(error: &str) -> bool {
-    error.contains("disjoint") || error.contains("outside tool workspaces")
+    error.contains("disjoint")
+        || error.contains("outside tool workspaces")
+        || error.contains("managed model") && error.contains("workspace")
 }
 
 fn explain_private_overlap(output: &mut impl Write) -> Result<(), String> {
     writeln!(
         output,
-        "That folder includes Kinesin's private settings or history. Choose a project subfolder that excludes those private directories."
+        "That folder overlaps Kinesin's private settings, history, model or runtime. Choose a project subfolder that excludes those protected directories."
     )
     .map_err(|_| "cannot write folder error".into())
 }
@@ -226,7 +594,7 @@ fn prompt(
         .read_until(b'\n', &mut bytes)
         .map_err(|_| "cannot read setup answer")?;
     if bytes.is_empty() {
-        return Err("setup cancelled before a session started".into());
+        return Err(SETUP_CANCELLED.into());
     }
     if bytes.len() > MAX_PATH_BYTES + 1 {
         return Err("setup answer exceeds 4096 bytes".into());
@@ -234,6 +602,9 @@ fn prompt(
     let answer = std::str::from_utf8(&bytes)
         .map_err(|_| "setup answer must be UTF-8")?
         .trim();
+    if matches!(answer, "\u{3}" | "\u{1b}") {
+        return Err(SETUP_CANCELLED.into());
+    }
     if answer.chars().any(char::is_control) {
         return Err("setup answer contains a control character".into());
     }
@@ -316,7 +687,7 @@ temperature = 0.0
 stream = false
 request_timeout_s = 120
 connect_timeout_s = 3
-read_timeout_s = 30
+read_timeout_s = 120
 model_queue_timeout_s = 10
 "#,
     )
@@ -424,6 +795,52 @@ fn write_new_settings(path: &Path, text: &str) -> Result<(), String> {
         .and_then(|()| file.sync_all())
         .map_err(|_| "cannot finish writing personal settings")?;
     Ok(())
+}
+
+fn replace_settings(path: &Path, expected: &toml::Value, text: &str) -> Result<PathBuf, String> {
+    let parent = path.parent().ok_or("settings need a parent directory")?;
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let lock = options
+        .open(parent.join("settings.lock"))
+        .map_err(|_| "cannot open settings update lock")?;
+    lock.try_lock()
+        .map_err(|_| "another session is updating model settings; retry after it finishes")?;
+    let mut original = String::new();
+    File::open(path)
+        .map_err(|_| "cannot reopen settings before update")?
+        .take((MAX_CONFIG_BYTES + 1) as u64)
+        .read_to_string(&mut original)
+        .map_err(|_| "cannot read settings before update")?;
+    if original.len() > MAX_CONFIG_BYTES
+        || toml::from_str::<toml::Value>(&original).ok().as_ref() != Some(expected)
+    {
+        return Err(
+            "settings changed during setup; restart so those changes can be preserved".into(),
+        );
+    }
+    let id = uuid::Uuid::new_v4();
+    let backup = parent.join(format!("settings.backup-{id}.toml"));
+    let prepared = parent.join(format!("settings.pending-{id}.toml"));
+    write_new_settings(&backup, &original)?;
+    write_new_settings(&prepared, text)?;
+    if std::fs::rename(&prepared, path).is_err() {
+        let _ = std::fs::remove_file(&prepared);
+        return Err(
+            "cannot replace model settings; original settings and private backup were retained"
+                .into(),
+        );
+    }
+    #[cfg(unix)]
+    File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|_| "cannot finish syncing updated settings")?;
+    Ok(backup)
 }
 
 fn ensure_private_directory(path: &Path) -> Result<(), String> {
@@ -593,10 +1010,33 @@ mod tests {
             UserPaths {
                 settings: self.0.join("config/settings.toml"),
                 state: self.0.join("state/kinesin.sqlite"),
+                data_root: self.0.join("data"),
             }
         }
         fn workspace(&self) -> PathBuf {
             self.0.join("project with spaces")
+        }
+        fn local_assets(&self) -> (ModelFile, PathBuf) {
+            let paths = self.paths();
+            std::fs::create_dir_all(paths.data_root.join("models")).unwrap();
+            std::fs::create_dir_all(paths.data_root.join("runtime")).unwrap();
+            let model = paths.data_root.join("models/example.gguf");
+            std::fs::write(&model, b"GGUFsynthetic model fixture").unwrap();
+            let runtime = paths.data_root.join("runtime").join(if cfg!(windows) {
+                "llama-server.exe"
+            } else {
+                "llama-server"
+            });
+            std::fs::write(&runtime, b"synthetic executable fixture").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&runtime, std::fs::Permissions::from_mode(0o700)).unwrap();
+            }
+            (
+                model_selection::resolve_model_path(&model, &self.0).unwrap(),
+                runtime,
+            )
         }
     }
     impl Drop for Fixture {
@@ -644,6 +1084,233 @@ mod tests {
             String::from_utf8(output)
                 .unwrap()
                 .contains("Settings saved")
+        );
+    }
+
+    #[test]
+    fn local_entry_selects_model_without_server_questions_and_folder_only_keeps_settings() {
+        let fixture = Fixture::new();
+        let paths = fixture.paths();
+        let (model, _) = fixture.local_assets();
+        let options = SessionOptions::default();
+        let executable = fixture.0.join("bin/kinesin");
+        let mut output = Vec::new();
+        let mut picks = 0;
+        let first = interactive_setup_options(
+            &paths,
+            &fixture.workspace(),
+            &mut &b"\n"[..],
+            &mut output,
+            &options,
+            &executable,
+            &mut |models, preferred| {
+                picks += 1;
+                assert_eq!(models, std::slice::from_ref(&model));
+                assert!(preferred.is_none());
+                Ok(ModelChoice::File(models[0].clone()))
+            },
+        )
+        .unwrap();
+        assert_eq!(picks, 1);
+        assert_eq!(first.managed_model().unwrap().model_path, model.path);
+        assert_eq!(first.models()[0].base_url, "http://127.0.0.1:1");
+        assert_eq!(first.models()[0].read_timeout_s, 120);
+        let displayed = String::from_utf8(output).unwrap();
+        assert!(!displayed.contains("Model server URL"));
+        assert!(!displayed.contains("Model ID served"));
+        let original = std::fs::read(&paths.settings).unwrap();
+        let next_root = fixture.0.join("next project");
+        std::fs::create_dir(&next_root).unwrap();
+        let next = interactive_setup_options(
+            &paths,
+            &next_root,
+            &mut &b"\n"[..],
+            &mut Vec::new(),
+            &options,
+            &executable,
+            &mut |models, preferred| {
+                assert_eq!(preferred, Some(model.path.as_path()));
+                Ok(ModelChoice::File(models[0].clone()))
+            },
+        )
+        .unwrap();
+        assert_eq!(next.workspaces()[0].root, next_root);
+        assert_eq!(std::fs::read(&paths.settings).unwrap(), original);
+    }
+
+    #[test]
+    fn explicit_model_path_skips_picker_and_protected_model_folder_reprompts() {
+        let fixture = Fixture::new();
+        let paths = fixture.paths();
+        let (_, runtime) = fixture.local_assets();
+        let model = fixture.workspace().join("selected.gguf");
+        std::fs::write(&model, b"GGUFsynthetic").unwrap();
+        let next_root = fixture.0.join("safe project");
+        std::fs::create_dir(&next_root).unwrap();
+        let options = SessionOptions {
+            model_path: Some(model),
+            runtime_path: Some(runtime),
+            external: false,
+        };
+        let input = format!("\n{}\n", next_root.display());
+        let mut output = Vec::new();
+        let config = interactive_setup_options(
+            &paths,
+            &fixture.workspace(),
+            &mut input.as_bytes(),
+            &mut output,
+            &options,
+            &fixture.0.join("bin/kinesin"),
+            &mut |_, _| panic!("explicit model path must skip picker"),
+        )
+        .unwrap();
+        assert_eq!(config.workspaces()[0].root, next_root);
+        assert!(
+            String::from_utf8(output)
+                .unwrap()
+                .contains("protected directories")
+        );
+    }
+
+    #[test]
+    fn other_model_path_and_cancellation_are_bounded_and_leave_no_partial_settings() {
+        let fixture = Fixture::new();
+        let paths = fixture.paths();
+        let (model, runtime) = fixture.local_assets();
+        let options = SessionOptions {
+            runtime_path: Some(runtime),
+            ..SessionOptions::default()
+        };
+        let executable = fixture.0.join("bin/kinesin");
+        let problem = interactive_setup_options(
+            &paths,
+            &fixture.workspace(),
+            &mut &b"\n"[..],
+            &mut Vec::new(),
+            &options,
+            &executable,
+            &mut |_, _| Err("model selection cancelled".into()),
+        )
+        .unwrap_err();
+        assert_eq!(problem, SETUP_CANCELLED);
+        assert!(!paths.settings.exists());
+        assert!(!paths.state.parent().unwrap().exists());
+        let input = format!("\nmissing.gguf\n{}\n", model.path.display());
+        let config = interactive_setup_options(
+            &paths,
+            &fixture.workspace(),
+            &mut input.as_bytes(),
+            &mut Vec::new(),
+            &options,
+            &executable,
+            &mut |_, _| Ok(ModelChoice::Other),
+        )
+        .unwrap();
+        assert_eq!(config.managed_model().unwrap().model_path, model.path);
+    }
+
+    #[test]
+    fn changing_backend_preserves_operator_fields_and_creates_private_original_backup() {
+        let fixture = Fixture::new();
+        let paths = fixture.paths();
+        interactive_setup(
+            &paths,
+            &fixture.workspace(),
+            &mut &b"\n\n\n"[..],
+            &mut Vec::new(),
+        )
+        .unwrap();
+        let mut previous = read_settings(&paths.settings).ok().unwrap();
+        previous["instructions"] = toml::Value::String("operator instruction sentinel".into());
+        previous["workspaces"][0]["tools"] =
+            toml::Value::Array(vec![toml::Value::String("read_file".into())]);
+        previous["limits"]["max_model_turns"] = toml::Value::Integer(7);
+        let original = serialize(&previous).unwrap();
+        std::fs::write(&paths.settings, &original).unwrap();
+        let (model, runtime) = fixture.local_assets();
+        let options = SessionOptions {
+            model_path: Some(model.path),
+            runtime_path: Some(runtime),
+            external: false,
+        };
+        let current = interactive_setup_options(
+            &paths,
+            &fixture.workspace(),
+            &mut &b"\n"[..],
+            &mut Vec::new(),
+            &options,
+            &fixture.0.join("bin/kinesin"),
+            &mut |_, _| panic!("explicit model path"),
+        )
+        .unwrap();
+        assert_eq!(current.instructions(), "operator instruction sentinel");
+        assert_eq!(current.workspaces()[0].tools.len(), 1);
+        assert_eq!(current.workspaces()[0].tools[0].wire_name(), "read_file");
+        assert_eq!(current.limits().max_model_turns, 7);
+        let backups = std::fs::read_dir(paths.settings.parent().unwrap())
+            .unwrap()
+            .filter_map(|entry| {
+                let path = entry.unwrap().path();
+                path.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("settings.backup-")
+                    .then_some(path)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(std::fs::read_to_string(&backups[0]).unwrap(), original);
+        assert!(
+            validate_private_tree(
+                paths.settings.parent().unwrap(),
+                &PrivateStatePolicy::current(&[]).unwrap()
+            )
+            .is_ok()
+        );
+        assert!(
+            BoundedConfig::load(&paths.settings)
+                .unwrap()
+                .managed_model()
+                .is_some()
+        );
+        assert!(
+            replace_settings(&paths.settings, &previous, "version = 99")
+                .unwrap_err()
+                .contains("settings changed")
+        );
+        assert!(
+            BoundedConfig::load(&paths.settings)
+                .unwrap()
+                .managed_model()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn runtime_discovery_rejects_launch_directory_after_canonicalization() {
+        let fixture = Fixture::new();
+        let (_, trusted) = fixture.local_assets();
+        let local = fixture.0.join(trusted.file_name().unwrap());
+        std::fs::copy(&trusted, &local).unwrap();
+        #[cfg(windows)]
+        let launch = PathBuf::from(
+            fixture
+                .0
+                .to_string_lossy()
+                .strip_prefix("\\\\?\\")
+                .unwrap()
+                .to_owned(),
+        );
+        #[cfg(unix)]
+        let launch = fixture.0.join(".");
+        assert!(
+            find_trusted_runtime([local.clone()], &launch, &fixture.workspace())
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            find_trusted_runtime([local, trusted.clone()], &launch, &fixture.workspace()).unwrap(),
+            Some(trusted)
         );
     }
 

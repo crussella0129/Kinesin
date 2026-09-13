@@ -6,6 +6,10 @@ streaming were reproduced with the profile below. These are compatibility
 checks with synthetic inputs, not a task-accuracy benchmark or proof that the
 harness meets its acceptance contract.
 
+This page preserves an earlier compatibility experiment. For current normal
+startup, use [local GGUF setup](getting-started.md#install-a-local-model-and-runtime);
+Kinesin now starts and owns the selected backend for that session.
+
 ## Tested profile
 
 | Item | Recorded value |
@@ -14,7 +18,7 @@ harness meets its acceptance contract.
 | Compiler | Clang 19.1.5, x86_64-pc-windows-msvc |
 | GPU | NVIDIA GeForce RTX 2080 Ti, driver 596.49, 11,264 MiB reported by NVIDIA |
 | Host memory | 31.93 GiB physical; 9.83 GiB available before loading |
-| Model | Existing `C:\Users\charl\Animus\Models\qwen2.5-coder-7b-instruct-q4_k_m.gguf` |
+| Model | Existing local `qwen2.5-coder-7b-instruct-q4_k_m.gguf`; operator-specific directory omitted |
 | Model bytes | 4,683,073,536 |
 | Model SHA-256 | `509287f78cb4d4cf6b3843734733b914b2c158e43e22a7f4bf5e963800894d3c` |
 | Model source revision | `13fb94bfda8c8cf22497dc57b78f391a9acb426a` |
@@ -38,10 +42,12 @@ Runtime files and full process logs stay in ignored `validation-output/`.
 
 ## Reproduce the baseline
 
-From the repository root, with port 8080 available, the tested command is:
+With port 8080 available, reproduce the tested flags using your own runtime and
+model paths. The placeholder paths below replace the validation operator's local
+directories; the recorded model hash and measurements above are unchanged.
 
 ```powershell
-& '.\validation-output\runtime\llama-b6500-vulkan\llama-server.exe' -m 'C:\Users\charl\Animus\Models\qwen2.5-coder-7b-instruct-q4_k_m.gguf' --host 127.0.0.1 --port 8080 --alias kinesin-qwen25-coder-7b -c 4096 -np 1 --jinja --no-context-shift -ngl 99 -t 4 -tb 4 --no-webui
+& 'C:\path\to\llama-server.exe' -m 'C:\path\to\qwen2.5-coder-7b-instruct-q4_k_m.gguf' --host 127.0.0.1 --port 8080 --alias kinesin-qwen25-coder-7b -c 4096 -np 1 --jinja --no-context-shift -ngl 99 -t 4 -tb 4 --no-webui
 ```
 
 This launches a manually managed local inference server. The validation session

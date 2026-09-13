@@ -20,6 +20,10 @@ use std::time::Duration;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--model") {
+        managed_model_fixture(&args);
+        return;
+    }
     let mut exit_code = 0;
     let mut i = 0;
     while i < args.len() {
@@ -298,4 +302,140 @@ fn main() {
         i += 1;
     }
     std::process::exit(exit_code);
+}
+
+/// A minimal llama-server-shaped fixture, selected only by its model argv.
+/// Synthetic GGUF files contain magic/version followed by a bounded JSON plan.
+/// This extends the existing test binary rather than adding a product target.
+fn managed_model_fixture(args: &[String]) {
+    use serde_json::{Value, json};
+    use std::io::Read;
+    use std::net::TcpListener;
+    use std::path::PathBuf;
+    use std::time::Instant;
+
+    let value = |flag: &str| {
+        args.windows(2)
+            .find(|pair| pair[0] == flag)
+            .map(|pair| pair[1].as_str())
+            .expect("fixture argument")
+    };
+    let model = PathBuf::from(value("--model"));
+    let bytes = std::fs::read(&model).unwrap();
+    assert!(bytes.len() <= 65536 && &bytes[..4] == b"GGUF");
+    let plan: Value = serde_json::from_slice(&bytes[8..]).unwrap();
+    let mode = plan["mode"].as_str().unwrap_or("ready");
+    let alias = value("--alias");
+    let context: u32 = value("--ctx-size").parse().unwrap();
+    let port: u16 = value("--port").parse().unwrap();
+    assert_eq!(value("--host"), "127.0.0.1");
+    assert_eq!(value("--parallel"), "1");
+    std::fs::write(model.with_extension("pid"), std::process::id().to_string()).unwrap();
+    std::fs::write(
+        model.with_extension("args.json"),
+        serde_json::to_vec(args).unwrap(),
+    )
+    .unwrap();
+    if plan["descendant"] == true {
+        let marker = model.with_extension("heartbeat");
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("--grandchild-loop")
+            .arg(&marker)
+            .spawn()
+            .unwrap();
+        std::fs::write(model.with_extension("child-pid"), child.id().to_string()).unwrap();
+        // The supervisor normally kills this whole tree together. Reap the
+        // descendant if it independently exits while its fixture parent lives.
+        std::thread::spawn(move || child.wait());
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !marker.exists() {
+            assert!(Instant::now() < deadline, "descendant did not start");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    let log_bytes = plan["log_bytes"].as_u64().unwrap_or(0).min(1024 * 1024) as usize;
+    if log_bytes != 0 {
+        std::io::stderr().write_all(&vec![b'L'; log_bytes]).unwrap();
+    }
+    eprintln!("fixture log tail \x1b[2J");
+    if mode == "exit-before-ready" {
+        eprintln!("fixture startup failure");
+        std::process::exit(19);
+    }
+    let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
+    let started = Instant::now();
+    let delay = Duration::from_millis(plan["ready_delay_ms"].as_u64().unwrap_or(0).min(10000));
+    for connection in listener.incoming() {
+        let mut connection = connection.unwrap();
+        connection
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut header = Vec::new();
+        while !header.ends_with(b"\r\n\r\n") {
+            assert!(header.len() < 16384);
+            let mut byte = [0];
+            if connection.read_exact(&mut byte).is_err() {
+                break;
+            }
+            header.push(byte[0]);
+        }
+        if !header.ends_with(b"\r\n\r\n") {
+            continue;
+        }
+        let header = String::from_utf8(header).unwrap();
+        let path = header.split_whitespace().nth(1).unwrap();
+        let mut history = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(model.with_extension("requests"))
+            .unwrap();
+        writeln!(history, "{path}").unwrap();
+        let length = header
+            .lines()
+            .find_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                key.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().unwrap())
+            })
+            .unwrap_or(0);
+        assert!(length <= 1024 * 1024);
+        let mut body = vec![0; length];
+        if connection.read_exact(&mut body).is_err() {
+            continue;
+        }
+        if path == "/v1/chat/completions" && mode == "die-on-request" {
+            std::fs::write(model.with_extension("request-seen"), b"seen").unwrap();
+            std::process::exit(23);
+        }
+        let ready = started.elapsed() >= delay && mode != "never-ready";
+        let (status, body) = match path {
+            "/health" if ready => ("200 OK", json!({"status":"ok"})),
+            "/health" => ("503 Service Unavailable", json!({"status":"loading model"})),
+            "/v1/models" => (
+                "200 OK",
+                json!({"data":[{"id":if mode == "wrong-model" { "unrelated-server" } else { alias }}]}),
+            ),
+            "/slots" => (
+                "200 OK",
+                json!([{"n_ctx":if mode == "wrong-context" { 1 } else { context }}]),
+            ),
+            "/v1/chat/completions" => (
+                "200 OK",
+                json!({"choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"managed fixture answer"}}]}),
+            ),
+            _ => ("404 Not Found", json!({"error":"unknown fixture endpoint"})),
+        };
+        let body = body.to_string();
+        let _ = write!(
+            connection,
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = connection.flush();
+        if path == "/slots" && mode == "die-after-ready" {
+            std::thread::sleep(Duration::from_millis(300));
+            std::process::exit(23);
+        }
+    }
 }

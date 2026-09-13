@@ -43,6 +43,8 @@ pub struct Config {
     allow_public_endpoints: bool,
     #[serde(default)]
     mcp: Option<McpConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    managed_model: Option<ManagedModelConfig>,
     #[serde(skip)]
     config_path: PathBuf,
 }
@@ -71,6 +73,34 @@ struct ConfigFile {
     allow_public_endpoints: bool,
     #[serde(default)]
     mcp: Option<McpConfig>,
+    #[serde(default)]
+    managed_model: Option<ManagedModelConfig>,
+}
+
+/// Operator-selected local inference inputs. These are never workspace tools or
+/// model-supplied command arguments. Only the local CLI owns this process.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ManagedModelConfig {
+    pub model: String,
+    pub executable: PathBuf,
+    pub model_path: PathBuf,
+    #[serde(default = "default_managed_timeout")]
+    pub startup_timeout_s: u64,
+    #[serde(default = "default_gpu_layers")]
+    pub gpu_layers: u32,
+    #[serde(default = "default_model_threads")]
+    pub threads: u32,
+}
+
+const fn default_managed_timeout() -> u64 {
+    120
+}
+const fn default_gpu_layers() -> u32 {
+    99
+}
+const fn default_model_threads() -> u32 {
+    4
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -585,6 +615,7 @@ impl Config {
             service: raw.service,
             allow_public_endpoints: raw.allow_public_endpoints,
             mcp: raw.mcp,
+            managed_model: raw.managed_model,
             config_path: PathBuf::new(),
         };
         if config.version != 1 {
@@ -694,6 +725,65 @@ impl Config {
                 ("model_queue_timeout_s", model.model_queue_timeout_s),
             ] {
                 positive_bounded(name, value)?;
+            }
+        }
+        if let Some(managed) = &mut config.managed_model {
+            if config.service.is_some() {
+                return Err("managed models are supported by local CLI sessions and runs; service mode requires an external model server".into());
+            }
+            if config.models.len() != 1
+                || config.models[0].id != managed.model
+                || config.models[0].verified_slots != 1
+            {
+                return Err("a managed model requires exactly one matching model profile with one verified slot".into());
+            }
+            if !(1..=600).contains(&managed.startup_timeout_s)
+                || managed.gpu_layers > 1000
+                || !(1..=256).contains(&managed.threads)
+            {
+                return Err("managed startup timeout must be 1–600 seconds, GPU layers 0–1000, and threads 1–256".into());
+            }
+            for path in [&mut managed.executable, &mut managed.model_path] {
+                if path.as_os_str().len() > MAX_PATH_BYTES {
+                    return Err("managed model/runtime path exceeds its limit".into());
+                }
+                *path = resolve_existing_parent(path, base)?;
+                if !path.is_file() {
+                    return Err("managed model and runtime must be existing regular files".into());
+                }
+            }
+            let mut magic = [0; 4];
+            File::open(&managed.model_path)
+                .and_then(|mut file| file.read_exact(&mut magic))
+                .map_err(|_| "cannot read managed GGUF model")?;
+            if magic != *b"GGUF" {
+                return Err("managed model must be a GGUF file".into());
+            }
+            let private = [
+                managed
+                    .model_path
+                    .parent()
+                    .ok_or("model needs a directory")?,
+                managed
+                    .executable
+                    .parent()
+                    .ok_or("runtime needs a directory")?,
+            ];
+            for workspace in &config.workspaces {
+                if private.iter().any(|path| {
+                    workspace.root.starts_with(path) || path.starts_with(&workspace.root)
+                }) {
+                    return Err(
+                        "workspace and managed model/runtime directories must be disjoint".into(),
+                    );
+                }
+                #[cfg(target_os = "linux")]
+                if workspace
+                    .tools
+                    .contains(&ToolRef::Compiled(ToolName::RunCommand))
+                {
+                    crate::tools::validate_command_private_paths(&workspace.commands, &private)?;
+                }
             }
         }
         // Two aliases for an origin cannot claim inconsistent backend capacity.
@@ -915,6 +1005,25 @@ impl Config {
     }
     pub fn models(&self) -> &[ModelConfig] {
         &self.models
+    }
+    pub fn managed_model(&self) -> Option<&ManagedModelConfig> {
+        self.managed_model.as_ref()
+    }
+    /// Bind only the ready, owned backend. Its endpoint and per-launch identity
+    /// are ephemeral and must never replace the saved operator profile.
+    pub(crate) fn bind_managed_model(&mut self, profile: &ModelConfig) -> Result<(), String> {
+        let managed = self
+            .managed_model
+            .as_ref()
+            .ok_or("no managed model configured")?;
+        let model = self
+            .models
+            .iter_mut()
+            .find(|model| model.id == managed.model)
+            .ok_or("managed model profile is missing")?;
+        model.base_url = validate_origin(&profile.base_url, false)?;
+        model.model_id.clone_from(&profile.model_id);
+        Ok(())
     }
     pub fn workspaces(&self) -> &[WorkspaceConfig] {
         &self.workspaces
@@ -1270,6 +1379,50 @@ allow_replay = false
 mod tests {
     use super::test_support::*;
     use super::*;
+
+    #[test]
+    fn managed_inputs_are_separate_resources_and_binding_is_ephemeral() {
+        let fixture = Fixture::new();
+        std::fs::create_dir_all(fixture.root.join("models")).unwrap();
+        std::fs::create_dir_all(fixture.root.join("runtime")).unwrap();
+        std::fs::write(fixture.root.join("models/model.gguf"), b"GGUFfixture").unwrap();
+        std::fs::write(fixture.root.join("runtime/llama-server"), b"fixture").unwrap();
+        let text = format!(
+            "{BASE}\n[managed_model]\nmodel = 'local'\nexecutable = 'runtime/llama-server'\nmodel_path = 'models/model.gguf'\n"
+        );
+        let mut config = fixture.parse(&text).unwrap();
+        assert!(config.managed_model().unwrap().model_path.is_absolute());
+        let saved = toml::to_string(&config).unwrap();
+        let mut profile = config.models()[0].clone();
+        profile.base_url = "http://127.0.0.1:49231".into();
+        profile.model_id = "per-launch-identity".into();
+        config.bind_managed_model(&profile).unwrap();
+        assert_eq!(config.models()[0].model_id, "per-launch-identity");
+        assert!(!saved.contains("per-launch-identity"));
+        for change in [
+            text.replace("root = \"workspace\"", "root = \"models\""),
+            text.replace("root = \"workspace\"", "root = \"runtime\""),
+            text.replace("model = 'local'", "model = 'unknown'"),
+            text.replace("verified_slots = 1", "verified_slots = 2"),
+            format!("{text}startup_timeout_s = 601\n"),
+            format!("{text}gpu_layers = 1001\n"),
+            format!("{text}threads = 0\n"),
+            text.replace("models/model.gguf", "models/missing.gguf"),
+        ] {
+            assert!(
+                fixture.parse(&change).is_err(),
+                "accepted invalid managed profile"
+            );
+        }
+        std::fs::create_dir_all(fixture.root.join("models/project")).unwrap();
+        assert!(
+            fixture
+                .parse(&text.replace("root = \"workspace\"", "root = \"models/project\""))
+                .is_err()
+        );
+        std::fs::write(fixture.root.join("models/model.gguf"), b"not GGUF").unwrap();
+        assert!(fixture.parse(&text).unwrap_err().contains("GGUF"));
+    }
 
     #[cfg(target_os = "linux")]
     #[test]

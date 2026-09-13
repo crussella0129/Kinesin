@@ -206,12 +206,46 @@ Pin a maintained release and review advisories during dependency updates. A
 previous Windows device-name bypass was fixed in 3.4.1; old tutorial pins are not
 a security baseline. [cap-std advisory](https://github.com/bytecodealliance/cap-std/security/advisories/GHSA-hxf5-99xg-86hw)
 
+## Local model process ownership
+
+Normal human terminal entry lets the operator choose a GGUF and a trusted
+llama.cpp executable. Discovery examines a bounded set of direct model-directory
+entries; it does not read project instructions to decide what program to execute.
+The per-user runtime location, a portable `runtime/` directory beside the
+installed Kinesin executable, trusted absolute PATH entries or an explicit
+`--runtime-path` supply the executable. Treat the backend and its companion
+native libraries as trusted installed software. Model-file validation identifies
+a GGUF input; it does not establish that arbitrary model bytes or native runtime
+code are safe against every parser defect.
+
+The selected GGUF's parent and runtime executable's parent must be disjoint in
+both directions from every workspace root. An interactive overlap asks the
+operator to select another working folder. This prevents the assistant's granted
+file tools from changing those inference inputs, including when selected through
+an external filesystem path. Selecting a model does not grant assistant tools
+read access to its containing folder. These startup checks assume trusted stable
+host paths; another process acting as the same OS account is outside this boundary.
+
+The managed server receives a fixed argv and scrubbed environment, binds
+loopback, and must pass readiness checks before task admission. Its process
+group/Windows Job belongs to the session, with bounded startup/log handling and
+cleanup on failure, exit and cancellation. This is lifecycle control of trusted
+inference software, not a hostile-native-code sandbox. Model output cannot change
+the executable, model path or listener. External profiles attach only: Kinesin
+does not acquire process ownership of an already running server.
+
 ## Network and credential boundaries
 
 The model profile fixes the destination. Model output cannot edit URLs, request
 headers, TLS settings, or proxy configuration. The first local profile uses a
 loopback listener. Remote profiles name an operator-approved destination; network
 access and transport authentication are configured separately from tool policy.
+
+`--external` explicitly chooses an external connection for a human session;
+normal local GGUF entry does not use SSH. Optional remote SSH login and forwarding
+are operator actions in a foreground terminal. Kinesin does not silently log in,
+suppress authentication prompts or collect/store SSH passwords. A local forward's
+URL alone does not prove the identity of its remote peer.
 
 Configure `reqwest` explicitly: no redirects, no inherited/system proxy, no
 automatic retries, a connection timeout, and a total exchange deadline including
@@ -277,6 +311,11 @@ another profile. These checks assume trusted, stable ancestor directories and
 do not provide encryption or isolation from the same OS account. Explicit
 profiles and shared-service deployments retain their operator provisioning
 requirements; the interactive setup flow does not run for them.
+
+Changing a saved local model/runtime selection checks the existing settings,
+preserves a private backup and replaces the settings file. Existing tool grants
+and directory permissions are preserved. The backup contains operator settings
+and belongs in the same protected settings directory, outside tool access.
 
 Never log bearer tokens, authorization headers, private keys, raw environment
 dumps, or complete credential-bearing URLs. Metrics use bounded labels such as

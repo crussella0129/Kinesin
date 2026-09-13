@@ -1,5 +1,11 @@
 # Interactive entry repair
 
+Machine-local usernames, home paths, and deployment-host identifiers in this
+historical evidence are normalized to explicit placeholders or host-role labels
+for privacy. Run IDs, hashes, outcomes, timestamps, and source-evidence references
+are unchanged. The remote model host and Windows client below refer to the same
+two roles throughout this report.
+
 ## T-108: Interactive entry and workspace operations
 
 Intent: [INT-0029](intents/INT-0029-interactive-entry-and-workspaces.md).
@@ -37,7 +43,7 @@ to complete even after cancellation had settled the controller.
    and resource cleanup before exit.
 4. Exercise installed entry in actual terminal sessions, choose a task-owned
    directory, ask to create a spaced-name folder and list it, then independently
-   verify filesystem results and persisted events. Reuse the authorized Nighthawk
+   verify filesystem results and persisted events. Reuse the authorized remote
    model. Do not describe a greeting or piped-only process test as this proof.
 5. Update the README and Windows/Linux guide around normal interactive use,
    retaining explicit examples for checked/automated runs. Run affected tests,
@@ -68,7 +74,7 @@ sprint 11 test report does not establish these new acceptance criteria.
 
 ### Windows terminal evidence
 
-Executed the installed command from `C:\Users\charl`, outside the checkout, in
+Executed the installed command from `C:\Users\<operator>`, outside the checkout, in
 Windows PowerShell `5.1.26100.9444` with `Console.IsInputRedirected = false`.
 First use chose the task-owned `validation-output/interactive-first-use/project-a`
 folder and accepted the running model's port-8080 tunnel and served alias.
@@ -86,7 +92,7 @@ SQLite inspection confirmed the executed tool resources and successful results.
 personal settings hash stayed
 `6bf4841f9eaae6a6956b66ec8b63aaff87ef66fa487b4fb112bf68f13248854b`
 across folder selections. New private Windows directories have protected DACLs
-for charl, SYSTEM and Administrators; the TOML inherits only those grants.
+for the operator account, SYSTEM and Administrators; the TOML inherits only those grants.
 
 Actual native isolated-console tests send CTRL_C_EVENT while idle and while a
 model request is stalled, require exit 130 within five seconds, reopen storage
@@ -117,7 +123,7 @@ Existing files, contents and modes are never silently repaired or replaced.
 
 ### Final native Linux proof
 
-On Debian Nighthawk, installed only the product under the task-owned
+On the Debian model host, installed only the product under the task-owned
 `kinesin-s11-validation/interactive-repair/install` prefix and invoked `kinesin`
 by name through PATH in actual PTYs outside the source checkout. XDG settings
 and state were isolated under `cases-final`; the normal user PATH/profile was
@@ -152,7 +158,7 @@ unchanged and are rejected by the private-tree check.
   records the real effect; replay remains consistent without recreating it.
 - `cargo deny check` passed advisories, licenses, bans and sources. `cargo audit`
   scanned 250 locked dependencies against 1,243 advisories with no vulnerability.
-- Final runtime sources, tests and Cargo files matched the Nighthawk source
+- Final runtime sources, tests and Cargo files matched the Debian host's source
   manifest; transferred archive SHA256:
   `c3668d2cf5f1f890c4262c5633ccca2f81260eec7f468b7ddc3dfb280c1bf80e`.
   Later Book/documentation reconciliation does not change those runtime sources.
@@ -165,7 +171,7 @@ unchanged and are rejected by the private-tree check.
 
 Raw logs, manifests and read-only journal summaries are retained under ignored
 `target/interactive-repair/` and `target/interactive-windows-*`. Original failed
-Linux cases remain intact. The configured Nighthawk model and Windows tunnel
+Linux cases remain intact. The configured remote model and Windows tunnel
 remain available; these tests did not replace user workspaces or their files.
 
 ### Independent review
@@ -173,7 +179,7 @@ remain available; these tests did not replace user workspaces or their files.
 Separate reviews covered directory authority/replay, onboarding/private files,
 CLI lifecycle and documentation. Fixed findings include raw path control
 characters, unbounded console input, inherited setup Ctrl+C suppression,
-interleaved provisional display, Nighthawk's personal endpoint instructions,
+interleaved provisional display, the remote host's personal endpoint instructions,
 session exit-code wording and the setup/native cancellation distinction.
 
 The requested entry and workspace behavior is narrower than complete Codex CLI
