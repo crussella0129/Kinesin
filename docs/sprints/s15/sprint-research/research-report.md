@@ -147,6 +147,11 @@ unbounded experiments.
 - [Prior pinned reference study](../../s14/sprint-research/reference-loop-principles.md)
 - [Sprint 15 metadata](../sprint-meta.md)
 - [INT-0033](../../../intents/INT-0033-evidence-driven-work-recovery.md)
+- [Proposed build plan](../sprint-plans/build-plan.proposed.md) and
+  [proposed test plan](../sprint-plans/test-plan.proposed.md) — reviewable scratch
+  proposals added in Plan Phase, not approved or finalized plans.
+- [Pre-approval proposal review](../sprint-plans/proposal-review.md) — independent
+  findings and dispositions; canonical final critique remains pending approval.
 
 ## Budget Override
 The 21-row survey captures the main code paths, not the total number of retained
