@@ -24,3 +24,13 @@ for user inspection; it is closed by that session's exit.
 
 Model-output reliability remains T-103 under INT-0024, with the observed
 prose-only claims and required operator steering retained in sprint evidence.
+
+The no-remote-authorization statement above records the closure-time boundary.
+The user subsequently authorized the sprint 13 checkpoint, now recorded in its
+Checkpoint field. Sprint 14 local work is excluded from that checkpoint.
+
+## Remote CI follow-up
+Initial remote supply-chain CI found RUSTSEC-2026-0285 in rustls 0.23.44.
+The checkpoint updates only that dependency to patched 0.23.45; the recorded
+local checks predate this lockfile repair, and remote CI verifies it. PR #13
+also includes the previously unmerged Sprint 12 work.
