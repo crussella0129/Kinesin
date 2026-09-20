@@ -1,0 +1,47 @@
+{
+  "slot": 2,
+  "finished_utc": "2026-09-20T15:15:52.652397+00:00",
+  "elapsed_s": 3.687999999965541,
+  "exit_code": 0,
+  "runs": [
+    {
+      "kind": "run",
+      "index": 1,
+      "task_accepted": false,
+      "exit_code": 0,
+      "run_id": "030c89b2-43d0-430b-bb83-d0a741f7af04",
+      "owner_id": "local",
+      "workspace_id": "storefront",
+      "model_profile_id": "local",
+      "task_mode": "freeform",
+      "task_profile_id": null,
+      "task_profile_version": null,
+      "task_spec_sha256": null,
+      "checker_id": null,
+      "checker_version": null,
+      "capture": "replay",
+      "phase": "completed",
+      "acceptance_status": "unchecked",
+      "created_unix_ms": 1789917349617,
+      "policy_version": "1",
+      "submission_sha256": "c75c511cb443596cd9a98e81df3d03f17efd4a74d11347408ff14381f856d553",
+      "idempotency_key": null,
+      "terminal_reason": "answer_candidate",
+      "result": {
+        "candidate": "The quantity of the item with id pencil was changed from 11 to 7. The change-note.txt file was created with the line pencil: 11 -> 7. No further actions are needed."
+      },
+      "result_sha256": "f1b3513866e1105e72dfa865ba79fb767ad68305e0d51c40d47953563a833834",
+      "receipt": {
+        "candidate_sha256": "f1b3513866e1105e72dfa865ba79fb767ad68305e0d51c40d47953563a833834",
+        "contract": null,
+        "criteria": [],
+        "duration_ms": 0,
+        "owner_id": "local",
+        "reason": "no_acceptance_contract",
+        "run_id": "030c89b2-43d0-430b-bb83-d0a741f7af04",
+        "scope": "unchecked freeform task",
+        "status": "unchecked"
+      }
+    }
+  ]
+}

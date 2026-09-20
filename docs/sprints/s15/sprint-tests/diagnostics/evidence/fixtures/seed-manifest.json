@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "status": "prepared; not yet independently observed or dispatched",
+  "native_fallback_initial_entries": [],
+  "files": [
+    {
+      "path": "heldout-base/settings/shipping.json",
+      "bytes": 139,
+      "sha256": "3cb026e20641fb7abef58339ce102d0c9336ce9ede5af1f492df6f30825449f7"
+    },
+    {
+      "path": "order-base/data/inventory.json",
+      "bytes": 181,
+      "sha256": "f401975d50fc5a8b04505b640878b85544f681417353365b2c82d4d4e8f5cd9b"
+    },
+    {
+      "path": "prompts/fallback-amend.txt",
+      "bytes": 214,
+      "sha256": "b14b8767365b6fbed4f51647ba89593ad5d2676703bd4c4c624fa4849b074dcc"
+    },
+    {
+      "path": "prompts/fallback-create.txt",
+      "bytes": 265,
+      "sha256": "cd47efd661a4ae012158d6072d1da79049ae383b8ca3eae16b865777f0170f18"
+    },
+    {
+      "path": "prompts/heldout.txt",
+      "bytes": 344,
+      "sha256": "87445b8a3f177f729fa5d47334a8835daf4db028cf8e421508777a6c2cf0591b"
+    },
+    {
+      "path": "prompts/pair-1.txt",
+      "bytes": 345,
+      "sha256": "21a062de089de131b43ea3f2dc8b4e93beb291c225fec14b11cad5df4821dcc8"
+    },
+    {
+      "path": "prompts/repair-base.txt",
+      "bytes": 298,
+      "sha256": "f8618671b422710147b38008511c17446e999c40e91a22976100e454842e08c6"
+    },
+    {
+      "path": "prompts/repair-observation-template.md",
+      "bytes": 1143,
+      "sha256": "776ddf1c82dbfd3b7493446da39b1b59a1777c8fa528ea4c4b84fbaae26d1d6a"
+    },
+    {
+      "path": "repair-base/app.js",
+      "bytes": 1007,
+      "sha256": "8bfccd3e533a710807b711031661a228a443e73b9f7bdc22ffffb22c8fc062ff"
+    },
+    {
+      "path": "repair-base/index.html",
+      "bytes": 1138,
+      "sha256": "b7876f7e7e6ec72d7445b6220b1adc66b7e4cc4acd60b5759b6a3cec43af1ee5"
+    },
+    {
+      "path": "repair-base/style.css",
+      "bytes": 351,
+      "sha256": "ca72c560519bb7b4b158c5b907566a7bb4bb4332d8ed3105667ad493a21f0df7"
+    }
+  ]
+}

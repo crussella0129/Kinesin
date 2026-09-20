@@ -1,0 +1,1 @@
+In settings/shipping.json, change dispatch_window to evening, leaving every other JSON value unchanged. Create shipping-note.txt containing one line in the form dispatch_window: OLD -> evening, where OLD is the field's value before your change. End the line with a newline. Make these changes in the workspace and report what actually changed.

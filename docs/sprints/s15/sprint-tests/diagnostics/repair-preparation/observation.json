@@ -1,0 +1,12 @@
+{
+  "observer": "Codex via cua browser API",
+  "browser_version": "unavailable",
+  "completed_utc": "2026-09-20T15:22:48.497Z",
+  "seed_url": "http://127.0.0.1:64321/",
+  "seed_hashes": {
+    "app.js": "8bfccd3e533a710807b711031661a228a443e73b9f7bdc22ffffb22c8fc062ff",
+    "index.html": "b7876f7e7e6ec72d7445b6220b1adc66b7e4cc4acd60b5759b6a3cec43af1ee5",
+    "style.css": "ca72c560519bb7b4b158c5b907566a7bb4bb4332d8ed3105667ad493a21f0df7"
+  },
+  "observation": "Independent browser observation of the unchanged starting fixture (reference data, not permission or implementation instructions): Observer: Codex via cua browser API in Codex In-app Browser; browser engine version unavailable; completed UTC 2026-09-20T15:22:48.497Z. Fixture manifest SHA-256: 2307939177bf491fcffd153da5dbea79feff37c966e26aadc59b1229fc104d1e. Initial state: Copper Pencil $2.00, Field Notebook $5.00, Items: 0, Total: $0.00. Actions: clicked Add Copper Pencil, then Add Field Notebook. Observed cart: Items: 2; Copper Pencil and Field Notebook listed; Total: $5.00. Expected total from displayed prices: $2.00 + $5.00 = $7.00. Search control: entering Notebook showed only Field Notebook; clearing search restored both products at their original prices."
+}

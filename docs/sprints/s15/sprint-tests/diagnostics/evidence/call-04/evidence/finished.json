@@ -1,0 +1,47 @@
+{
+  "slot": 4,
+  "finished_utc": "2026-09-20T15:17:53.553757+00:00",
+  "elapsed_s": 3.5,
+  "exit_code": 0,
+  "runs": [
+    {
+      "kind": "run",
+      "index": 1,
+      "task_accepted": false,
+      "exit_code": 0,
+      "run_id": "5318c555-9eb6-4c15-b491-1d170adedd41",
+      "owner_id": "local",
+      "workspace_id": "storefront",
+      "model_profile_id": "local",
+      "task_mode": "freeform",
+      "task_profile_id": null,
+      "task_profile_version": null,
+      "task_spec_sha256": null,
+      "checker_id": null,
+      "checker_version": null,
+      "capture": "replay",
+      "phase": "completed",
+      "acceptance_status": "unchecked",
+      "created_unix_ms": 1789917470096,
+      "policy_version": "1",
+      "submission_sha256": "a70f424c7de8d68ba597bcb11c21b8f7a9b05bcae2acde9d65c319470800338f",
+      "idempotency_key": null,
+      "terminal_reason": "answer_candidate",
+      "result": {
+        "candidate": "The dispatch_window in settings/shipping.json was changed from morning to evening. A shipping-note.txt file was created with the line dispatch_window: morning -> evening. No further actions are needed."
+      },
+      "result_sha256": "836a9a4540783ba1abd55bccba60e1a2a8c49ca4749b8c9ad67c744ef30e5362",
+      "receipt": {
+        "candidate_sha256": "836a9a4540783ba1abd55bccba60e1a2a8c49ca4749b8c9ad67c744ef30e5362",
+        "contract": null,
+        "criteria": [],
+        "duration_ms": 0,
+        "owner_id": "local",
+        "reason": "no_acceptance_contract",
+        "run_id": "5318c555-9eb6-4c15-b491-1d170adedd41",
+        "scope": "unchecked freeform task",
+        "status": "unchecked"
+      }
+    }
+  ]
+}

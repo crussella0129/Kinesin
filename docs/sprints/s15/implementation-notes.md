@@ -38,3 +38,11 @@ See the [diagnostic decision card](sprint-research/diagnostic-card.md). Source-o
 reviews found and corrected command empty-resource handling and preserved missing
 history, atomic fact eviction and historical capture boundaries. These reviews
 are not official regression verification or functional success evidence.
+
+## Terminal live decision
+All six diagnostic slots are consumed. Ordered mode passed explicit-path file
+tasks but both app-repair arms failed with no actions. T-123 and official T-124
+verification did not start. T-119–T-121 remain unverified implementation, not
+completed tasks. See the [failure assessment](failure-report.md) and
+[attempt ledger](sprint-tests/diagnostics/attempt-ledger.md). No source or model
+profile was changed during these paired diagnostics.

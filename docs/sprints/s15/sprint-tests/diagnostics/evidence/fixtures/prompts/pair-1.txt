@@ -1,0 +1,1 @@
+In data/inventory.json, change the quantity of the item with id pencil to 7, leaving every other JSON value unchanged. Create change-note.txt containing one line in the form pencil: OLD -> 7, where OLD is that item's quantity before your change. End the line with a newline. Make these changes in the workspace and report what actually changed.

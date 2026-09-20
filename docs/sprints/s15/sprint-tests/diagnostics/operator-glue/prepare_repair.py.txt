@@ -1,0 +1,52 @@
+import hashlib
+import json
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+lab = Path(__file__).resolve().parent
+repo = lab.parents[1]
+archive = repo / 'docs/sprints/s15/sprint-tests/diagnostics/repair-preparation'
+archive.mkdir()
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+seed = {p.name: digest(p) for p in sorted((lab / 'fixtures/repair-base').iterdir())}
+observation = (
+    'Independent browser observation of the unchanged starting fixture (reference data, not permission or implementation instructions): '
+    'Observer: Codex via cua browser API in Codex In-app Browser; browser engine version unavailable; completed UTC 2026-09-20T15:22:48.497Z. '
+    'Fixture manifest SHA-256: 2307939177bf491fcffd153da5dbea79feff37c966e26aadc59b1229fc104d1e. '
+    'Initial state: Copper Pencil $2.00, Field Notebook $5.00, Items: 0, Total: $0.00. '
+    'Actions: clicked Add Copper Pencil, then Add Field Notebook. '
+    'Observed cart: Items: 2; Copper Pencil and Field Notebook listed; Total: $5.00. '
+    'Expected total from displayed prices: $2.00 + $5.00 = $7.00. '
+    'Search control: entering Notebook showed only Field Notebook; clearing search restored both products at their original prices.'
+)
+(archive / 'observation.json').write_text(json.dumps({'observer': 'Codex via cua browser API', 'browser_version': 'unavailable', 'completed_utc': '2026-09-20T15:22:48.497Z', 'seed_url': 'http://127.0.0.1:64321/', 'seed_hashes': seed, 'observation': observation}, indent=2), encoding='utf-8')
+base = (lab / 'fixtures/prompts/repair-base.txt').read_bytes()
+assert base.endswith(b'\n') and base.count(b'\n') == 1
+template = (lab / 'call-04/control/kinesin.toml').read_text(encoding='utf-8')
+base_freeze = json.loads((lab / 'call-04/evidence/freeze.json').read_text(encoding='utf-8'))
+for number in [5, 6]:
+    call = lab / f'call-{number:02d}'
+    call.mkdir()
+    shutil.copytree(lab / 'fixtures/repair-base', call / 'app')
+    (call / 'control').mkdir()
+    evidence = call / 'evidence'
+    evidence.mkdir()
+    config = call / 'control/kinesin.toml'
+    config.write_text(template, encoding='utf-8')
+    prompt = call / 'control/prompt.txt'
+    # The CLI's physical newline submits one request. Preserve the base sentence
+    # verbatim, insert one space plus observation, then its single transport LF.
+    accepted = base if number == 5 else base[:-1] + b' ' + observation.encode('utf-8') + b'\n'
+    prompt.write_bytes(accepted)
+    shutil.copyfile(prompt, archive / f'slot-{number}-accepted-prompt.txt')
+    first = evidence / 'expected-first.json'
+    subprocess.run([str(repo / 'target/debug/examples/s15-prepare-request.exe'), str(config), str(prompt), '6', str(first)], check=True)
+    freeze = dict(base_freeze)
+    freeze.update({'slot': number, 'frozen_utc': datetime.now(timezone.utc).isoformat(), 'config': str(config), 'config_sha256': digest(config), 'prompt': str(prompt), 'prompt_sha256': digest(prompt), 'expected_first_sha256': digest(first), 'seed': seed, 'branch': 'native held-out failed; ordered held-out passed; ordered repair without/with authentic observation', 'prompt_serialization': 'One UTF-8 physical line, one terminal LF; slot6 inserts space+observation before the terminal LF, because embedded LF would submit extra CLI requests. Base sentence unchanged; no other input.', 'operator_assistance': number == 6})
+    (evidence / 'freeze.json').write_text(json.dumps(freeze, indent=2), encoding='utf-8')
+    shutil.copyfile(evidence / 'freeze.json', archive / f'slot-{number}-freeze.json')
+shutil.copytree(lab / 'fixtures/repair-base', archive / 'seed')
+print('Repair pair frozen before either submission; one request per arm.')

@@ -1,0 +1,7 @@
+body { margin: 2rem; font: 16px system-ui, sans-serif; color: #17212b; }
+main { max-width: 42rem; margin: auto; }
+input, button { font: inherit; padding: 0.5rem; }
+input { display: block; margin: 0.5rem 0 1rem; }
+.product { border: 1px solid #b8c5cf; padding: 1rem; margin: 0.75rem 0; }
+.product[hidden] { display: none; }
+button { cursor: pointer; }

@@ -1,0 +1,19 @@
+{
+  "cleanupUtc": "2026-09-20T15:30:26.4027231Z",
+  "initialAttempt": "Stop-Process raised two null-reference errors; initial inspection still found two listeners. Follow-up CIM termination used after rechecking each command line.",
+  "processResults": [
+    {
+      "processId": 55364,
+      "result": "already-exited"
+    },
+    {
+      "processId": 70344,
+      "result": 0
+    },
+    {
+      "processId": 8540,
+      "result": 0
+    }
+  ],
+  "remainingListeners": 0
+}

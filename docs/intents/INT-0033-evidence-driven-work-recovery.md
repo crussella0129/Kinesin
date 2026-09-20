@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0033
 - **State:** active
-- **Work evidence:** [T-119–T-124 build plan](../sprints/s15/sprint-plans/build-plan.md)
+- **Work evidence:** [T-119–T-124 build plan](../sprints/s15/sprint-plans/build-plan.md); [T-122 diagnostic decision and failed qualification](../sprints/s15/failure-report.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -89,7 +89,22 @@ the model more capable. That is useful diagnostic infrastructure, but the
 parent usability intent remains unrealized until its live workload passes.
 General persistent sessions remain INT-0026; wider benchmarking remains INT-0024.
 
+Sprint 15 narrows the next design question. Its ordered protocol succeeded when
+an exact existing file and operation were named, but both app-repair requests
+ended without using available discovery tools. A behavioral observation alone
+did not initiate work. These results leave source discovery, task framing and
+repair-after-reading separable and unresolved; they do not establish a model
+ranking or justify forced tool-only answers. A future frozen same-task filename
+contrast should precede wider automatic observation or planning machinery.
+Retain the original less-babysitting objective and zero-correction full workload.
+The new fact memory is diagnostic infrastructure, not proof of improved work.
+
 ## Transition history
+- 2026-09-20: retained active/unrealized after all six Sprint 15 diagnostics.
+  Ordered actions correctly performed two explicit-file tasks but neither repair
+  arm inspected or edited the app; real browser feedback did not change that.
+  T-122 completes evidence gathering only. T-119–T-121 remain unverified,
+  T-123/T-124 were not run, and T-125 carries discovery/grounding research.
 - 2026-09-20: planned → active after canonical critique accepted and installed
   finalize-plan.sh locked both approved plans. Begin T-119–T-121 implementation;
   official unit/integration verification remains deferred until live confidence.
