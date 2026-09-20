@@ -3,14 +3,14 @@
 - **Sprint number:** 12
 - **Book schema version:** 2
 - **Start timestamp:** 2026-09-20T03:51:49Z
-- **End timestamp:** (filled at Loop Phase)
+- **End timestamp:** 2026-09-20T04:20:13Z
 - **Model:** gpt-6-astra
 - **Bundle version:** 0.22.0
-- **Exit status:** in-progress
+- **Exit status:** success
 - **Token count:** unknown (not exposed by this host)
 - **Summary:** Make the local assistant useful with bounded multi-turn memory and file-edit follow-ups; implement before testing.
 - **Intents:** [INT-0030](../../intents/INT-0030-usable-local-session-memory.md) — realized
-- **Completion evidence:** (filled at Loop Phase)
+- **Completion evidence:** INT-0030 realized: installed native local assistant, bounded session memory and real file edits; 271 targeted tests, clean format/Clippy and independent review; broader token/persistence work remains open.
 
 ## Scope and checkpoint
 
