@@ -1,5 +1,12 @@
 # Agent Tasks (Persistent Backlog)
 
+- [ ] T-119 (sprint 15) [intent: INT-0033, INT-0032]: Add explicitly selected ordered action protocol with historical replay preserved — touches: src/model.rs; src/config.rs; src/policy.rs; src/runner.rs; src/replay.rs; src/core.rs if needed; docs/cli.md
+- [ ] T-120 (sprint 15) [intent: INT-0033]: Derive bounded operation facts from durable events without behavioral judgments — touches: src/effects.rs; src/lib.rs; src/cli.rs; src/storage.rs if accessor needed
+- [ ] T-121 (sprint 15) [intent: INT-0033, INT-0032]: Retain partial-run facts separately from claims and display honest terminal status — touches: src/session.rs; src/cli/session.rs; src/cli.rs; src/cli/presentation.rs; src/policy.rs; src/replay.rs; docs/cli.md
+- [ ] T-122 (sprint 15) [intent: INT-0033]: Run fixed six-request causal qualification sequence with retained outcomes — touches: docs/sprints/s15/sprint-research/diagnostic-card.md; docs/sprints/s15/sprint-tests/diagnostics; disposable target/s15-live labs
+- [ ] T-123 (sprint 15) [intent: INT-0032, INT-0033]: Complete unchanged storefront and follow-up with zero correction after qualification — touches: docs/sprints/s15/sprint-research/live-workload.md; docs/sprints/s15/sprint-tests/e2e-tests.md; bounded attempt evidence
+- [ ] T-124 (sprint 15) [intent: INT-0033, INT-0032]: Perform focused official verification after live confidence and reconcile failed backlog — touches: affected Rust tests; docs/sprints/s15/sprint-tests; docs/work; intent evidence; CLI docs
+
 - [ ] T-115 (backlog) [intent: INT-0032]: Add bounded receipt-grounded recovery, version-compatible replay, useful tool errors and preserved-profile defaults — touches: src/recovery.rs; src/lib.rs; src/core.rs; src/runner.rs; src/replay.rs; src/tools.rs; src/model.rs; src/onboarding.rs; src/config.rs; affected tests after live gate; operator docs
 - [ ] T-116 (backlog) [intent: INT-0032]: Run the frozen fresh storefront and Clear Cart/item-count follow-up without corrective operator messages; retain every attempt and effort — touches: isolated workload; docs/sprints/s14/sprint-research/live-workload.md; docs/sprints/s14/sprint-tests/e2e-tests.md; workload fixtures
 - [ ] T-117 (backlog) [intent: INT-0032]: After zero-correction live confidence, run focused official checks and independent acceptance — touches: affected recovery/runner/replay tests; docs/sprints/s14; INT-0032; docs/work ledgers

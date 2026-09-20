@@ -64,27 +64,37 @@ and loads its explicit config or the current directory's `kinesin.toml`.
 `/help` lists commands, `/permissions` shows tool grants, `/status` shows the last
 run and its receipt status, and `/context` shows recent memory usage and counts of
 shortened or omitted turns. `/new` (or `/clear`) clears all recent memory;
-`/exit` leaves. Ctrl+C requests cancellation and stops the session. Successful
-freeform answers do not print UUIDs or full receipts; failures remain visible.
+`/exit` leaves. Ctrl+C requests cancellation and stops the session. Freeform
+answers say that the response finished while the requested work remains
+unverified, with a run ID for inspection. Failure and cancellation reasons remain
+visible. Response completion does not prove the requested feature works.
 
 For session JSON Lines, select `kinesin --json --config PATH`. One-shot, batch and
 operator commands keep their existing JSON interfaces. Human display escapes
 terminal control and direction-changing characters from model/tool text.
 
-The live session keeps recent successfully completed user prompts and assistant
-answers together, tagged with their originating run IDs. Failed entries are not
-added; earlier completed turns remain available within the memory limits. Tools
-re-read files as needed: this memory does not carry tool observations or checked
-evidence into the next run. Each request gets fresh authority from the configured
-permissions; remembered text grants no additional access.
+The live session keeps recent user prompts and assistant answer claims tagged
+with their originating run IDs. When a run has recorded tool activity, it also
+keeps a separate bounded summary from the journal, including partial work from
+failed or cancelled runs. A missing operation result stays unknown; a recorded
+error has unverified repair status. Successful operations do not prove that bytes
+changed or that behavior works. These historical references do not replace fresh
+file reads, tool observations or checked evidence. Each request gets fresh
+authority from the configured permissions; remembered facts grant no access.
 
-Memory holds at most 16 completed turns. Each prompt and answer is clipped to
+Memory holds at most 16 terminal turns. Each prompt and answer is clipped to
 2,048 UTF-8 bytes, with further shortening if needed. Its encoded byte budget is
 `min(8192, context_size - max_output_tokens)`; this is a memory policy, not an
 exact model-token count. The oldest turns are removed first, and request preflight
 may remove more to fit the model request. Shortening and omissions produce visible
 notices; `/context` reports their counts. Exiting discards this memory, and a new
 process does not restore it from the journal.
+
+Operation summaries retain at most 12 records and 4,096 encoded bytes, derived
+from at most 256 journal events. Missing or omitted history is explicit. Summaries
+exclude file bodies, command output and arbitrary tool/model text. When memory
+must shrink, it drops whole operation records or references rather than clipping
+identities or paths; an answerless turn is dropped if its reference cannot fit.
 
 Each entry remains a separate immutable journaled run, so `inspect` and `export`
 still work on earlier entries. Metadata capture excludes the recent conversation
@@ -93,6 +103,21 @@ must be explicitly selected to retain the private inputs needed for exact replay
 Session follow-ups work independently of that capture choice. Broader context
 continuity remains tracked by the open
 [INT-0026](intents/INT-0026-session-context-continuity.md).
+
+## Experimental ordered action protocol
+
+Native tool calling remains the default. For an explicitly configured local
+freeform workspace with only compiled tools and at least one effectful grant,
+`action_protocol = "structured_ordered_v1"` in the model profile opts into the
+ordered tool-or-answer protocol. It preserves both choices and ordinary tool
+authorization. Explicit opt-in with checked, read-only, no-tool or MCP work is
+rejected at admission. Existing profiles are unchanged. This experimental option
+is not a claim of better coding ability; Sprint 15's live results determine that.
+
+Older captures retain their original request bytes and transition versions.
+New historical operation references use capture version 5, and older captures
+cannot contain the new reference shape. Replay reads its recorded protocol and
+context instead of adopting a current profile's defaults.
 
 The commands below use an explicit example configuration prepared using the guide
 and a separately started, verified model server. Normal local terminal entry

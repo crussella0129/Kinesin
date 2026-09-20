@@ -140,6 +140,7 @@ fn profile(origin: String) -> ModelConfig {
         read_timeout_s: 1,
         model_queue_timeout_s: 1,
         cache_prompt: true,
+        action_protocol: Default::default(),
     }
 }
 

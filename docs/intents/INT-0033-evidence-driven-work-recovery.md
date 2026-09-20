@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0033
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-119–T-124 build plan](../sprints/s15/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -90,6 +90,9 @@ parent usability intent remains unrealized until its live workload passes.
 General persistent sessions remain INT-0026; wider benchmarking remains INT-0024.
 
 ## Transition history
+- 2026-09-20: planned → active after canonical critique accepted and installed
+  finalize-plan.sh locked both approved plans. Begin T-119–T-121 implementation;
+  official unit/integration verification remains deferred until live confidence.
 - 2026-09-20: proposed → planned after the user explicitly approved Sprint 15's
   reviewed mitigation plans. Preserve the six-request diagnostic ceiling,
   conditional two-attempt live gate and official-verification-after-live order.

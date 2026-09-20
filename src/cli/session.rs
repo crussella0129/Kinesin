@@ -1,6 +1,8 @@
 //! Ephemeral recent-turn memory. Durable runs retain their own frozen inputs.
 
-use crate::session::{MAX_SESSION_CONTEXT_BYTES, MAX_SESSION_TURNS, SessionContext, SessionTurn};
+use crate::session::{
+    MAX_SESSION_CONTEXT_BYTES, MAX_SESSION_TURNS, RunReference, SessionContext, SessionTurn,
+};
 
 const ENTRY_BYTES: usize = 2_048;
 const CLIPPED: &str = "\n[truncated for session memory]\n";
@@ -38,7 +40,7 @@ impl Memory {
 
     pub(super) fn status(&self) -> String {
         format!(
-            "Session memory: {} recent completed turns, {} / {} bytes.\n{} older turns omitted; {} turns shortened.\nLive context clears on /new or exit; saved runs follow capture and retention settings.\nFile contents are re-read as needed.\n\n",
+            "Session memory: {} recent terminal turns, {} / {} bytes.\n{} older turns omitted; {} turns shortened.\nAssistant answers are claims; recorded operations are historical and do not verify behavior or repairs.\nLive context clears on /new or exit; saved runs follow capture and retention settings.\nFile contents are re-read as needed.\n\n",
             self.context.turns.len(),
             self.bytes(),
             self.byte_limit,
@@ -70,18 +72,39 @@ impl Memory {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn remember(
         &mut self,
         run_id: String,
         prompt: &str,
         answer: &str,
     ) -> Option<String> {
+        self.remember_run(run_id, prompt, answer, None)
+    }
+
+    pub(super) fn remember_run(
+        &mut self,
+        run_id: String,
+        prompt: &str,
+        answer: &str,
+        run_reference: Option<RunReference>,
+    ) -> Option<String> {
         let omitted_before = self.omitted;
         let mut shortened = prompt.len() > ENTRY_BYTES || answer.len() > ENTRY_BYTES;
+        if prompt.trim().is_empty()
+            || (answer.trim().is_empty() && run_reference.is_none())
+            || run_reference
+                .as_ref()
+                .is_some_and(|reference| reference.validate(&run_id).is_err())
+        {
+            self.omitted = self.omitted.saturating_add(1);
+            return Some("[This turn could not be retained as valid bounded session reference; current files must be re-read.]\n\n".into());
+        }
         let turn = SessionTurn {
             run_id,
             prompt: clip(prompt, ENTRY_BYTES),
             answer: clip(answer, ENTRY_BYTES),
+            run_reference,
         };
         self.context.turns.push(turn);
         while self.context.turns.len() > 1
@@ -93,6 +116,16 @@ impl Memory {
         // answer must fit without blocking the next request or growing memory.
         while self.bytes() > self.byte_limit && !self.context.turns.is_empty() {
             let last = self.context.turns.last_mut().expect("nonempty memory");
+            if let Some(reference) = &mut last.run_reference {
+                if !reference.effects.drop_oldest_record() {
+                    last.run_reference = None;
+                    if last.answer.trim().is_empty() {
+                        self.omit_oldest();
+                    }
+                }
+                shortened = true;
+                continue;
+            }
             let text = if last.prompt.len() > last.answer.len() {
                 &mut last.prompt
             } else {

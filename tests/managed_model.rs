@@ -94,6 +94,7 @@ fn template() -> ModelConfig {
         read_timeout_s: 2,
         model_queue_timeout_s: 2,
         cache_prompt: true,
+        action_protocol: Default::default(),
     }
 }
 

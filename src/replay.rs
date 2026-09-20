@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::config::{
-    CaptureMode, Limits, ModelConfig, ToolName, ToolRef, WorkspaceConfig, validate_id,
+    ActionProtocol, CaptureMode, Limits, ModelConfig, ToolName, ToolRef, WorkspaceConfig,
+    validate_id,
 };
 use crate::core::{self, Effect, ModelReply, RunPhase, ToolCall};
 use crate::model::{self, ModelOptions};
@@ -30,7 +31,14 @@ pub const MAX_REPLAY_EVENTS: usize = 256;
 /// remains supported only for captures without that new optional input.
 /// Tools 3 adds start_preview; older captures keep its unknown-tool semantics.
 pub fn versions() -> Value {
-    json!({"capture":4,"core":7,"adapter":4,"tools":5,"checker":1,
+    versions_for(ActionProtocol::Native, false)
+}
+
+/// The model protocol is frozen by admission. Capture 5 is used only when the
+/// session carries the new operation-reference shape, never for old contexts.
+pub fn versions_for(protocol: ActionProtocol, has_run_references: bool) -> Value {
+    json!({"capture":if has_run_references { 5 } else { 4 },
+        "core":protocol.core_version(),"adapter":protocol.adapter_version(),"tools":5,"checker":1,
         "source_parser":1,"output_contract":1})
 }
 
@@ -465,10 +473,15 @@ impl FrozenContext {
                 .encode()
                 .map_err(|_| error("replay_invalid_frozen_input", seq))?;
             let source = &self.input_sources[2];
+            let origin = if context.has_run_references() {
+                "earlier user requests, model claims and harness-recorded operations"
+            } else {
+                "earlier user requests and model output"
+            };
             ensure(
                 source.id == "session_context"
                     && source.purpose == "recent session turns"
-                    && source.origin == "earlier user requests and model output"
+                    && source.origin == origin
                     && source.bytes == text.len()
                     && source.sha256 == model::fingerprint(text.as_bytes()),
                 "replay_input_sources",
@@ -651,6 +664,10 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
     )?;
     ensure(
         accepted.data["versions"] == versions()
+            || accepted.data["versions"] == versions_for(ActionProtocol::Native, true)
+            || accepted.data["versions"]
+                == versions_for(ActionProtocol::StructuredOrderedV1, false)
+            || accepted.data["versions"] == versions_for(ActionProtocol::StructuredOrderedV1, true)
             || accepted.data["versions"] == experimental_structured_versions()
             || accepted.data["versions"] == refined_milestone_versions()
             || accepted.data["versions"] == initial_milestone_versions()
@@ -676,6 +693,31 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
     let adapter_version = accepted.data["versions"]["adapter"]
         .as_u64()
         .expect("admitted versions");
+    let has_run_references = frozen
+        .session_context
+        .as_ref()
+        .is_some_and(crate::session::SessionContext::has_run_references);
+    ensure(
+        (accepted.data["versions"]["capture"] == 5) == has_run_references,
+        "replay_invalid_reference_version",
+        Some(0),
+    )?;
+    // Historical adapter-5 captures omitted the selector and must still replay
+    // their recorded protocol. New ordered captures freeze the explicit opt-in.
+    ensure(
+        if adapter_version == 6 {
+            frozen.model.action_protocol == ActionProtocol::StructuredOrderedV1
+                && frozen
+                    .model
+                    .action_protocol
+                    .validate_scope(frozen.task.is_checked(), &frozen.workspace.tools)
+                    .is_ok()
+        } else {
+            frozen.model.action_protocol.is_native()
+        },
+        "replay_protocol_mismatch",
+        Some(0),
+    )?;
     let preview_supported = accepted.data["versions"]["tools"]
         .as_u64()
         .is_some_and(|version| version >= 3);
@@ -701,7 +743,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         "replay_start_missing",
         Some(1),
     )?;
-    let (mut state, mut effect) = core::initiate_with_context(
+    let (mut state, mut effect) = core::initiate_with_context_reference(
         frozen.instructions.clone(),
         frozen.prior.as_ref().map(|prior| prior.answer.clone()),
         frozen
@@ -712,6 +754,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
             .map_err(|_| error("replay_invalid_frozen_input", Some(0)))?,
         frozen.prompt.clone(),
         !frozen.workspace.tools.is_empty(),
+        has_run_references,
     )
     .map_err(|_| error("replay_initial_transition", Some(0)))?;
     if frozen.task.is_checked() {

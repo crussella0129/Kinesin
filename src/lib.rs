@@ -5,6 +5,7 @@ pub mod cli;
 pub mod config;
 pub mod core;
 pub mod dispatch;
+pub mod effects;
 pub mod ingress;
 pub mod managed_model;
 pub mod mcp;

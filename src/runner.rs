@@ -277,9 +277,7 @@ pub fn options(authority: &RunAuthority) -> ModelOptions {
         stream: authority.model().stream,
         cache_prompt: authority.model().cache_prompt,
         tools: model::tool_defs(&authority.workspace().tools, authority.mcp_tools()),
-        // The structured-action experiment is retained for capture replay only.
-        // Its live workload regressed to answers without any actual actions.
-        structured_actions: false,
+        structured_actions: !authority.action_protocol().is_native(),
         constraint: None,
     }
 }
@@ -300,7 +298,8 @@ pub async fn admit_once(
     key: Option<String>,
 ) -> Result<(RunRecord, bool), String> {
     let mut data = json!({"input_sources":authority.input_sources(),"limits":authority.limits(),"policy_version":"1"});
-    data["versions"] = crate::replay::versions();
+    data["versions"] =
+        crate::replay::versions_for(authority.action_protocol(), authority.has_run_references());
     if authority.capture() == CaptureMode::Replay {
         data["replay"] = json!({"authority":authority});
     }
@@ -723,7 +722,7 @@ async fn run_owned(
         queue_stop: None,
         mcp_cleanup: None,
     };
-    let (mut state, mut effect) = core::initiate_with_context(
+    let (mut state, mut effect) = core::initiate_with_context_reference(
         authority.instructions().into(),
         authority.prior().map(|prior| prior.answer.clone()),
         authority
@@ -732,6 +731,7 @@ async fn run_owned(
             .transpose()?,
         authority.prompt().into(),
         !authority.workspace().tools.is_empty(),
+        authority.has_run_references(),
     )
     .map_err(|e| e.to_string())?;
     if authority.task().is_checked() {
@@ -745,7 +745,8 @@ async fn run_owned(
         .any(|tool| matches!(tool, crate::config::ToolRef::Compiled(name) if name.is_mutating()))
     {
         state
-            .enable_workflow_recovery_for_tools(
+            .enable_workflow_recovery_version(
+                authority.action_protocol().core_version(),
                 &authority
                     .workspace()
                     .tools
@@ -907,7 +908,11 @@ async fn run_owned(
                 } else {
                     &settings
                 };
-                let prepared = match model::prepare(state.messages(), turn_settings) {
+                let prepared = match model::prepare_with_version(
+                    state.messages(),
+                    turn_settings,
+                    authority.action_protocol().adapter_version(),
+                ) {
                     Ok(request) => request,
                     Err(reason) => {
                         journal.stop();
