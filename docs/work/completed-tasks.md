@@ -314,3 +314,10 @@
 - **Completed:** 2026-09-13T00:50:33Z
 - **Files modified:** Cargo.toml; Cargo.lock; src/managed_model.rs; src/model_selection.rs; src/onboarding.rs; src/cli.rs; src/config.rs; src/lib.rs; src/process.rs; src/signal.rs; src/bin/cmd-fixture.rs; tests/managed_model.rs; tests/managed_cli.rs; kinesin.example.toml; README.md; docs/managed-model-entry.md; docs/SUMMARY.md; docs/getting-started.md; docs/cli.md; docs/configuration.md; docs/security.md; docs/supply-chain.md; docs/model-preflight.md; docs/native-state-audit.md; docs/adversarial-review.md; docs/interactive-entry-repair.md; docs/roadmap.md; docs/intents/INT-0007-managed-model-process.md; docs/work ledgers.
 - **Commit:** `c099fd49f011d929c38c00ad06324b92f65fa364`
+
+## T-110 (sprint 12)
+- **Description:** Added typed bounded session reference data, fresh per-request authorization and separate provenance; froze context in replay capture without adding content to metadata capture. Preserved legacy replay with explicit version compatibility. Implemented before testing; 206 unit and 20 replay tests passed, with real-session replay, formatting and all-target Clippy.
+- **Intent:** [INT-0030](../intents/INT-0030-usable-local-session-memory.md)
+- **Completed:** 2026-09-20T04:12:06Z
+- **Files modified:** src/session.rs; src/lib.rs; src/policy.rs; src/config.rs; src/core.rs; src/runner.rs; src/replay.rs; tests/replay.rs; intent, sprint plans, metadata and work ledgers.
+- **Commit:** PENDING

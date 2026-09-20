@@ -686,9 +686,13 @@ async fn run_owned(
         queue_stop: None,
         mcp_cleanup: None,
     };
-    let (mut state, mut effect) = core::initiate_continued(
+    let (mut state, mut effect) = core::initiate_with_context(
         authority.instructions().into(),
         authority.prior().map(|prior| prior.answer.clone()),
+        authority
+            .session_context()
+            .map(crate::session::SessionContext::encode)
+            .transpose()?,
         authority.prompt().into(),
         !authority.workspace().tools.is_empty(),
     )

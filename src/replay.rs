@@ -21,12 +21,19 @@ pub const MAX_REPLAY_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_REPLAY_EVENTS: usize = 256;
 
 /// Bump the applicable version whenever its recorded semantics change. This
-/// guards admission: a capture stamped with a different set is refused up front
+/// guards admission: an unsupported set is refused up front
 /// (`replay_versions_unsupported`) rather than failing deep in replay. Core 2
 /// permits unchecked read compaction; tools 2 mints evidence only in checked
 /// runs; adapter 3 describes that distinction in the prepared tool schema.
 /// Capture 3 freezes MCP preparation after admission in the startup event.
+/// Capture 4 and core 3 add bounded session context. The preceding version set
+/// remains supported only for captures without that new optional input.
 pub fn versions() -> Value {
+    json!({"capture":4,"core":3,"adapter":3,"tools":2,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn legacy_versions() -> Value {
     json!({"capture":3,"core":2,"adapter":3,"tools":2,"checker":1,
         "source_parser":1,"output_contract":1})
 }
@@ -189,6 +196,8 @@ struct FrozenContext {
     prompt: String,
     #[serde(default)]
     prior: Option<crate::policy::PriorAnswer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    session_context: Option<crate::session::SessionContext>,
     submission_sha256: String,
     input_sources: Vec<InputSource>,
     /// Mirrors `RunAuthority.mcp_tools`; `skip_serializing_if` keeps a non-MCP
@@ -261,6 +270,12 @@ impl FrozenContext {
                         && validate_id(&prior.run_id).is_ok()
                         && !prior.answer.trim().is_empty()
                         && prior.answer.len() <= crate::policy::MAX_PRIOR_ANSWER_BYTES
+                })
+                && self.session_context.as_ref().is_none_or(|context| {
+                    !self.task.is_checked()
+                        && self.prior.is_none()
+                        && self.owner == crate::policy::LOCAL_OWNER
+                        && context.validate().is_ok()
                 })
                 && self.model.temperature.is_finite()
                 && !self.model.model_id.is_empty()
@@ -351,7 +366,9 @@ impl FrozenContext {
             seq,
         )?;
         ensure(
-            self.input_sources.len() == 2 + usize::from(self.prior.is_some()),
+            self.input_sources.len()
+                == 2 + usize::from(self.prior.is_some())
+                    + usize::from(self.session_context.is_some()),
             "replay_input_sources",
             seq,
         )?;
@@ -393,6 +410,21 @@ impl FrozenContext {
                     && source.origin == "earlier model output"
                     && source.bytes == prior.answer.len()
                     && source.sha256 == model::fingerprint(prior.answer.as_bytes()),
+                "replay_input_sources",
+                seq,
+            )?;
+        }
+        if let Some(context) = &self.session_context {
+            let text = context
+                .encode()
+                .map_err(|_| error("replay_invalid_frozen_input", seq))?;
+            let source = &self.input_sources[2];
+            ensure(
+                source.id == "session_context"
+                    && source.purpose == "recent session turns"
+                    && source.origin == "earlier user requests and model output"
+                    && source.bytes == text.len()
+                    && source.sha256 == model::fingerprint(text.as_bytes()),
                 "replay_input_sources",
                 seq,
             )?;
@@ -572,7 +604,11 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         Some(0),
     )?;
     ensure(
-        accepted.data["versions"] == versions(),
+        accepted.data["versions"] == versions()
+            || (accepted.data["versions"] == legacy_versions()
+                && accepted.data["replay"]["authority"]
+                    .get("session_context")
+                    .is_none()),
         "replay_versions_unsupported",
         Some(0),
     )?;
@@ -592,9 +628,15 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         "replay_start_missing",
         Some(1),
     )?;
-    let (mut state, mut effect) = core::initiate_continued(
+    let (mut state, mut effect) = core::initiate_with_context(
         frozen.instructions.clone(),
         frozen.prior.as_ref().map(|prior| prior.answer.clone()),
+        frozen
+            .session_context
+            .as_ref()
+            .map(crate::session::SessionContext::encode)
+            .transpose()
+            .map_err(|_| error("replay_invalid_frozen_input", Some(0)))?,
         frozen.prompt.clone(),
         !frozen.workspace.tools.is_empty(),
     )

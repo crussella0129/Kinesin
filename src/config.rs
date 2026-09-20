@@ -988,6 +988,16 @@ impl Config {
         crate::policy::authorize_with_prior(self, None, submission, prior)
     }
 
+    /// Session reference data is supplied by the local caller; every request
+    /// still resolves its current workspace, model and grants independently.
+    pub fn authorize_local_session(
+        &self,
+        submission: Submission,
+        context: Option<crate::session::SessionContext>,
+    ) -> Result<RunAuthority, String> {
+        crate::policy::authorize_with_session(self, submission, context)
+    }
+
     pub fn instructions(&self) -> &str {
         &self.instructions
     }

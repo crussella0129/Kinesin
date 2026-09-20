@@ -19,6 +19,7 @@ pub mod replay;
 pub mod runner;
 pub mod scheduler;
 pub mod service;
+pub mod session;
 pub mod signal;
 pub mod storage;
 pub mod tools;

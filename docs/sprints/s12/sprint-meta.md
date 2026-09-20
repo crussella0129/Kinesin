@@ -9,5 +9,5 @@
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
 - **Summary:** Make the local assistant useful with bounded multi-turn memory and file-edit follow-ups; implement before testing.
-- **Intents:** [INT-0030](../../intents/INT-0030-usable-local-session-memory.md) — planned
+- **Intents:** [INT-0030](../../intents/INT-0030-usable-local-session-memory.md) — active
 - **Completion evidence:** (filled at Loop Phase)

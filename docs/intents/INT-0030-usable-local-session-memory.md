@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0030
-- **State:** planned
+- **State:** active
 - **Work evidence:** [sprint 12 plan](../sprints/s12/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** pending
@@ -50,3 +50,4 @@ INT-0026 criteria open.
 ## Transition history
 - 2026-09-20: created as planned for the user's implementation-first local
   assistant request, with scope confirmed as launch, context and file editing.
+- 2026-09-20: planned → active after independent plan review and helper finalization.
