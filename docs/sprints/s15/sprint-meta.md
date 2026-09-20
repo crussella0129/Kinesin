@@ -3,14 +3,14 @@
 - **Sprint number:** 15
 - **Book schema version:** 2
 - **Start timestamp:** 2026-09-20T13:42:28Z
-- **End timestamp:** (filled at Loop Phase)
+- **End timestamp:** 2026-09-20T15:38:41Z
 - **Model:** gpt-6-astra
 - **Bundle version:** 0.22.0
-- **Exit status:** in-progress
+- **Exit status:** failed
 - **Token count:** (filled at Loop Phase if observable)
 - **Summary:** Failed repair qualification after six bounded diagnostics; retain explicit-file gains, unverified implementation and discovery findings.
 - **Intents:** [INT-0033](../../intents/INT-0033-evidence-driven-work-recovery.md); [INT-0032](../../intents/INT-0032-low-intervention-local-workflows.md)
-- **Completion evidence:** (filled at Loop Phase)
+- **Completion evidence:** Six diagnostics retained: two explicit-file passes, both app-repair arms failed without actions; T-122 evidence complete, T-119-T-121 unverified, T-123/T-124 not run; see docs/sprints/s15/failure-report.md. Local checkpoint only under approved plan.
 
 ## Failure disposition
 
