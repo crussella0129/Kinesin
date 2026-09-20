@@ -300,27 +300,40 @@ paths in your requests refer to the selected folder.
 For example:
 
 ```text
-> make a folder called test 1
-> list the files in this folder
+> Remember that this project is called Lantern.
+> Create project.txt with that project name.
+> Edit that file to add status: draft.
 ```
 
-You see tool activity and the model's readable answer. Folder creation must be a
-real tool operation inside the chosen folder; the model's claim alone is not
-verification. An existing folder is reported without replacement. Parent folders
-must already exist. No command shell is needed to create a directory.
+You see tool activity and the model's readable answer. File creation and editing
+must be real tool operations inside the chosen folder; the model's claim alone
+is not verification. You can also ask to create folders without a command shell.
+An existing folder is reported without replacement, and parent folders must
+already exist.
 
 | Session command | Use |
 | --- | --- |
 | `/help` | Show available session commands |
 | `/status` | Inspect the latest run and its acceptance status |
 | `/permissions` | Show the configured tools and command grants |
-| `/new` or `/clear` | Start a new thread of requests |
+| `/context` | Show recent memory usage and counts of shortened or omitted turns |
+| `/new` or `/clear` | Clear all recent conversation memory |
 | `/exit` | Leave the session |
 
 Ctrl+C cancels and stops the session. Each request is journaled as an immutable
-run. Current follow-ups carry the previous answer, not a full conversation
-transcript. A freeform result has no independent acceptance checker; that is
-shown under `/status` and is distinct from an execution failure.
+run. Follow-ups remember recent completed prompts and answers during this process;
+failed entries are excluded while earlier completed turns remain within the
+memory limits. Large text is shortened and older turns are removed as memory
+fills, with visible notices.
+`/context` reports the limits and adjustments; [the CLI reference](cli.md#the-session)
+describes the exact byte and turn bounds. Exiting discards this memory, so a later
+launch starts fresh. File tools re-read current contents instead of relying on
+retained tool results. A freeform result has no independent acceptance checker;
+that is shown under `/status` and is distinct from an execution failure.
+
+Each request uses the configured permissions anew. The default metadata journal
+retains run results but excludes the recent conversation transcript; retaining
+private inputs for replay requires explicitly selected replay capture.
 
 ### Where settings live
 
@@ -353,6 +366,42 @@ Human setup requires both stdin and stdout to be terminals. If you redirect
 output, use an explicit profile, for example
 `kinesin --config PATH --json > session.jsonl`; redirected output does not open
 the interactive setup or model selector.
+
+## Preview a local website
+
+Website previews require an explicit local configuration with one workspace
+and one model. Keep its configuration and private state outside the working
+folder. In that workspace's existing entry, include `start_preview` alongside
+the file tools you want to grant, for example:
+
+```toml
+tools = ["list_files", "read_file", "search_files", "create_directory", "write_file", "edit_file", "start_preview"]
+```
+
+Use a local freeform profile. Service configurations reject preview grants,
+and checked runs cannot use a workspace that grants previews. The ordinary
+personal setup does not add the grant automatically. Start the interactive profile:
+
+```text
+kinesin --config preview.toml
+```
+
+Ask Kinesin to create a small storefront with `index.html`, `styles.css` and
+`app.js`, then call `start_preview` for its directory. Use relative asset paths
+such as `./styles.css` and `./app.js`, and JavaScript `addEventListener` calls.
+Inline scripts, inline styles, event attributes and remote assets are blocked.
+The returned URL includes a private path prefix; open the complete URL.
+
+Keep this Kinesin session open while using the website. Further file edits
+appear after browser reload, and requesting the same preview again returns
+the same URL. `/exit`, EOF or Ctrl+C closes the server; a one-shot `--prompt`
+command closes it when that command finishes. Restart the session to preview
+a different directory.
+
+This server serves static HTML, CSS, JavaScript, JSON, image and font files up
+to 1 MiB each, with no directory listings or backend execution. See the
+[preview tool contract](loop-and-tools.md#local-website-previews) for its
+complete limits.
 
 ## External model servers (advanced)
 

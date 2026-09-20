@@ -314,3 +314,38 @@
 - **Completed:** 2026-09-13T00:50:33Z
 - **Files modified:** Cargo.toml; Cargo.lock; src/managed_model.rs; src/model_selection.rs; src/onboarding.rs; src/cli.rs; src/config.rs; src/lib.rs; src/process.rs; src/signal.rs; src/bin/cmd-fixture.rs; tests/managed_model.rs; tests/managed_cli.rs; kinesin.example.toml; README.md; docs/managed-model-entry.md; docs/SUMMARY.md; docs/getting-started.md; docs/cli.md; docs/configuration.md; docs/security.md; docs/supply-chain.md; docs/model-preflight.md; docs/native-state-audit.md; docs/adversarial-review.md; docs/interactive-entry-repair.md; docs/roadmap.md; docs/intents/INT-0007-managed-model-process.md; docs/work ledgers.
 - **Commit:** `c099fd49f011d929c38c00ad06324b92f65fa364`
+
+## T-110 (sprint 12)
+- **Description:** Added typed bounded session reference data, fresh per-request authorization and separate provenance; froze context in replay capture without adding content to metadata capture. Preserved legacy replay with explicit version compatibility. Implemented before testing; 206 unit and 20 replay tests passed, with real-session replay, formatting and all-target Clippy.
+- **Intent:** [INT-0030](../intents/INT-0030-usable-local-session-memory.md)
+- **Completed:** 2026-09-20T04:12:06Z
+- **Files modified:** src/session.rs; src/lib.rs; src/policy.rs; src/config.rs; src/core.rs; src/runner.rs; src/replay.rs; tests/replay.rs; intent, sprint plans, metadata and work ledgers.
+- **Commit:** `b0ca1093239d6ecb0c50ef3a81f6f7f0ca6a4422`
+
+## T-111 (sprint 12)
+- **Description:** Added bounded live conversation memory, explicit shortening/eviction notices, /context and /new, fresh compiled-tool request admission and failure recovery. Updated practical usage docs and installed the checked binary with an old-binary backup. Native bare-command folder/model selection, multi-turn memory and actual create/edit disk effects passed. After implementation, 271 targeted tests and format/Clippy passed. Preserved an initial small-model failure to perform an edit in the E2E evidence.
+- **Intent:** [INT-0030](../intents/INT-0030-usable-local-session-memory.md)
+- **Completed:** 2026-09-20T04:14:03Z
+- **Files modified:** src/cli.rs; src/cli/session.rs; src/cli/presentation.rs; tests/cli_inspect.rs; README.md; docs/cli.md; docs/getting-started.md; sprint 12 unit/integration/E2E evidence; work ledgers.
+- **Commit:** `2fb3631f48a084f9379fa96bb678ca5c9e6436c1`
+
+## T-112 (sprint 13)
+- **Description:** Drove the real local assistant to create and revise a six-product storefront in a dedicated disposable workspace. Preserved actual tool/run evidence, failed prose-only claims, generated-code failures, operator-guided repairs and browser observations. The live confidence gate passed before official checks: search/filtering, cart quantities/removal/totals, reload persistence, validation, $50 demo checkout and owned preview shutdown were observed. Retained byte-identical public fixtures with SHA-256 manifest and selected prompts/tool observations. This records one steered workload, not general autonomous model reliability; harness source and final verification belong to T-113/T-114.
+- **Intent:** [INT-0031](../intents/INT-0031-live-local-app-delivery.md)
+- **Completed:** 2026-09-20T04:55:52Z
+- **Files modified:** docs/sprints/s13/sprint-tests/e2e-tests.md; docs/sprints/s13/sprint-tests/fixtures/storefront/{manifest.json,selected-runs.json,public/app.js,public/cart.js,public/checkout.js,public/index.html,public/styles.css}; docs/work/tasks.md; docs/work/completed-tasks.md. Disposable app/control state remains ignored under target/storefront-lab.
+- **Commit:** `4c2d5a7c2b2672481f84d88fa3c918e0fa2d28da`
+
+## T-113 (sprint 13)
+- **Description:** Added explicitly granted start_preview for local CLI sessions: a capability-confined Rust static loopback server with bounded requests/assets, private URL, browser security headers, cross-turn lifetime and awaited session shutdown. Preserved command cleanup and denied service-mode grants. Live storefront operation exposed and resolved generated-app and server workflow failures before official verification; read-only review also repaired blocking startup/deadline settlement and versioned preview replay compatibility. After the live confidence gate, 206 unit, 25 runner_tools, 9 runner_journal, 3 managed_cli, 22 replay and 6 preview tests passed (271 total), including native symlink confinement, with formatting and all-target/all-feature Clippy warnings denied. Initial linker attempts exhausted disk space; only generated build-cache artifacts were cleaned before successful reruns. Independent final sprint critique and evidence acceptance remain T-114.
+- **Intent:** [INT-0031](../intents/INT-0031-live-local-app-delivery.md)
+- **Completed:** 2026-09-20T04:59:39Z
+- **Files modified:** src/preview.rs; src/lib.rs; src/config.rs; src/model.rs; src/tools.rs; src/runner.rs; src/cli.rs; src/cli/presentation.rs; src/replay.rs; tests/preview.rs; tests/replay.rs; docs/getting-started.md; docs/loop-and-tools.md; docs/work/tasks.md; docs/work/completed-tasks.md.
+- **Commit:** `d9547f8865b0703919f3ba3aea1f75abd7432932`
+
+## T-114 (sprint 13)
+- **Description:** Recorded 271 distinct passing native Windows checks, formatting and warnings-denied Clippy only after the live confidence gate; reconciled all acceptance/EARS clauses with named tool, HTTP, browser and negative-path evidence. Independently verified all eleven final source/test hashes against implementation commit d9547f8865b0703919f3ba3aea1f75abd7432932. Accepted final read-only critique is clean. Retained model failures, precise operator steering, separate installed/live binary identities, disk-full recovery and explicit absence of Linux/remote-CI execution. Final rebuilt-copy checkout passed; wider model-quality work remains T-103/INT-0024. No remote actions performed.
+- **Intent:** [INT-0031](../intents/INT-0031-live-local-app-delivery.md)
+- **Completed:** 2026-09-20T05:03:12Z
+- **Files modified:** docs/sprints/s13/sprint-tests/{unit-tests,integration-tests,e2e-tests,test-report,critique}.md; docs/sprints/s13/sprint-tests/tested-source.json; docs/sprints/s13/sprint-meta.md; docs/intents/INT-0031-live-local-app-delivery.md; docs/work/tasks.md; docs/work/completed-tasks.md.
+- **Commit:** `cc98c214cb277e6ba2beec1940aabe3c490ed1a3`

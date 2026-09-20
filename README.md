@@ -59,13 +59,17 @@ asks you to choose another working folder.
 Choose a working folder at the prompt, then ask for work there:
 
 ```text
-> make a folder called test 1
-> list the files in this folder
+> Remember that this project is called Lantern.
+> Create project.txt with that project name.
+> Edit that file to add status: draft.
 ```
 
 The personal profile allows read/search, folder creation and file writing/editing
-inside that selected folder. `/help`, `/permissions`, `/status`, `/new` and `/exit`
-control the session. Normal local use needs no SSH or second terminal.
+inside that selected folder. Recent completed requests and answers stay in memory
+for follow-ups during this session. `/context` shows its size and any shortened or
+omitted turns; `/new` clears it, and exiting discards it. Tools re-read files when
+needed. `/help`, `/permissions`, `/status` and `/exit` control the session.
+Normal local use needs no SSH or second terminal.
 `kinesin --external` explicitly attaches to a separately managed model server;
 see [optional remote-server connections](docs/getting-started.md#optional-remote-server-connection).
 
@@ -174,7 +178,9 @@ same-user process limits described in the threat model. Windows Jobs control
 process lifetime; Windows filesystem/network isolation remains proposed.
 Non-loopback model origins require HTTPS. Sprint 10 records a
 [real two-host checked run and actual-session cache observation](docs/sprints/s10/sprint-tests/remote-deployment.md).
-Broader deployment, context-continuity and concurrent-slot claims remain on the roadmap.
+Broader deployment, durable context continuity and concurrent-slot claims remain
+on the roadmap; [INT-0026](docs/intents/INT-0026-session-context-continuity.md)
+remains open beyond the bounded memory of a live session.
 
 See [decisions](docs/decisions.md) for alternatives and
 [security](docs/security.md) for exactly what these boundaries protect.

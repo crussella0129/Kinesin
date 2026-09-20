@@ -293,6 +293,10 @@ pub fn prepare(messages: &[Message], options: &ModelOptions) -> Result<PreparedR
                     },
                     "required":["path","to"],"additionalProperties":false
                 })),
+                "start_preview" => ("Start a local website preview for a relative workspace directory containing index.html; use . for the workspace root. It serves public HTML, CSS, JavaScript, JSON, image and font assets at the returned private localhost URL while this CLI session stays open. Use relative asset URLs and separate CSS/JavaScript files: inline scripts, event handlers and styles are blocked. No backend code runs. Repeating the same path returns the existing URL; only one directory can be previewed per workspace per session. File edits appear on reload. Never claim a URL before this tool returns it.", json!({
+                    "type":"object","properties":{"path":{"type":"string"}},
+                    "required":["path"],"additionalProperties":false
+                })),
                 "run_command" => ("Run one allow-listed command in the workspace as an argv vector, never a shell string. Provide command as a list whose first element is the bare executable name and the rest its arguments; each element is passed to the process verbatim, so no shell parses it. It runs in the workspace root with a scrubbed environment, its output is bounded and may be truncated, and it reports the exit code. It cites no evidence and does not retry.", json!({
                     "type":"object","properties":{
                         "command":{"type":"array","items":{"type":"string"},"description":"The argv vector: the bare executable name, then its arguments. No shell parses it."}

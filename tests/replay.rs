@@ -10,6 +10,7 @@ use kinesin::model::{ModelClient, ScriptStep};
 use kinesin::policy::Submission;
 use kinesin::replay::{MAX_REPLAY_BYTES, MAX_REPLAY_EVENTS, Snapshot, decode_snapshot, replay};
 use kinesin::runner::{RunResources, admit, run_admitted};
+use kinesin::session::{SessionContext, SessionTurn};
 use kinesin::storage::{Command, QueueLimits, Response, Storage};
 use serde_json::{Value, json};
 use tokio::time::{Instant, timeout};
@@ -100,8 +101,29 @@ async fn capture_with_prior(
     replies: Vec<ModelReply>,
     prior: Option<kinesin::policy::PriorAnswer>,
 ) -> Snapshot {
+    capture_with_context(checked, mode, replies, prior, None).await
+}
+
+async fn capture_with_context(
+    checked: bool,
+    mode: CaptureMode,
+    replies: Vec<ModelReply>,
+    prior: Option<kinesin::policy::PriorAnswer>,
+    context: Option<SessionContext>,
+) -> Snapshot {
+    capture_with_config(CONFIG, checked, mode, replies, prior, context).await
+}
+
+async fn capture_with_config(
+    source: &str,
+    checked: bool,
+    mode: CaptureMode,
+    replies: Vec<ModelReply>,
+    prior: Option<kinesin::policy::PriorAnswer>,
+    context: Option<SessionContext>,
+) -> Snapshot {
     let fixture = Fixture::new();
-    let config = Config::parse(CONFIG, &fixture.root.join("kinesin.toml")).unwrap();
+    let config = Config::parse(source, &fixture.root.join("kinesin.toml")).unwrap();
     let submission = if checked {
         Submission::Checked {
             task: "practice-fields".into(),
@@ -119,7 +141,13 @@ async fn capture_with_prior(
             capture: Some(mode),
         }
     };
-    let authority = config.authorize_local_continued(submission, prior).unwrap();
+    let authority = if context.is_some() {
+        assert!(prior.is_none());
+        config.authorize_local_session(submission, context.clone())
+    } else {
+        config.authorize_local_continued(submission, prior)
+    }
+    .unwrap();
     let owner = authority.owner().to_owned();
     let run_id = authority.run_id().to_owned();
     let path = fixture.root.join("state/kinesin.sqlite");
@@ -158,6 +186,23 @@ async fn capture_with_prior(
     let Response::Events(events) = page.unwrap() else {
         panic!("event page");
     };
+    if let Some(context) = context {
+        let requests = model.captured_requests().unwrap();
+        let request: Value = serde_json::from_slice(&requests[0]).unwrap();
+        let messages = request["messages"].as_array().unwrap();
+        assert_eq!(messages[1]["role"], "user");
+        let (frame, text) = messages[1]["content"]
+            .as_str()
+            .unwrap()
+            .split_once("\n\n")
+            .unwrap();
+        assert_eq!(frame, kinesin::core::SESSION_CONTEXT_FRAME);
+        assert_eq!(
+            serde_json::from_str::<SessionContext>(text).unwrap(),
+            context
+        );
+        assert_eq!(messages[2]["content"], "Please inspect the file");
+    }
     // Fixture drop deletes the database, source file and configured workspace.
     // ModelClient is also dropped; no execution object reaches replay().
     Snapshot {
@@ -1163,5 +1208,293 @@ async fn continuation_replay_validates_the_recorded_reference_origin() {
         altered.events[0].data["replay"]["authority"]["input_sources"][2][field] = json!("forged");
         altered.events[0].data["input_sources"][2][field] = json!("forged");
         assert_eq!(replay_code(&altered), "replay_input_sources");
+    }
+}
+
+fn session_reference() -> SessionContext {
+    SessionContext {
+        turns: (0..3)
+            .map(|index| SessionTurn {
+                run_id: format!("session-run-{index}"),
+                prompt: format!("private-prompt-{index}: remember Cobalt Heron"),
+                answer: format!("private-answer-{index}: remembered"),
+            })
+            .collect(),
+    }
+}
+
+#[tokio::test]
+async fn session_capture_replays_frozen_context_and_rejects_tampering() {
+    let captured = capture_with_context(
+        false,
+        CaptureMode::Replay,
+        vec![read_file(), ModelReply::Answer("done".into())],
+        None,
+        Some(session_reference()),
+    )
+    .await;
+    let report = replay(&captured.run, &captured.events).unwrap();
+    assert_eq!(report.consistency, "consistent");
+    assert_eq!(report.model_requests, 2);
+    let recorded: Vec<_> = captured
+        .events
+        .iter()
+        .filter(|event| event.kind == "model_planned")
+        .map(|event| event.data["request_sha256"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(report.prepared_sha256, recorded);
+    assert_eq!(
+        captured.events[0].data["replay"]["authority"]["session_context"],
+        json!(session_reference()),
+    );
+    for field in ["origin", "sha256"] {
+        let mut altered = captured.clone();
+        altered.events[0].data["replay"]["authority"]["input_sources"][2][field] = json!("forged");
+        altered.events[0].data["input_sources"][2][field] = json!("forged");
+        assert_eq!(replay_code(&altered), "replay_input_sources");
+    }
+    let mut altered = captured.clone();
+    altered.events[0].data["replay"]["authority"]["session_context"]["turns"][0]["prompt"] =
+        json!("forged prompt");
+    assert_eq!(replay_code(&altered), "replay_input_sources");
+    let mut altered = captured;
+    altered.events[0].data["versions"] = prior_session_versions();
+    assert_eq!(replay_code(&altered), "replay_versions_unsupported");
+}
+
+#[tokio::test]
+async fn metadata_session_capture_retains_provenance_without_history_content() {
+    let context = session_reference();
+    let captured = capture_with_context(
+        false,
+        CaptureMode::Metadata,
+        vec![ModelReply::Answer("done".into())],
+        None,
+        Some(context.clone()),
+    )
+    .await;
+    let all = serde_json::to_string(&captured).unwrap();
+    for turn in &context.turns {
+        assert!(!all.contains(&turn.prompt));
+        assert!(!all.contains(&turn.answer));
+        assert!(!all.contains(&turn.run_id));
+    }
+    assert!(captured.events[0].data.get("replay").is_none());
+    let source = &captured.events[0].data["input_sources"][2];
+    assert_eq!(source["id"], "session_context");
+    assert_eq!(source["origin"], "earlier user requests and model output");
+    assert_eq!(source["bytes"], context.encode().unwrap().len());
+    assert_eq!(
+        source["sha256"],
+        kinesin::policy::sha256(context.encode().unwrap().as_bytes())
+    );
+    assert_eq!(replay_code(&captured), "replay_unavailable_metadata");
+}
+
+fn prior_session_versions() -> Value {
+    json!({"capture":3,"core":2,"adapter":3,"tools":2,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn pre_preview_versions() -> Value {
+    json!({"capture":4,"core":3,"adapter":3,"tools":2,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn start_preview() -> ModelReply {
+    ModelReply::ToolCalls {
+        content: None,
+        calls: vec![ToolCall {
+            id: "preview-1".into(),
+            name: "start_preview".into(),
+            arguments: r#"{"path":"."}"#.into(),
+        }],
+    }
+}
+
+#[tokio::test]
+async fn preview_tool_version_preserves_legacy_unknown_tool_denials() {
+    // Stop after this observation so the compatibility fixture can restore the
+    // old denial without inventing a later model request or changing its hash.
+    let captured = capture_with_config(
+        &CONFIG.replace("max_model_turns = 3", "max_model_turns = 1"),
+        false,
+        CaptureMode::Replay,
+        vec![start_preview()],
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(captured.events[0].data["versions"]["tools"], 3);
+    let finished = event_index(&captured, "tool_finished");
+    assert_eq!(
+        captured.events[finished].data["replay"]["observation"]["error"]["code"],
+        "tool_denied"
+    );
+    assert_eq!(
+        replay(&captured.run, &captured.events).unwrap().consistency,
+        "consistent"
+    );
+    for versions in [pre_preview_versions(), prior_session_versions()] {
+        let mut old = captured.clone();
+        old.events[0].data["versions"] = versions;
+        assert_eq!(replay_code(&old), "replay_policy_divergence");
+        // Tools 2 did not recognize start_preview at all. This is the exact
+        // historical denied observation, with its encoded-byte metadata.
+        let observation = kinesin::tools::ToolResult::failure(
+            kinesin::tools::ToolStatus::Denied,
+            "unknown_tool",
+            "Tool is not available",
+        );
+        old.events[finished].data["result_bytes"] = json!(observation.encoded().unwrap().len());
+        old.events[finished].data["replay"]["observation"] = json!(observation);
+        let report = replay(&old.run, &old.events).unwrap();
+        assert_eq!(report.consistency, "consistent");
+        assert_eq!(report.tool_observations, 1);
+        old.events[0].data["versions"] = kinesin::replay::versions();
+        assert_eq!(replay_code(&old), "replay_policy_divergence");
+    }
+}
+
+#[tokio::test]
+async fn preview_capture_replays_after_listener_and_workspace_are_gone() {
+    let fixture = Fixture::new();
+    let html = "<!doctype html><title>Replay preview</title><p>live body</p>";
+    std::fs::write(fixture.root.join("workspace/index.html"), html).unwrap();
+    let config = Config::parse(
+        &CONFIG.replace(
+            "tools = [\"read_file\", \"list_files\"]",
+            "tools = [\"read_file\", \"list_files\", \"start_preview\"]",
+        ),
+        &fixture.root.join("kinesin.toml"),
+    )
+    .unwrap();
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Preview the website".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let owner_id = authority.owner().to_owned();
+    let run_id = authority.run_id().to_owned();
+    let path = fixture.root.join("state/kinesin.sqlite");
+    let storage = tokio::task::spawn_blocking(move || Storage::start(path, QueueLimits::default()))
+        .await
+        .unwrap()
+        .unwrap();
+    let store = storage.client();
+    let resources = RunResources::from_config(&config)
+        .unwrap()
+        .remove("local")
+        .unwrap();
+    let model = ModelClient::scripted([
+        start_preview().into(),
+        ModelReply::Answer("Preview is running.".into()).into(),
+    ]);
+    admit(&authority, &store, None).await.unwrap();
+    let run = run_admitted(
+        authority,
+        model,
+        store.clone(),
+        resources.clone(),
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .unwrap();
+    let Response::Events(events) = store
+        .execute(
+            Command::Events {
+                owner_id,
+                run_id,
+                after: None,
+                limit: 100,
+            },
+            Instant::now() + Duration::from_secs(2),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("event page");
+    };
+    let finished = events
+        .iter()
+        .find(|event| event.kind == "tool_finished")
+        .unwrap();
+    assert_eq!(finished.data["dispatch"], "executed");
+    let body: Value = serde_json::from_str(
+        finished.data["replay"]["observation"]["body"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let url = body["url"].as_str().unwrap();
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .unwrap();
+    assert_eq!(
+        client.get(url).send().await.unwrap().text().await.unwrap(),
+        html
+    );
+    resources.shutdown_previews().await.unwrap();
+    storage.shutdown().await.unwrap();
+    drop(resources);
+    let workspace = fixture.root.clone();
+    drop(fixture);
+    assert!(!workspace.exists());
+    assert!(client.get(url).send().await.is_err());
+    let report = replay(&run, &events).unwrap();
+    assert_eq!(report.consistency, "consistent");
+    assert_eq!(report.tool_observations, 1);
+    assert_eq!(report.model_requests, 2);
+    assert!(client.get(url).send().await.is_err());
+    assert!(
+        !workspace.exists(),
+        "replay cannot recreate the app workspace"
+    );
+
+    let mut old = events;
+    old[0].data["versions"] = pre_preview_versions();
+    assert_eq!(
+        replay(&run, &old).unwrap_err().code,
+        "replay_invalid_frozen_input",
+        "tools 2 cannot contain a grant that did not exist"
+    );
+}
+
+#[tokio::test]
+async fn legacy_capture_three_core_two_replays_without_session_context() {
+    for prior in [
+        None,
+        Some(kinesin::policy::PriorAnswer {
+            run_id: "previous-run".into(),
+            answer: "Earlier answer from the old session contract.".into(),
+        }),
+    ] {
+        let mut captured = capture_with_prior(
+            false,
+            CaptureMode::Replay,
+            vec![ModelReply::Answer("done".into())],
+            prior,
+        )
+        .await;
+        assert!(
+            captured.events[0].data["replay"]["authority"]
+                .get("session_context")
+                .is_none()
+        );
+        let current = replay(&captured.run, &captured.events).unwrap();
+        captured.events[0].data["versions"] = prior_session_versions();
+        let legacy = replay(&captured.run, &captured.events).unwrap();
+        assert_eq!(legacy.consistency, "consistent");
+        assert_eq!(legacy.prepared_sha256, current.prepared_sha256);
+        captured.events[0].data["versions"]["adapter"] = json!(2);
+        assert_eq!(replay_code(&captured), "replay_versions_unsupported");
     }
 }

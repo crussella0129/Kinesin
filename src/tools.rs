@@ -413,6 +413,7 @@ impl WorkspaceReader {
             | ToolName::EditFile
             | ToolName::DeleteFile
             | ToolName::MoveFile
+            | ToolName::StartPreview
             | ToolName::RunCommand => ToolResult::failure(
                 ToolStatus::Denied,
                 "not_a_write_capability",

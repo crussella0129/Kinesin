@@ -7,7 +7,7 @@ use crate::storage::{Event, RunRecord};
 // a final answer complete an interrupted display without retaining all turns.
 const STREAM_SUFFIX_BYTES: usize = 1024 * 1024;
 
-pub(super) const SESSION_HELP: &str = "Session commands:\n  /help         Show these commands\n  /status       Show the last run ID and its outcome\n  /permissions  Show granted tools and commands\n  /new          Clear the previous-answer context (also /clear)\n  /exit         End this session (also /quit)\n\nOther text is sent to the model. Freeform answers have no independent acceptance check.\n\n";
+pub(super) const SESSION_HELP: &str = "Session commands:\n  /help         Show these commands\n  /status       Show the last run ID and its outcome\n  /context      Show recent conversation memory and its limits\n  /permissions  Show granted tools and commands\n  /new          Clear conversation memory (also /clear)\n  /exit         End this session (also /quit)\n\nOther text is sent to the model. Freeform answers have no independent acceptance check.\n\n";
 
 pub(super) fn safe_text(text: &str) -> String {
     let mut safe = String::with_capacity(text.len());
@@ -63,6 +63,7 @@ pub(super) fn session_intro(workspace: &WorkspaceConfig, model: &ModelConfig) ->
             "delete_file" => "delete files".to_owned(),
             "move_file" => "move files".to_owned(),
             "run_command" => "run approved commands".to_owned(),
+            "start_preview" => "preview local websites".to_owned(),
             _ => format!("extension {}", tool.wire_name()),
         })
         .collect::<Vec<_>>();
@@ -81,7 +82,7 @@ pub(super) fn session_intro(workspace: &WorkspaceConfig, model: &ModelConfig) ->
     if !workspace.tools.iter().any(|tool| tool.is_mutating()) {
         intro.push_str("Read-only workspace; file and folder changes are disabled.\n");
     }
-    intro.push_str("Paths refer to this workspace. Each prompt continues the previous answer.\nType a request, /help for commands, or /exit to leave.\n\n");
+    intro.push_str("Paths refer to this workspace. Recent requests and answers stay in memory until /new or exit.\nType a request, /help for commands, or /exit to leave.\n\n");
     intro
 }
 
