@@ -2,8 +2,8 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0033
-- **State:** proposed
-- **Work evidence:** none
+- **State:** planned
+- **Work evidence:** [T-119–T-124 build plan](../sprints/s15/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -90,6 +90,9 @@ parent usability intent remains unrealized until its live workload passes.
 General persistent sessions remain INT-0026; wider benchmarking remains INT-0024.
 
 ## Transition history
+- 2026-09-20: proposed → planned after the user explicitly approved Sprint 15's
+  reviewed mitigation plans. Preserve the six-request diagnostic ceiling,
+  conditional two-attempt live gate and official-verification-after-live order.
 - 2026-09-20: created as `proposed` from Sprint 14's failed closeout and the
   owner's request for deeper causal mitigations in Sprint 15. Concrete plans
   remain subject to review and approval; no implementation or usability claimed.

@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0032
 - **State:** active
-- **Work evidence:** [T-115–T-117 plan](../sprints/s14/sprint-plans/build-plan.md); [T-118 failed-sprint assessment](../sprints/s14/failure-report.md)
+- **Work evidence:** [T-115–T-117 plan](../sprints/s14/sprint-plans/build-plan.md); [T-118 failed-sprint assessment](../sprints/s14/failure-report.md); [T-119–T-124 follow-on plan](../sprints/s15/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
