@@ -23,8 +23,9 @@ The banner makes the actual workspace, model and permissions visible. Requests
 show bounded tool activity and readable answers:
 
 ```text
-> make a folder called test 1
-> list the files in this folder
+> Remember that this project is called Lantern.
+> Create project.txt with that project name.
+> Edit that file to add status: draft.
 ```
 
 | Human terminal option | Behavior |
@@ -61,24 +62,37 @@ selecting them; startup does not guess authority. Piped input also skips setup
 and loads its explicit config or the current directory's `kinesin.toml`.
 
 `/help` lists commands, `/permissions` shows tool grants, `/status` shows the last
-run and its receipt status, `/new` (or `/clear`) starts without the previous answer,
-and `/exit` leaves. Ctrl+C requests cancellation and stops the session. Successful
+run and its receipt status, and `/context` shows recent memory usage and counts of
+shortened or omitted turns. `/new` (or `/clear`) clears all recent memory;
+`/exit` leaves. Ctrl+C requests cancellation and stops the session. Successful
 freeform answers do not print UUIDs or full receipts; failures remain visible.
 
 For session JSON Lines, select `kinesin --json --config PATH`. One-shot, batch and
 operator commands keep their existing JSON interfaces. Human display escapes
 terminal control and direction-changing characters from model/tool text.
 
-Each entry is a separate immutable run in the journal, linked by the answer it
-cites. Nothing rewrites an earlier run, so `inspect` and `export` work on any
-entry in the thread exactly as they do on a single run. Only the previous
-**answer** carries forward: metadata capture deliberately does not retain a
-prompt, and a thread whose content depended on the capture mode would behave
-differently for two owners running the same words.
+The live session keeps recent successfully completed user prompts and assistant
+answers together, tagged with their originating run IDs. Failed entries are not
+added; earlier completed turns remain available within the memory limits. Tools
+re-read files as needed: this memory does not carry tool observations or checked
+evidence into the next run. Each request gets fresh authority from the configured
+permissions; remembered text grants no additional access.
 
-The cited answer enters as reference data with its own entry in the input
-inventory, marked as earlier model output. It is information, not instruction,
-and grants no permission.
+Memory holds at most 16 completed turns. Each prompt and answer is clipped to
+2,048 UTF-8 bytes, with further shortening if needed. Its encoded byte budget is
+`min(8192, context_size - max_output_tokens)`; this is a memory policy, not an
+exact model-token count. The oldest turns are removed first, and request preflight
+may remove more to fit the model request. Shortening and omissions produce visible
+notices; `/context` reports their counts. Exiting discards this memory, and a new
+process does not restore it from the journal.
+
+Each entry remains a separate immutable journaled run, so `inspect` and `export`
+still work on earlier entries. Metadata capture excludes the recent conversation
+transcript while retaining ordinary results and provenance metadata. Replay capture
+must be explicitly selected to retain the private inputs needed for exact replay.
+Session follow-ups work independently of that capture choice. Broader context
+continuity remains tracked by the open
+[INT-0026](intents/INT-0026-session-context-continuity.md).
 
 The commands below use an explicit example configuration prepared using the guide
 and a separately started, verified model server. Normal local terminal entry

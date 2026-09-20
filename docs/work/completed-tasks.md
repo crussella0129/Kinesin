@@ -321,3 +321,10 @@
 - **Completed:** 2026-09-20T04:12:06Z
 - **Files modified:** src/session.rs; src/lib.rs; src/policy.rs; src/config.rs; src/core.rs; src/runner.rs; src/replay.rs; tests/replay.rs; intent, sprint plans, metadata and work ledgers.
 - **Commit:** `b0ca1093239d6ecb0c50ef3a81f6f7f0ca6a4422`
+
+## T-111 (sprint 12)
+- **Description:** Added bounded live conversation memory, explicit shortening/eviction notices, /context and /new, fresh compiled-tool request admission and failure recovery. Updated practical usage docs and installed the checked binary with an old-binary backup. Native bare-command folder/model selection, multi-turn memory and actual create/edit disk effects passed. After implementation, 271 targeted tests and format/Clippy passed. Preserved an initial small-model failure to perform an edit in the E2E evidence.
+- **Intent:** [INT-0030](../intents/INT-0030-usable-local-session-memory.md)
+- **Completed:** 2026-09-20T04:14:03Z
+- **Files modified:** src/cli.rs; src/cli/session.rs; src/cli/presentation.rs; tests/cli_inspect.rs; README.md; docs/cli.md; docs/getting-started.md; sprint 12 unit/integration/E2E evidence; work ledgers.
+- **Commit:** PENDING

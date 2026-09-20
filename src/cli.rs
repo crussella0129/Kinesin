@@ -20,6 +20,7 @@ use crate::scheduler::{Controller, ControllerHandle, Job, PendingRun};
 use crate::storage::{Command, Event, QueueLimits, Response, RunRecord, Storage, StorageClient};
 
 mod presentation;
+mod session;
 
 pub const USAGE: &str = "Kinesin - bounded local harness
 
@@ -39,7 +40,7 @@ Usage:
   kinesin provision --config PATH --owner ALIAS --hours HOURS
   kinesin --help | -h
 
-Bare kinesin starts an interactive session. Each entry continues the previous answer.
+Bare kinesin starts an interactive session with bounded recent conversation memory.
 Sessions show readable answers; --json selects JSONL receipts and provisional deltas.
 Interactive startup requires a working folder and offers local GGUF models.
 Enter uses the selected model; arrow keys choose another. Kinesin starts its local server.
@@ -508,6 +509,10 @@ impl Startup {
         prior: Option<crate::policy::PriorAnswer>,
     ) -> Result<Job, String> {
         let authority = self.config.authorize_local_continued(submission, prior)?;
+        self.job_authorized(authority)
+    }
+
+    fn job_authorized(&self, authority: crate::policy::RunAuthority) -> Result<Job, String> {
         let model = &authority.model().id;
         Ok(Job {
             display: None,
@@ -524,6 +529,56 @@ impl Startup {
             authority,
         }
         .discover_mcp(&self.config))
+    }
+
+    fn session_job(
+        &self,
+        submission: Submission,
+        memory: &session::Memory,
+    ) -> Result<(Job, usize), String> {
+        // Check the new request on its own first. An invalid request must not
+        // evict useful history, nor may trimming change its grants or limits.
+        let baseline = self.config.authorize_local(submission.clone())?;
+        let prepare = |authority: &crate::policy::RunAuthority| -> Result<(), String> {
+            let context = authority
+                .session_context()
+                .map(|value| value.encode())
+                .transpose()?;
+            let (state, _) = crate::core::initiate_with_context(
+                authority.instructions().to_owned(),
+                None,
+                context,
+                authority.prompt().to_owned(),
+                !authority.workspace().tools.is_empty(),
+            )
+            .map_err(|_| "cannot initialize session conversation")?;
+            crate::model::prepare(state.messages(), &crate::runner::options(authority))?;
+            Ok(())
+        };
+        prepare(&baseline)?;
+        let Some(mut context) = memory.context() else {
+            return Ok((self.job_authorized(baseline)?, 0));
+        };
+        loop {
+            let count = context.turns.len();
+            match self
+                .config
+                .authorize_local_session(submission.clone(), Some(context.clone()))
+            {
+                Ok(authority) if prepare(&authority).is_ok() => {
+                    return Ok((self.job_authorized(authority)?, count));
+                }
+                Ok(_) => {}
+                Err(error)
+                    if error == "initial conversation exceeds effective history/request budget" => {
+                }
+                Err(error) => return Err(error),
+            }
+            context.turns.remove(0);
+            if context.turns.is_empty() {
+                return Ok((self.job_authorized(baseline)?, 0));
+            }
+        }
     }
 }
 
@@ -1360,9 +1415,8 @@ async fn complete_one(
     }
 }
 
-/// One interactive thread. Each entry becomes its own run that cites the
-/// previous one, so the transcript stays a chain of immutable runs rather than
-/// a mutable conversation the harness edits in place.
+/// Each entry receives fresh authority and freezes a bounded snapshot of recent
+/// completed turns. Live memory never edits earlier immutable run records.
 async fn run_session(
     handle: &ControllerHandle,
     startup: &Startup,
@@ -1387,7 +1441,11 @@ async fn run_session(
         }
         emit_human(presentation::session_intro(workspace_config, &model_config)).await?;
     }
-    let mut previous: Option<String> = None;
+    let model_config = startup.config.model(&model).ok_or("unknown model")?;
+    let mut memory = session::Memory::new(
+        model_config.context_size,
+        startup.config.limits().max_output_tokens,
+    );
     let mut last_run: Option<String> = None;
     let mut code = 0;
     loop {
@@ -1406,9 +1464,10 @@ async fn run_session(
                 "/exit" | "/quit" => return Ok(code),
                 "/help" => emit_human(presentation::SESSION_HELP.into()).await?,
                 "/clear" | "/new" => {
-                    previous = None;
-                    emit_human("Previous-answer context cleared.\n\n".into()).await?;
+                    memory.clear();
+                    emit_human("Session context cleared.\n\n".into()).await?;
                 }
+                "/context" => emit_human(memory.status()).await?,
                 "/status" => {
                     let status = if let Some(run_id) = &last_run {
                         presentation::run_status(&retained_run(store, run_id.clone()).await?)
@@ -1433,40 +1492,70 @@ async fn run_session(
             }
             continue;
         }
-        let mut submission = Submission::Freeform {
+        let submission = Submission::Freeform {
             workspace: workspace.clone(),
             model: model.clone(),
-            prompt,
-            continues: previous.clone(),
+            prompt: prompt.clone(),
+            continues: None,
             limits: None,
             capture: None,
         };
-        // A failed entry ends its own thread rather than silently continuing
-        // from an answer the run never produced.
-        let prior = match resolve_continuation(store, &mut submission).await {
-            Ok(prior) => prior,
-            Err(error) => {
-                previous = None;
-                code = 1;
-                session_error(format!("cannot continue the previous entry: {error}"), json).await?;
-                continue;
-            }
-        };
-        let job = match startup.job_continued(submission, prior) {
-            Ok(job) => job,
+        let (job, retained) = match startup.session_job(submission, &memory) {
+            Ok(prepared) => prepared,
             Err(error) => {
                 code = 1;
                 session_error(error, json).await?;
                 continue;
             }
         };
+        let before = memory.context().map_or(0, |context| context.turns.len());
+        if before > retained {
+            session_notice(
+                format!(
+                    "[Omitted {} older turns from this request to fit its size limit.]\n\n",
+                    before - retained
+                ),
+                json,
+            )
+            .await?;
+        }
         let run_id = job.authority.run_id().to_owned();
         code = run_single(handle, job, true, (!json).then_some(store)).await?;
         last_run = Some(run_id.clone());
-        previous = (code == 0).then_some(run_id);
+        if code == 0 {
+            memory.retain_recent(retained);
+            let record = retained_run(store, run_id.clone()).await?;
+            if let Some(answer) = record
+                .result
+                .as_ref()
+                .and_then(|value| value["candidate"].as_str())
+                && !answer.trim().is_empty()
+                && let Some(notice) = memory.remember(run_id, &prompt, answer)
+            {
+                session_notice(notice, json).await?;
+            }
+        } else {
+            session_notice("[This entry was not added to memory. Earlier completed turns remain; files may have changed, so re-read them before retrying.]\n\n".into(), json).await?;
+        }
         if interrupted.is_cancelled() {
             return Ok(code);
         }
+    }
+}
+
+async fn session_notice(text: String, json: bool) -> Result<(), String> {
+    if json {
+        tokio::task::spawn_blocking(move || {
+            let mut output = std::io::stderr().lock();
+            output
+                .write_all(text.as_bytes())
+                .and_then(|()| output.flush())
+                .map_err(|_| "CLI context notice output failed".to_owned())
+        })
+        .await
+        .map_err(|_| "CLI context notice writer failed")?
+    } else {
+        emit_human(text).await
     }
 }
 
@@ -1721,6 +1810,130 @@ pub fn aggregate_exit(current: u8, next: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
+
+    fn session_test_startup(fixture: &Fixture) -> Startup {
+        let config = fixture.parse(crate::config::test_support::BASE).unwrap();
+        Startup {
+            models: BTreeMap::from([("local".into(), ModelClient::scripted([]))]),
+            resources: RunResources::from_config(&config).unwrap(),
+            config,
+        }
+    }
+
+    fn session_test_submission(prompt: &str) -> Submission {
+        Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            prompt: prompt.into(),
+            continues: None,
+            limits: None,
+            capture: None,
+        }
+    }
+
+    #[test]
+    fn session_admission_fits_both_history_and_the_compiled_tool_request() {
+        let fixture = Fixture::new();
+        let startup = session_test_startup(&fixture);
+        let mut memory = session::Memory::new(16_384, 512);
+        for index in 0..3 {
+            memory.remember(format!("turn-{index}"), &"p".repeat(300), &"a".repeat(400));
+        }
+        let original = memory.context().unwrap();
+        let submission = session_test_submission("Continue the file work.");
+        let full = startup
+            .config
+            .authorize_local_session(submission.clone(), Some(original.clone()))
+            .unwrap();
+        let state_for = |authority: &crate::policy::RunAuthority| {
+            crate::core::initiate_with_context(
+                authority.instructions().into(),
+                None,
+                authority
+                    .session_context()
+                    .map(|context| context.encode().unwrap()),
+                authority.prompt().into(),
+                !authority.workspace().tools.is_empty(),
+            )
+            .unwrap()
+            .0
+        };
+        let state = state_for(&full);
+        let history_bytes = crate::model::history_len(state.messages()).unwrap();
+        let prepared =
+            crate::model::prepare(state.messages(), &crate::runner::options(&full)).unwrap();
+        let request_bytes = prepared.bytes().len();
+        assert!(
+            request_bytes > history_bytes + 1,
+            "tool definitions must contribute to the request budget"
+        );
+
+        for limits in [
+            crate::policy::LimitOverrides {
+                max_request_bytes: Some(request_bytes - 1),
+                ..Default::default()
+            },
+            crate::policy::LimitOverrides {
+                max_history_bytes: Some(history_bytes - 1),
+                ..Default::default()
+            },
+        ] {
+            let mut bounded = submission.clone();
+            let Submission::Freeform {
+                limits: requested, ..
+            } = &mut bounded
+            else {
+                unreachable!();
+            };
+            *requested = Some(limits);
+            let (job, retained) = startup.session_job(bounded, &memory).unwrap();
+            assert_eq!(retained, 2);
+            assert_eq!(
+                job.authority.session_context().unwrap().turns,
+                original.turns[1..]
+            );
+            assert_eq!(job.authority.workspace().tools, full.workspace().tools);
+            assert_eq!(job.authority.prompt(), full.prompt());
+            let state = state_for(&job.authority);
+            assert!(
+                crate::model::history_len(state.messages()).unwrap()
+                    <= job.authority.limits().max_history_bytes
+            );
+            crate::model::prepare(state.messages(), &crate::runner::options(&job.authority))
+                .unwrap();
+            assert_eq!(
+                memory.context().unwrap(),
+                original,
+                "preparation must preserve history until a run succeeds"
+            );
+        }
+    }
+
+    #[test]
+    fn rejected_session_requests_preserve_completed_context() {
+        let fixture = Fixture::new();
+        let startup = session_test_startup(&fixture);
+        let mut memory = session::Memory::new(4_096, 512);
+        memory.remember(
+            "completed-run".into(),
+            "Remember cobalt.",
+            "I will remember cobalt.",
+        );
+        let original = memory.context().unwrap();
+        let mut oversized =
+            session_test_submission("A valid request that cannot fit its configured budget.");
+        let Submission::Freeform { limits, .. } = &mut oversized else {
+            unreachable!();
+        };
+        *limits = Some(crate::policy::LimitOverrides {
+            max_request_bytes: Some(1),
+            ..Default::default()
+        });
+        for submission in [session_test_submission("   "), oversized] {
+            assert!(startup.session_job(submission, &memory).is_err());
+            assert_eq!(memory.context().unwrap(), original);
+        }
+    }
 
     #[test]
     fn model_setup_flags_are_confined_to_human_sessions() {

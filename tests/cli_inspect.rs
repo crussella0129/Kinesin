@@ -364,7 +364,7 @@ fn human_session_shows_workspace_answers_and_tools_without_dumping_receipts() {
     assert!(stdout.contains("Run completed (freeform; no acceptance check)."));
     assert!(stdout.contains("Run: "));
     assert!(stdout.contains("Allowed tools: read_file"));
-    assert!(stdout.contains("Previous-answer context cleared."));
+    assert!(stdout.contains("Session context cleared."));
     assert!(stdout.contains("Hello again.\n\n> "));
     for private_field in [
         "\"kind\"",
@@ -382,7 +382,7 @@ fn human_session_shows_workspace_answers_and_tools_without_dumping_receipts() {
     assert_eq!(requests.len(), 3, "slash commands never call the model");
     assert!(
         !requests[2].to_string().contains("The project uses Rust."),
-        "/new clears prior answer"
+        "/new clears session memory"
     );
     let run_id = stdout
         .lines()
@@ -397,6 +397,147 @@ fn human_session_shows_workspace_answers_and_tools_without_dumping_receipts() {
         receipt["receipt"]["status"], "unchecked",
         "readable presentation preserves the durable receipt"
     );
+}
+
+fn request_session_context(request: &Value) -> Option<Value> {
+    request["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|message| {
+            let content = message["content"].as_str()?;
+            let context = content.strip_prefix(kinesin::core::SESSION_CONTEXT_FRAME)?;
+            Some(serde_json::from_str(context.trim()).unwrap())
+        })
+}
+
+#[test]
+fn human_session_remembers_user_requests_across_turns_and_new_clears_memory() {
+    let fixture = Fixture::new();
+    let provider = serve_messages(
+        &fixture,
+        vec![
+            json!({"role":"assistant","content":"Noted."}),
+            json!({"role":"assistant","content":"Ready for the next request."}),
+            json!({"role":"assistant","content":"Lantern."}),
+            json!({"role":"assistant","content":"A fresh conversation."}),
+        ],
+    );
+    let output = session_output(
+        &fixture,
+        false,
+        "Remember the project codename is Lantern.\nWe will edit a file next.\nWhat is the project codename?\n/context\n/new\n/context\nStart again.\n/exit\n",
+    );
+    assert!(output.status.success(), "{output:?}");
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("Session memory: 3 recent completed turns"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Session context cleared."), "{stdout}");
+    assert!(
+        stdout.contains("Session memory: 0 recent completed turns, 0 /"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("0 older turns omitted; 0 turns shortened."),
+        "{stdout}"
+    );
+
+    let requests = provider.join().unwrap();
+    assert_eq!(requests.len(), 4, "session commands never call the model");
+    assert!(request_session_context(&requests[0]).is_none());
+    let second = request_session_context(&requests[1]).unwrap();
+    assert_eq!(second["turns"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        second["turns"][0]["prompt"],
+        "Remember the project codename is Lantern.\n"
+    );
+    assert_eq!(second["turns"][0]["answer"], "Noted.");
+    let third = request_session_context(&requests[2]).unwrap();
+    let turns = third["turns"].as_array().unwrap();
+    assert_eq!(turns.len(), 2);
+    assert_eq!(
+        turns[0], second["turns"][0],
+        "the user detail survives an answer that never repeats it"
+    );
+    assert_eq!(turns[1]["prompt"], "We will edit a file next.\n");
+    assert_ne!(turns[0]["run_id"], turns[1]["run_id"]);
+    assert!(
+        turns
+            .iter()
+            .all(|turn| !turn["run_id"].as_str().unwrap().is_empty())
+    );
+    assert_eq!(
+        requests[2]["messages"].as_array().unwrap().last().unwrap()["content"],
+        "What is the project codename?\n"
+    );
+    assert!(request_session_context(&requests[3]).is_none());
+    assert!(
+        !requests[3].to_string().contains("Lantern"),
+        "/new clears both prompts and answers"
+    );
+}
+
+#[test]
+fn human_session_shortens_large_answers_and_preserves_completed_memory_after_failure() {
+    let fixture = Fixture::new();
+    let large_answer = format!("start marker {} end marker", "é".repeat(4_500));
+    assert!(large_answer.len() > 8_192);
+    let provider = serve_messages(
+        &fixture,
+        vec![
+            json!({"role":"assistant","content":large_answer}),
+            // An empty provider answer fails execution and must not become a
+            // completed memory entry or discard the previous successful turn.
+            json!({"role":"assistant","content":""}),
+            json!({"role":"assistant","content":"Recovered."}),
+        ],
+    );
+    let output = session_output(
+        &fixture,
+        false,
+        "Remember the project is Lantern and give a long explanation.\nThis request will fail.\n/context\nTry again using our earlier project details.\n/exit\n",
+    );
+    assert!(
+        output.status.success(),
+        "a later successful entry recovers: {output:?}"
+    );
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("this turn shortened"), "{stdout}");
+    assert!(stdout.contains("Run failed:"), "{stdout}");
+    assert!(
+        stdout.contains("This entry was not added to memory."),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Session memory: 1 recent completed turns"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("1 turns shortened."), "{stdout}");
+    assert!(stdout.contains("Recovered.\n\n> "), "{stdout}");
+
+    let requests = provider.join().unwrap();
+    assert_eq!(requests.len(), 3);
+    let after_large_answer = request_session_context(&requests[1]).unwrap();
+    let retained = &after_large_answer["turns"][0];
+    assert_eq!(after_large_answer["turns"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        retained["prompt"],
+        "Remember the project is Lantern and give a long explanation.\n"
+    );
+    let answer = retained["answer"].as_str().unwrap();
+    assert!(answer.len() <= 2_048);
+    assert!(answer.starts_with("start marker "));
+    assert!(answer.ends_with(" end marker"));
+    assert!(answer.contains("[truncated for session memory]"));
+    assert_eq!(
+        request_session_context(&requests[2]).unwrap(),
+        after_large_answer
+    );
+    assert!(!requests[2].to_string().contains("This request will fail."));
 }
 
 #[test]
