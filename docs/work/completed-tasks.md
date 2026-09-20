@@ -320,4 +320,4 @@
 - **Intent:** [INT-0030](../intents/INT-0030-usable-local-session-memory.md)
 - **Completed:** 2026-09-20T04:12:06Z
 - **Files modified:** src/session.rs; src/lib.rs; src/policy.rs; src/config.rs; src/core.rs; src/runner.rs; src/replay.rs; tests/replay.rs; intent, sprint plans, metadata and work ledgers.
-- **Commit:** PENDING
+- **Commit:** `b0ca1093239d6ecb0c50ef3a81f6f7f0ca6a4422`
