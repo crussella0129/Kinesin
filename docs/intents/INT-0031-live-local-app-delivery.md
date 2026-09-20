@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0031
-- **State:** active
+- **State:** realized
 - **Work evidence:** [T-112–T-114 sprint 13 plan](../sprints/s13/sprint-plans/build-plan.md)
 - **Completion evidence:** [T-112–T-114](../work/completed-tasks.md#t-112-sprint-13)
 - **Code evidence:** [confined preview](../../src/preview.rs), [owned dispatch](../../src/runner.rs), [session cleanup](../../src/cli.rs), [versioned replay](../../src/replay.rs)
@@ -79,3 +79,8 @@ work stays with INT-0024/T-103.
   the live exercise and necessary repairs; T-112–T-114 retain live-first order.
 - 2026-09-20: planned → active after the planning critique resolved ownership,
   lifetime and touched-path gaps, and finalize-plan.sh locked both plans.
+- 2026-09-20: active → realized after harness-authored file/tool evidence,
+  catalog/cart/checkout and follow-up browser operation, owned preview shutdown,
+  271 post-live passing checks, formatting/Clippy and accepted independent
+  critique. Completion commits T-112–T-114 and final source identities are
+  retained; model steering and native-Windows-only scope remain explicit.
