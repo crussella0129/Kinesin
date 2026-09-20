@@ -341,4 +341,4 @@
 - **Intent:** [INT-0031](../intents/INT-0031-live-local-app-delivery.md)
 - **Completed:** 2026-09-20T04:59:39Z
 - **Files modified:** src/preview.rs; src/lib.rs; src/config.rs; src/model.rs; src/tools.rs; src/runner.rs; src/cli.rs; src/cli/presentation.rs; src/replay.rs; tests/preview.rs; tests/replay.rs; docs/getting-started.md; docs/loop-and-tools.md; docs/work/tasks.md; docs/work/completed-tasks.md.
-- **Commit:** PENDING
+- **Commit:** `d9547f8865b0703919f3ba3aea1f75abd7432932`
