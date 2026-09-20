@@ -352,10 +352,21 @@ impl RetentionPolicy {
     }
 }
 
+struct ControllerLock(File);
+
+impl Drop for ControllerLock {
+    fn drop(&mut self) {
+        // A concurrently forked child can retain the same Unix open file
+        // description until exec. Closing only our descriptor would leave
+        // its flock held, even after this controller has fully shut down.
+        let _ = self.0.unlock();
+    }
+}
+
 pub struct Store {
     connection: Connection,
-    // Retained for this controller's complete lifetime, including recovery.
-    _controller_lock: File,
+    // Field drop order closes SQLite before explicitly releasing ownership.
+    _controller_lock: ControllerLock,
     path: PathBuf,
     policy: RetentionPolicy,
     reservations: BTreeMap<String, u64>,
@@ -396,6 +407,7 @@ impl Store {
         controller_lock
             .try_lock()
             .map_err(|_| error("storage_controller_locked"))?;
+        let controller_lock = ControllerLock(controller_lock);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -2364,6 +2376,24 @@ mod tests {
             Store::open(&fixture.path()).err().unwrap().code,
             "storage_unknown_schema"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_releases_controller_lock_with_inherited_descriptor() {
+        let fixture = Fixture::new();
+        let store = Store::open(&fixture.path()).unwrap();
+        // Like fork inheritance, try_clone shares the open file description.
+        // Keep it alive across shutdown to make the parallel-spawn race exact.
+        let inherited = store._controller_lock.0.try_clone().unwrap();
+        drop(store);
+        let reopened = Store::open(&fixture.path()).unwrap();
+        assert_eq!(
+            Store::open(&fixture.path()).err().unwrap().code,
+            "storage_controller_locked"
+        );
+        drop(inherited);
+        drop(reopened);
     }
 
     #[test]
