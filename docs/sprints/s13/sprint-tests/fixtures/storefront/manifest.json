@@ -1,0 +1,32 @@
+{
+  "captured_utc": "2026-09-20T04:54:44.097910+00:00",
+  "source": "target/storefront-lab/app/public",
+  "provenance": "Byte-for-byte copy of files written or edited through actual Kinesin tool calls; operator-guided patches included. No external rewriting or formatting.",
+  "files": [
+    {
+      "path": "public/app.js",
+      "bytes": 1657,
+      "sha256": "fe7a6c0db0d9a459d006644ff0f108279c87695304334a62563a86e0dd70410c"
+    },
+    {
+      "path": "public/cart.js",
+      "bytes": 2426,
+      "sha256": "ce0949b8172cb2587ddefb922165b6e8d58db14087bd1fea2900073c7b2cbde5"
+    },
+    {
+      "path": "public/checkout.js",
+      "bytes": 794,
+      "sha256": "242a7e188a0200350fe4be3f4dc472be82aaf0329560c6b41341a1a92e9b71b7"
+    },
+    {
+      "path": "public/index.html",
+      "bytes": 1544,
+      "sha256": "4b9b8651b1da3ff681dccf0fffc3cdfa10e9a4daad7033538aa219724cedb42a"
+    },
+    {
+      "path": "public/styles.css",
+      "bytes": 2239,
+      "sha256": "a638e5bed5d2d14b48e2907015259f3ba8e4d9f4f99a2200665ec2b4898a198d"
+    }
+  ]
+}

@@ -328,3 +328,10 @@
 - **Completed:** 2026-09-20T04:14:03Z
 - **Files modified:** src/cli.rs; src/cli/session.rs; src/cli/presentation.rs; tests/cli_inspect.rs; README.md; docs/cli.md; docs/getting-started.md; sprint 12 unit/integration/E2E evidence; work ledgers.
 - **Commit:** `2fb3631f48a084f9379fa96bb678ca5c9e6436c1`
+
+## T-112 (sprint 13)
+- **Description:** Drove the real local assistant to create and revise a six-product storefront in a dedicated disposable workspace. Preserved actual tool/run evidence, failed prose-only claims, generated-code failures, operator-guided repairs and browser observations. The live confidence gate passed before official checks: search/filtering, cart quantities/removal/totals, reload persistence, validation, $50 demo checkout and owned preview shutdown were observed. Retained byte-identical public fixtures with SHA-256 manifest and selected prompts/tool observations. This records one steered workload, not general autonomous model reliability; harness source and final verification belong to T-113/T-114.
+- **Intent:** [INT-0031](../intents/INT-0031-live-local-app-delivery.md)
+- **Completed:** 2026-09-20T04:55:52Z
+- **Files modified:** docs/sprints/s13/sprint-tests/e2e-tests.md; docs/sprints/s13/sprint-tests/fixtures/storefront/{manifest.json,selected-runs.json,public/app.js,public/cart.js,public/checkout.js,public/index.html,public/styles.css}; docs/work/tasks.md; docs/work/completed-tasks.md. Disposable app/control state remains ignored under target/storefront-lab.
+- **Commit:** PENDING

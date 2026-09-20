@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Morrow Supply</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Morrow Supply</h1>
+    <p>Welcome to Morrow Supply</p>
+  </header>
+  <main>
+    <section>
+      <label for="search-input">Search:</label>
+      <input type="text" id="search-input">
+      <label for="category-select">Category:</label>
+      <select id="category-select">
+        <option value="all">All</option>
+        <option value="lighting">Lighting</option>
+        <option value="paper">Paper</option>
+        <option value="furniture">Furniture</option>
+      </select>
+    </section>
+    <section id="product-grid">
+      <!-- Product items will be rendered here -->
+    </section>
+    <section class="cart">
+      <h2>Cart</h2>
+      <div id="cart-items"></div>
+      <div id="cart-total"></div>
+    </section>
+    <section class="checkout-form">
+      <form id="checkout-form">
+        <label for="name">Name:</label>
+        <input type="text" id="name" required>
+        <label for="email">Email:</label>
+        <input type="email" id="email" required>
+        <button type="submit">Checkout</button>
+      </form>
+      <div id="confirmation" role="status"></div>
+    </section>
+  </main>
+  <footer>
+    <p>2026, Demo store - No payment collected</p>
+  </footer>
+  <script src="app.js"></script>
+  <script src="cart.js"></script>
+  <script src="checkout.js"></script>
+</body>
+</html>
