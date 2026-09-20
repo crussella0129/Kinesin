@@ -29,6 +29,11 @@ Use only toy file-reading tests (insufficient); make every stochastic score a ha
 
 ## Consequences
 Consumes controlled live inference and requires maintained fixtures; existing live-evaluation tooling should be extended rather than replaced.
+For usability implementation sprints, preserve the user's standing order:
+operate and repair the product in a disposable live environment, then run
+focused official unit/integration checks after confidence in the actual flow.
+This avoids testing activity substituting for useful product operation while
+retaining the final deterministic regression gate.
 
 ## Transition history
 - 2026-09-12: created as `proposed` following the sprint 10 intent-first review and implementation audit.

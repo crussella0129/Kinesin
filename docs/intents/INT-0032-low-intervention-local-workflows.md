@@ -70,6 +70,11 @@ correctness verifier; freeform results remain unchecked. Preserve failure data
 and report limits plainly. The live zero-correction rubric is a concrete proxy
 for reduced babysitting, not a universal productivity or reliability benchmark.
 Broader workload comparisons and human-effort baselines remain INT-0024/T-103.
+For subsequent usability sprints, the user's standing preference is disposable
+live operation and repair first, followed by focused official unit/integration
+checks once the working flow is convincing. Avoid repeated test cycles that
+delay operating the product. Compilation and read-only inspection may support
+the live repair work; this preference does not remove final verification.
 
 ## Transition history
 - 2026-09-20: created as proposed after the user rejected an operator-intensive
@@ -79,3 +84,5 @@ Broader workload comparisons and human-effort baselines remain INT-0024/T-103.
   guidance, adapter-4 descriptions and the frozen two-prompt live workload.
 - 2026-09-20: planned → active after the independent plan critic accepted the
   scope and finalize-plan.sh locked both plans; formal checks remain post-live.
+- 2026-09-20: recorded the user's reiterated live-first preference for later
+  usability sprints; current locked plans already follow this order.
