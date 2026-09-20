@@ -327,4 +327,4 @@
 - **Intent:** [INT-0030](../intents/INT-0030-usable-local-session-memory.md)
 - **Completed:** 2026-09-20T04:14:03Z
 - **Files modified:** src/cli.rs; src/cli/session.rs; src/cli/presentation.rs; tests/cli_inspect.rs; README.md; docs/cli.md; docs/getting-started.md; sprint 12 unit/integration/E2E evidence; work ledgers.
-- **Commit:** PENDING
+- **Commit:** `2fb3631f48a084f9379fa96bb678ca5c9e6436c1`
