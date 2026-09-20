@@ -1,0 +1,53 @@
+{
+  "recorded_utc": "2026-09-20T05:00:06.830775+00:00",
+  "baseline_commit": "6bb16fb17dec84e7d269d88f666a4af9ee4ebc76",
+  "scope": "Changed Rust source and affected test files after formatting, as reviewed and reported passing before T-113/T-114 commits. Unchanged files resolve from baseline.",
+  "live_binary_sha256": "A2CC1D04C646E37EB9BF35D56E9244F6EE48214B6D1D52F92E9A59B6B3B17536",
+  "files": [
+    {
+      "path": "src/cli.rs",
+      "sha256": "0d813a36c587bb976e61effd32271d8198fb5516442dcc869accffd430f179b4"
+    },
+    {
+      "path": "src/cli/presentation.rs",
+      "sha256": "e3d63d31ace74033ffc4426d15757bb3bd4f2cefe448acd3a496ea15e3756b31"
+    },
+    {
+      "path": "src/config.rs",
+      "sha256": "977de5d88f937515447a45477d4ccf70e870c6ec3abdcd10d333beadc2b2949f"
+    },
+    {
+      "path": "src/lib.rs",
+      "sha256": "70ffe6b407d94867c8eee907562f8e79ab8724a285769d5a2cd8412415f044c7"
+    },
+    {
+      "path": "src/model.rs",
+      "sha256": "71bb049bffc3e155c3e26d36c950a5696f1b08f3065bf7d3ef75ee3c286a3bc9"
+    },
+    {
+      "path": "src/preview.rs",
+      "sha256": "6ebdf29a0bf3ec1274d9ff760b5c20e930fbf6be571d65a838652e2caeb2fa2c"
+    },
+    {
+      "path": "src/replay.rs",
+      "sha256": "0124abbc39b39469c7245af33f1bf2012bad22760991145d27925d28580f01bb"
+    },
+    {
+      "path": "src/runner.rs",
+      "sha256": "b60e140a2a8cc95efb06fe3d6768e601dd91c41eacaacd20d4adff61476c2e80"
+    },
+    {
+      "path": "src/tools.rs",
+      "sha256": "7327ae7470de87bd437c195a28afcb4db50b57fb5dedccaec28d1e8e2c80f34e"
+    },
+    {
+      "path": "tests/preview.rs",
+      "sha256": "349cdf87c451b7dabedb8b1c85796fb4cca663f7dcb91eb973b55c01aa58ae85"
+    },
+    {
+      "path": "tests/replay.rs",
+      "sha256": "bf55ae21912225b39443a5093ae40d1ab8567bd969fc7b4a25c4aca29004b0ed"
+    }
+  ],
+  "implementation_commit": "d9547f8865b0703919f3ba3aea1f75abd7432932"
+}

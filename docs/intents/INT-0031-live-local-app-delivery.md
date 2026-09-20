@@ -4,10 +4,10 @@
 - **Intent ID:** INT-0031
 - **State:** active
 - **Work evidence:** [T-112–T-114 sprint 13 plan](../sprints/s13/sprint-plans/build-plan.md)
-- **Completion evidence:** none
-- **Code evidence:** none
-- **Test evidence:** none
-- **Documentation evidence:** none
+- **Completion evidence:** [T-112–T-114](../work/completed-tasks.md#t-112-sprint-13)
+- **Code evidence:** [confined preview](../../src/preview.rs), [owned dispatch](../../src/runner.rs), [session cleanup](../../src/cli.rs), [versioned replay](../../src/replay.rs)
+- **Test evidence:** [accepted report](../sprints/s13/sprint-tests/test-report.md), [live browser and tool evidence](../sprints/s13/sprint-tests/e2e-tests.md), [focused integration results](../sprints/s13/sprint-tests/integration-tests.md)
+- **Documentation evidence:** [preview use](../getting-started.md), [preview contract](../loop-and-tools.md#local-website-previews)
 
 ## Intent
 Use the real local Kinesin assistant to build and operate a small storefront in
@@ -65,6 +65,10 @@ Keep generated artifacts and local runtime state out of product source. Any
 server capability must preserve existing authorization and process boundaries.
 This sprint establishes one recorded operating scenario, not general model
 competence, comprehensive sandboxing or a statistically measured benchmark.
+The observed model repeatedly returned tool-result-like prose and needed
+precise operator-guided corrections. Real tool events and independently
+observed app behavior remain the outcome evidence; follow-up model-quality
+work stays with INT-0024/T-103.
 
 ## Transition history
 - 2026-09-20: created as proposed for the user's live storefront, local port and

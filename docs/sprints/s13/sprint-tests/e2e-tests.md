@@ -75,3 +75,9 @@ The five live scenarios in the locked test plan are evidenced by the isolated pr
 ## Retained workload
 
 [The storefront fixture](fixtures/storefront/public/index.html) contains an exact copy of the final five public files, captured at `2026-09-20T04:54:44.097910Z`. The [SHA-256 manifest](fixtures/storefront/manifest.json) identifies each file's bytes and hash. [Selected journal records](fixtures/storefront/selected-runs.json) retain the initial prompt, preview request, precise operator-guided repairs, effective limits, grants and actual tool observations. The original replay SQLite remains in the disposable local control directory; it is not committed. The generated Node server is omitted because the delivered workflow uses Kinesin's owned preview.
+
+## Final-binary reconfirmation
+
+After the gate, the rebuilt isolated CLI copy (SHA-256 `A2CC1D04C646E37EB9BF35D56E9244F6EE48214B6D1D52F92E9A59B6B3B17536`) again started the preview through a real model tool call. Run `6a726b51-f2fd-42ea-b86b-a318065299b5`, accepted at `2026-09-20T04:54:40.042Z`, returned a new private loopback URL on port 64696. The operator reopened it in the internal browser and completed another synthetic checkout for $25.00. This binary includes the startup-deadline and replay-version repairs; subsequent product-source changes were formatting only.
+
+The operator installed the checked debug executable at the normal user command location with an old-binary backup. Installed SHA-256: `2A6627709CCC61F4DF8B8AAB7A978B72DACD3D9E3C1AEE86155A790FB41AC6D0`; its `--help` invocation passed. These are two separately identified builds of the same final behavior, not a claim that their bytes match. The final source identities and focused official checks are linked from [integration-tests.md](integration-tests.md).
