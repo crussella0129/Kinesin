@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0031
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-112–T-114 sprint 13 plan](../sprints/s13/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -73,3 +73,5 @@ competence, comprehensive sandboxing or a statistically measured benchmark.
 - 2026-09-20: proposed → planned; the observed command-server lifecycle gap is
   addressed by a confined local-CLI static preview tool. The user authorized
   the live exercise and necessary repairs; T-112–T-114 retain live-first order.
+- 2026-09-20: planned → active after the planning critique resolved ownership,
+  lifetime and touched-path gaps, and finalize-plan.sh locked both plans.

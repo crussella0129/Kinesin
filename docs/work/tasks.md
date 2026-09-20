@@ -1,5 +1,8 @@
 # Agent Tasks (Persistent Backlog)
 
+- [ ] T-112 (sprint 13) [intent: INT-0031]: Drive Kinesin to create and revise the isolated storefront with retained provenance — touches: target/storefront-lab/{app,control,evidence}; docs/sprints/s13/sprint-tests/e2e-tests.md
+- [ ] T-113 (sprint 13) [intent: INT-0031]: Repair live server use with a granted local-CLI static preview and operate the storefront in-browser — touches: src/preview.rs; src/lib.rs; src/tools.rs; src/config.rs; src/runner.rs; src/cli.rs; src/model.rs; src/onboarding.rs; operator docs; sprint evidence
+- [ ] T-114 (sprint 13) [intent: INT-0031]: After live confidence, run focused official verification and independent review — touches: affected unit/integration tests; docs/sprints/s13; docs/work; INT-0031
 
 - [ ] T-101 (backlog) [intent: INT-0019]: Plan and verify mandatory Windows AppContainer/LPAC isolation alongside owned Jobs — touches: src/process.rs; src/tools.rs; tests/command_tool.rs; Windows isolation tests; docs/security.md
 - [ ] T-102 (backlog) [intent: INT-0026]: Define session continuity and model token admission, then test branching and mixed-owner slot reassignment with actual prepared requests — touches: src/cli.rs; src/policy.rs; src/model.rs; src/replay.rs; tests/live_evaluation.rs
