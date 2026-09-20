@@ -11,6 +11,7 @@
 - **Summary:** Operate a harness-authored storefront live, repair its local preview path, then run focused official verification.
 - **Intents:** [INT-0031](../../intents/INT-0031-live-local-app-delivery.md)
 - **Completion evidence:** INT-0031 realized: actual Kinesin storefront tool/browser workflow and owned preview cleanup passed before 271 focused native Windows checks; formatting, Clippy and final critic clean; source d9547f8865b0703919f3ba3aea1f75abd7432932; local completion only, no remote checkpoint authorized.
+- **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/13
 
 ## Scope and handoff
 Native Windows live browser/tool operation preceded the 271 focused official
