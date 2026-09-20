@@ -4,9 +4,9 @@
 - **Intent ID:** INT-0030
 - **State:** active
 - **Work evidence:** [sprint 12 plan](../sprints/s12/sprint-plans/build-plan.md)
-- **Completion evidence:** none
-- **Code evidence:** pending
-- **Test evidence:** pending; implementation first at the user's request
+- **Completion evidence:** [T-110 and T-111](../work/completed-tasks.md#t-110-sprint-12)
+- **Code evidence:** [live memory](../../src/cli/session.rs), [context contract](../../src/session.rs), [authorization](../../src/policy.rs), [replay](../../src/replay.rs)
+- **Test evidence:** [unit](../sprints/s12/sprint-tests/unit-tests.md), [integration](../sprints/s12/sprint-tests/integration-tests.md), [native walkthrough](../sprints/s12/sprint-tests/e2e-tests.md)
 - **Documentation evidence:** [CLI](../cli.md)
 
 ## Intent

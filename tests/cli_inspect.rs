@@ -543,19 +543,54 @@ fn human_session_shortens_large_answers_and_preserves_completed_memory_after_fai
 #[test]
 fn explicit_json_session_keeps_stdout_as_structured_receipts() {
     let fixture = Fixture::new();
+    let large_answer = "x".repeat(9_000);
     let provider = serve_messages(
         &fixture,
-        vec![json!({"role":"assistant","content":"Hello."})],
+        vec![
+            json!({"role":"assistant","content":large_answer}),
+            json!({"role":"assistant","content":""}),
+            json!({"role":"assistant","content":"Recovered."}),
+        ],
     );
-    let output = session_output(&fixture, true, "Hello\n");
-    assert!(output.status.success());
-    assert_eq!(String::from_utf8(output.stderr).unwrap(), "> > ");
-    let record: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(record["kind"], "run");
-    assert_eq!(record["phase"], "completed");
-    assert_eq!(record["result"]["candidate"], "Hello.");
-    assert_eq!(record["receipt"]["status"], "unchecked");
-    provider.join().unwrap();
+    let output = session_output(
+        &fixture,
+        true,
+        "Remember the project is Lantern.\nThis entry will fail.\nUse our earlier project details.\n",
+    );
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    for notice in ["this turn shortened", "This entry was not added to memory."] {
+        assert!(stderr.contains(notice), "{stderr}");
+        assert!(
+            !stdout.contains(notice),
+            "notices must not enter JSONL stdout"
+        );
+    }
+    let records: Vec<Value> = stdout
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(records.len(), 3);
+    assert!(records.iter().all(|record| record["kind"] == "run"));
+    assert_eq!(records[0]["phase"], "completed");
+    assert_eq!(records[0]["result"]["candidate"], large_answer);
+    assert_eq!(records[0]["receipt"]["status"], "unchecked");
+    assert_eq!(records[1]["phase"], "failed");
+    assert_eq!(records[2]["phase"], "completed");
+    assert_eq!(records[2]["result"]["candidate"], "Recovered.");
+
+    let requests = provider.join().unwrap();
+    assert_eq!(requests.len(), 3);
+    let context = request_session_context(&requests[2]).unwrap();
+    assert_eq!(context, request_session_context(&requests[1]).unwrap());
+    assert_eq!(context["turns"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        context["turns"][0]["prompt"],
+        "Remember the project is Lantern.\n"
+    );
+    assert!(context["turns"][0]["answer"].as_str().unwrap().len() <= 2_048);
+    assert!(!requests[2].to_string().contains("This entry will fail."));
 }
 
 #[test]
