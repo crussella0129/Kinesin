@@ -362,4 +362,4 @@
 - **Intent:** [INT-0033](../intents/INT-0033-evidence-driven-work-recovery.md); [INT-0032](../intents/INT-0032-low-intervention-local-workflows.md)
 - **Completed:** 2026-09-20T15:34:49Z
 - **Files modified:** .gitattributes; docs/sprints/s15/{failure-report,implementation-notes,sprint-meta,closure-review}.md; docs/sprints/s15/sprint-research/{failure-mechanisms,live-workload}.md; docs/sprints/s15/sprint-tests/test-report.md; docs/sprints/s15/sprint-tests/diagnostics/; docs/intents/INT-0032-low-intervention-local-workflows.md; docs/intents/INT-0033-evidence-driven-work-recovery.md; docs/work/{tasks,completed-tasks,confidence.txt}.
-- **Commit:** PENDING
+- **Commit:** `3be4d4c7604979fb364ab3fa7c46c20a425fa2e5`
