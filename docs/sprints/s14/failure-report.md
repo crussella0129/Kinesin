@@ -115,3 +115,13 @@ product task is falsely completed, missing feedback is not asserted as a sole
 cause, and unperformed official verification remains explicit. Follow-on schema
 ordering research must distinguish a confirmed compatibility mismatch from its
 unproven causal contribution to the answer-only runs.
+
+## Checkpoint disposition
+
+This is an archival failure checkpoint, not a release candidate. It remains a
+draft for human review. Official checks were explicitly deferred until live
+confidence, so checkpoint commits use the provider's CI-skip marker rather than
+launching that deferred suite merely to archive a failed experiment. No CI pass
+is claimed and no workflow or required-check configuration is changed. Sprint 15
+research and planning may proceed locally under the user's explicit instruction;
+this does not authorize merging the failed implementation into main.
