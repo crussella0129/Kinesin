@@ -35,6 +35,7 @@
   - [INT-0030 Usable local session memory](intents/INT-0030-usable-local-session-memory.md)
   - [INT-0031 Live local app delivery](intents/INT-0031-live-local-app-delivery.md)
   - [INT-0032 Low-intervention local workflows](intents/INT-0032-low-intervention-local-workflows.md)
+  - [INT-0033 Evidence-driven work recovery](intents/INT-0033-evidence-driven-work-recovery.md)
 - [The roadmap](roadmap.md)
 - [Threat model & assurance](threat-model.md)
 - [Supply-chain policy](supply-chain.md)
@@ -55,3 +56,4 @@
 - [Sprint 12](sprints/s12/sprint-meta.md)
 - [Sprint 13](sprints/s13/sprint-meta.md)
 - [Sprint 14](sprints/s14/sprint-meta.md)
+- [Sprint 15](sprints/s15/sprint-meta.md)
