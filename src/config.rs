@@ -133,6 +133,7 @@ pub enum ToolName {
     DeleteFile,
     MoveFile,
     RunCommand,
+    StartPreview,
 }
 
 impl ToolName {
@@ -147,6 +148,7 @@ impl ToolName {
             Self::DeleteFile => "delete_file",
             Self::MoveFile => "move_file",
             Self::RunCommand => "run_command",
+            Self::StartPreview => "start_preview",
         }
     }
 
@@ -163,6 +165,7 @@ impl ToolName {
                 | Self::DeleteFile
                 | Self::MoveFile
                 | Self::RunCommand
+                | Self::StartPreview
         )
     }
 
@@ -187,6 +190,7 @@ impl ToolName {
             "delete_file" => Self::DeleteFile,
             "move_file" => Self::MoveFile,
             "run_command" => Self::RunCommand,
+            "start_preview" => Self::StartPreview,
             _ => return None,
         })
     }
@@ -667,6 +671,13 @@ impl Config {
                 return Err("configuration must stay outside tool workspaces".into());
             }
             unique_tools(&workspace.tools)?;
+            if config.service.is_some()
+                && workspace
+                    .tools
+                    .contains(&ToolRef::Compiled(ToolName::StartPreview))
+            {
+                return Err("start_preview is available only in local CLI sessions".into());
+            }
             if !workspace.tools.is_empty() && config.limits.max_tool_result_bytes < 256 {
                 return Err("tools require a result envelope limit of at least 256 bytes".into());
             }

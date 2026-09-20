@@ -63,6 +63,7 @@ pub(super) fn session_intro(workspace: &WorkspaceConfig, model: &ModelConfig) ->
             "delete_file" => "delete files".to_owned(),
             "move_file" => "move files".to_owned(),
             "run_command" => "run approved commands".to_owned(),
+            "start_preview" => "preview local websites".to_owned(),
             _ => format!("extension {}", tool.wire_name()),
         })
         .collect::<Vec<_>>();

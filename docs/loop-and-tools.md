@@ -134,8 +134,8 @@ The real request includes this in its `tools` array, with the other chat fields.
 Use typed structs with unknown-field rejection and a shared lexical path
 validator. Do not write a general JSON Schema engine for a fixed tool set.
 
-Nine compiled tools are offered, alongside explicitly allow-listed MCP tools.
-The first three only read; file mutations and command execution are gated
+Ten compiled tools are offered, alongside explicitly allow-listed MCP tools.
+The first three only read; file mutations, command execution and local previews are gated
 separately (see below and [security](security.md)).
 
 | Tool | Arguments | Returns | Mints evidence |
@@ -148,7 +148,8 @@ separately (see below and [security](security.md)).
 | `edit_file` | `path`, `find`, `replace` | Bytes written; replaces one unique passage | No |
 | `delete_file` | `path` | Removes one regular file | No |
 | `move_file` | `path`, `to` | Publishes a destination without replacement, then removes the source | No |
-| `run_command` | `command`, `args` | Bounded encoded stdout/stderr and exit outcome | No |
+| `run_command` | `command` argv array | Bounded encoded stdout/stderr and exit outcome | No |
+| `start_preview` | `path` | Starts a session-owned static website preview and returns its private loopback URL | No |
 
 `search_files` exists because listing and reading alone cannot answer "which
 file mentions this" without walking the tree one directory at a time, spending
@@ -218,6 +219,43 @@ A **checked** task cannot enable any mutating tool. If a run could edit a file i
 then reads, it could plant the value a criterion checks and cite its own change as
 evidence, so authorization refuses that combination. Writes and edits are a
 freeform-run capability.
+
+### Local website previews
+
+`start_preview` requires an explicit workspace tool grant and accepts a relative
+directory containing `index.html`, or `.` for the workspace root. It starts a
+Rust HTTP server bound to a random `127.0.0.1` port and returns the complete URL,
+including an unguessable path prefix. Use that URL unchanged. The server checks
+the literal host and any supplied origin; it grants no cross-origin access.
+
+The preview belongs to the local CLI session, so it stays available after the
+tool call and answer finish. Subsequent file edits appear on browser reload.
+Repeating the same path returns the existing URL. A different path is refused
+while that workspace has a running preview; restart the session to change it.
+Normal exit, EOF or Ctrl+C stops and joins the preview server. One-shot CLI
+invocations therefore close their preview before returning. Replay consumes
+recorded results without reopening the port.
+
+Only GET and HEAD requests for regular public assets are served: `.html`,
+`.css`, `.js`, `.json`, `.svg`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.ico`, `.woff`
+and `.woff2`, each at most 1 MiB. Directory listings, dot-prefixed path
+components, traversal and symbolic links are refused. Capability-relative
+opens keep requests inside the selected directory. Responses disable caching
+and MIME sniffing. The server limits connections to 16, header receipt to five
+seconds, each connection to 30 seconds and graceful shutdown to one second.
+
+Content security policy allows assets from the same origin. Keep scripts and
+styles in separate files, use relative references such as `./app.js` and
+`./styles.css`, and register events with `addEventListener`. Inline scripts,
+event attributes, styles, remote assets, embedding and form submission are
+blocked. The preview serves static files; it does not execute Node, Rust or
+other application backend code.
+
+Preview grants are classified as effectful, so checked-run authorization
+rejects a workspace that includes them. Configuration rejects `start_preview` whenever a service
+section is enabled. This capability is for explicit local freeform sessions;
+it does not change `run_command`, which still waits for and cleans up its owned
+process tree before returning.
 
 ## Complete tool history
 

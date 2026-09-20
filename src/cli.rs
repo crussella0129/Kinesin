@@ -915,12 +915,19 @@ async fn execute_runs(
     // This also handles input/output failure without detaching live effects.
     handle.shutdown();
     let joined = controller.join().await;
+    let mut preview_result = Ok(());
+    for resources in startup.resources.values() {
+        if let Err(reason) = resources.shutdown_previews().await {
+            preview_result = Err(reason);
+        }
+    }
     done.cancel();
     let cancellation_result = cancellation
         .await
         .map_err(|_| "cancellation task failed".to_owned());
     let storage_result = storage.shutdown().await.map_err(|error| error.to_string());
     joined?;
+    preview_result?;
     cancellation_result?;
     storage_result?;
     outcome

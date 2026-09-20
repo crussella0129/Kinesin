@@ -111,8 +111,19 @@ async fn capture_with_context(
     prior: Option<kinesin::policy::PriorAnswer>,
     context: Option<SessionContext>,
 ) -> Snapshot {
+    capture_with_config(CONFIG, checked, mode, replies, prior, context).await
+}
+
+async fn capture_with_config(
+    source: &str,
+    checked: bool,
+    mode: CaptureMode,
+    replies: Vec<ModelReply>,
+    prior: Option<kinesin::policy::PriorAnswer>,
+    context: Option<SessionContext>,
+) -> Snapshot {
     let fixture = Fixture::new();
-    let config = Config::parse(CONFIG, &fixture.root.join("kinesin.toml")).unwrap();
+    let config = Config::parse(source, &fixture.root.join("kinesin.toml")).unwrap();
     let submission = if checked {
         Submission::Checked {
             task: "practice-fields".into(),
@@ -1283,6 +1294,178 @@ async fn metadata_session_capture_retains_provenance_without_history_content() {
 fn prior_session_versions() -> Value {
     json!({"capture":3,"core":2,"adapter":3,"tools":2,"checker":1,
         "source_parser":1,"output_contract":1})
+}
+
+fn pre_preview_versions() -> Value {
+    json!({"capture":4,"core":3,"adapter":3,"tools":2,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn start_preview() -> ModelReply {
+    ModelReply::ToolCalls {
+        content: None,
+        calls: vec![ToolCall {
+            id: "preview-1".into(),
+            name: "start_preview".into(),
+            arguments: r#"{"path":"."}"#.into(),
+        }],
+    }
+}
+
+#[tokio::test]
+async fn preview_tool_version_preserves_legacy_unknown_tool_denials() {
+    // Stop after this observation so the compatibility fixture can restore the
+    // old denial without inventing a later model request or changing its hash.
+    let captured = capture_with_config(
+        &CONFIG.replace("max_model_turns = 3", "max_model_turns = 1"),
+        false,
+        CaptureMode::Replay,
+        vec![start_preview()],
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(captured.events[0].data["versions"]["tools"], 3);
+    let finished = event_index(&captured, "tool_finished");
+    assert_eq!(
+        captured.events[finished].data["replay"]["observation"]["error"]["code"],
+        "tool_denied"
+    );
+    assert_eq!(
+        replay(&captured.run, &captured.events).unwrap().consistency,
+        "consistent"
+    );
+    for versions in [pre_preview_versions(), prior_session_versions()] {
+        let mut old = captured.clone();
+        old.events[0].data["versions"] = versions;
+        assert_eq!(replay_code(&old), "replay_policy_divergence");
+        // Tools 2 did not recognize start_preview at all. This is the exact
+        // historical denied observation, with its encoded-byte metadata.
+        let observation = kinesin::tools::ToolResult::failure(
+            kinesin::tools::ToolStatus::Denied,
+            "unknown_tool",
+            "Tool is not available",
+        );
+        old.events[finished].data["result_bytes"] = json!(observation.encoded().unwrap().len());
+        old.events[finished].data["replay"]["observation"] = json!(observation);
+        let report = replay(&old.run, &old.events).unwrap();
+        assert_eq!(report.consistency, "consistent");
+        assert_eq!(report.tool_observations, 1);
+        old.events[0].data["versions"] = kinesin::replay::versions();
+        assert_eq!(replay_code(&old), "replay_policy_divergence");
+    }
+}
+
+#[tokio::test]
+async fn preview_capture_replays_after_listener_and_workspace_are_gone() {
+    let fixture = Fixture::new();
+    let html = "<!doctype html><title>Replay preview</title><p>live body</p>";
+    std::fs::write(fixture.root.join("workspace/index.html"), html).unwrap();
+    let config = Config::parse(
+        &CONFIG.replace(
+            "tools = [\"read_file\", \"list_files\"]",
+            "tools = [\"read_file\", \"list_files\", \"start_preview\"]",
+        ),
+        &fixture.root.join("kinesin.toml"),
+    )
+    .unwrap();
+    let authority = config
+        .authorize_local(Submission::Freeform {
+            workspace: "practice".into(),
+            model: "local".into(),
+            continues: None,
+            prompt: "Preview the website".into(),
+            limits: None,
+            capture: Some(CaptureMode::Replay),
+        })
+        .unwrap();
+    let owner_id = authority.owner().to_owned();
+    let run_id = authority.run_id().to_owned();
+    let path = fixture.root.join("state/kinesin.sqlite");
+    let storage = tokio::task::spawn_blocking(move || Storage::start(path, QueueLimits::default()))
+        .await
+        .unwrap()
+        .unwrap();
+    let store = storage.client();
+    let resources = RunResources::from_config(&config)
+        .unwrap()
+        .remove("local")
+        .unwrap();
+    let model = ModelClient::scripted([
+        start_preview().into(),
+        ModelReply::Answer("Preview is running.".into()).into(),
+    ]);
+    admit(&authority, &store, None).await.unwrap();
+    let run = run_admitted(
+        authority,
+        model,
+        store.clone(),
+        resources.clone(),
+        CancellationToken::new(),
+        Instant::now(),
+    )
+    .await
+    .unwrap();
+    let Response::Events(events) = store
+        .execute(
+            Command::Events {
+                owner_id,
+                run_id,
+                after: None,
+                limit: 100,
+            },
+            Instant::now() + Duration::from_secs(2),
+        )
+        .await
+        .unwrap()
+    else {
+        panic!("event page");
+    };
+    let finished = events
+        .iter()
+        .find(|event| event.kind == "tool_finished")
+        .unwrap();
+    assert_eq!(finished.data["dispatch"], "executed");
+    let body: Value = serde_json::from_str(
+        finished.data["replay"]["observation"]["body"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    let url = body["url"].as_str().unwrap();
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .unwrap();
+    assert_eq!(
+        client.get(url).send().await.unwrap().text().await.unwrap(),
+        html
+    );
+    resources.shutdown_previews().await.unwrap();
+    storage.shutdown().await.unwrap();
+    drop(resources);
+    let workspace = fixture.root.clone();
+    drop(fixture);
+    assert!(!workspace.exists());
+    assert!(client.get(url).send().await.is_err());
+    let report = replay(&run, &events).unwrap();
+    assert_eq!(report.consistency, "consistent");
+    assert_eq!(report.tool_observations, 1);
+    assert_eq!(report.model_requests, 2);
+    assert!(client.get(url).send().await.is_err());
+    assert!(
+        !workspace.exists(),
+        "replay cannot recreate the app workspace"
+    );
+
+    let mut old = events;
+    old[0].data["versions"] = pre_preview_versions();
+    assert_eq!(
+        replay(&run, &old).unwrap_err().code,
+        "replay_invalid_frozen_input",
+        "tools 2 cannot contain a grant that did not exist"
+    );
 }
 
 #[tokio::test]

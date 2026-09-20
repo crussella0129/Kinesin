@@ -5,6 +5,7 @@ use crate::core::{self, AcceptanceStatus, Effect, ModelReply, RunPhase};
 use crate::dispatch::{ModelDispatcher, ModelPermit};
 use crate::model::{self, ModelClient, ModelOptions, TextObserver};
 use crate::policy::{RunAuthority, TaskContract};
+use crate::preview::WorkspacePreview;
 use crate::replay::{ControlObservation, QueueStop, QueueStopKind};
 use crate::storage::{
     self, Admission, Command, Event, PendingAck, Response, RunRecord, StorageClient, TaskIdentity,
@@ -34,6 +35,8 @@ pub struct RunResources {
     /// Present only for workspaces whose operator granted `run_command` with an
     /// allow-list, so a run without that grant has no command runner to reach.
     command_runners: Arc<BTreeMap<String, Arc<CommandRunner>>>,
+    /// Session-owned loopback servers exist only for explicitly granted workspaces.
+    previews: Arc<BTreeMap<String, Arc<WorkspacePreview>>>,
     /// Shared operator declarations contain no running processes. An admitted
     /// runner owns its own pool outside this clonable resource bundle.
     mcp_servers: Arc<[crate::config::McpServer]>,
@@ -51,6 +54,7 @@ impl RunResources {
             workspaces: Arc::new(BTreeMap::new()),
             writers: Arc::new(BTreeMap::new()),
             command_runners: Arc::new(BTreeMap::new()),
+            previews: Arc::new(BTreeMap::new()),
             mcp_servers: Arc::from([]),
             dispatcher: None,
             concurrency,
@@ -146,6 +150,23 @@ impl RunResources {
                 })
                 .collect::<BTreeMap<_, _>>(),
         );
+        let previews = Arc::new(
+            config
+                .workspaces()
+                .iter()
+                .filter(|workspace| {
+                    workspace
+                        .tools
+                        .contains(&ToolRef::Compiled(ToolName::StartPreview))
+                })
+                .map(|workspace| {
+                    Ok((
+                        workspace.id.clone(),
+                        Arc::new(WorkspacePreview::new(&workspace.root)?),
+                    ))
+                })
+                .collect::<Result<BTreeMap<_, _>, String>>()?,
+        );
         // Aliases sharing an origin cannot multiply the backend's actual slots.
         let mut capacities = BTreeMap::<String, usize>::new();
         for model in config.models() {
@@ -176,6 +197,7 @@ impl RunResources {
                         workspaces: workspaces.clone(),
                         writers: writers.clone(),
                         command_runners: command_runners.clone(),
+                        previews: previews.clone(),
                         mcp_servers: mcp_servers.clone(),
                         dispatcher: Some(dispatcher.clone()),
                         concurrency: concurrency.clone(),
@@ -183,6 +205,17 @@ impl RunResources {
                 )
             })
             .collect())
+    }
+
+    /// Stop and join all listeners before the local session releases its state.
+    pub async fn shutdown_previews(&self) -> Result<(), String> {
+        let mut error = None;
+        for preview in self.previews.values() {
+            if let Err(reason) = preview.shutdown().await {
+                error.get_or_insert(reason);
+            }
+        }
+        error.map_or(Ok(()), Err)
     }
 
     async fn model_capacity(&self, authority: &RunAuthority) -> Result<ModelCapacity, String> {
@@ -1250,6 +1283,61 @@ async fn run_owned(
                                                         )
                                                         .await
                                                 }
+                                            },
+                                        }
+                                    } else if name == ToolName::StartPreview {
+                                        let _permit = permit;
+                                        match shape {
+                                            Err((code, message)) => ToolResult::failure(
+                                                ToolStatus::Denied,
+                                                code,
+                                                message,
+                                            ),
+                                            Ok(()) => match resources
+                                                .previews
+                                                .get(&authority.workspace().id)
+                                            {
+                                                Some(preview) => {
+                                                    let startup = preview
+                                                        .start(&path, &cancel, deadline, maximum);
+                                                    tokio::pin!(startup);
+                                                    let completed = tokio::select! {
+                                                        biased;
+                                                        _ = cancel.cancelled() => None,
+                                                        _ = tokio::time::sleep_until(deadline) => None,
+                                                        result = &mut startup => Some(result),
+                                                    };
+                                                    match completed {
+                                                        Some(result) => result,
+                                                        None => {
+                                                            journal.stop();
+                                                            match timeout_at(
+                                                                journal.grace.ok_or(
+                                                                    "missing settlement grace",
+                                                                )?,
+                                                                &mut startup,
+                                                            )
+                                                            .await
+                                                            {
+                                                                Ok(result) => result,
+                                                                Err(_) => {
+                                                                    eprintln!(
+                                                                        "Run {} has unresolved preview preparation; retaining ownership",
+                                                                        authority.run_id()
+                                                                    );
+                                                                    let result = startup.await;
+                                                                    journal.late_bookkeeping = true;
+                                                                    result
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                None => ToolResult::failure(
+                                                    ToolStatus::Denied,
+                                                    "preview_not_authorized",
+                                                    "This workspace does not grant previews.",
+                                                ),
                                             },
                                         }
                                     } else {

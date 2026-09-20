@@ -335,3 +335,10 @@
 - **Completed:** 2026-09-20T04:55:52Z
 - **Files modified:** docs/sprints/s13/sprint-tests/e2e-tests.md; docs/sprints/s13/sprint-tests/fixtures/storefront/{manifest.json,selected-runs.json,public/app.js,public/cart.js,public/checkout.js,public/index.html,public/styles.css}; docs/work/tasks.md; docs/work/completed-tasks.md. Disposable app/control state remains ignored under target/storefront-lab.
 - **Commit:** `4c2d5a7c2b2672481f84d88fa3c918e0fa2d28da`
+
+## T-113 (sprint 13)
+- **Description:** Added explicitly granted start_preview for local CLI sessions: a capability-confined Rust static loopback server with bounded requests/assets, private URL, browser security headers, cross-turn lifetime and awaited session shutdown. Preserved command cleanup and denied service-mode grants. Live storefront operation exposed and resolved generated-app and server workflow failures before official verification; read-only review also repaired blocking startup/deadline settlement and versioned preview replay compatibility. After the live confidence gate, 206 unit, 25 runner_tools, 9 runner_journal, 3 managed_cli, 22 replay and 6 preview tests passed (271 total), including native symlink confinement, with formatting and all-target/all-feature Clippy warnings denied. Initial linker attempts exhausted disk space; only generated build-cache artifacts were cleaned before successful reruns. Independent final sprint critique and evidence acceptance remain T-114.
+- **Intent:** [INT-0031](../intents/INT-0031-live-local-app-delivery.md)
+- **Completed:** 2026-09-20T04:59:39Z
+- **Files modified:** src/preview.rs; src/lib.rs; src/config.rs; src/model.rs; src/tools.rs; src/runner.rs; src/cli.rs; src/cli/presentation.rs; src/replay.rs; tests/preview.rs; tests/replay.rs; docs/getting-started.md; docs/loop-and-tools.md; docs/work/tasks.md; docs/work/completed-tasks.md.
+- **Commit:** PENDING

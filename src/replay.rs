@@ -28,7 +28,13 @@ pub const MAX_REPLAY_EVENTS: usize = 256;
 /// Capture 3 freezes MCP preparation after admission in the startup event.
 /// Capture 4 and core 3 add bounded session context. The preceding version set
 /// remains supported only for captures without that new optional input.
+/// Tools 3 adds start_preview; older captures keep its unknown-tool semantics.
 pub fn versions() -> Value {
+    json!({"capture":4,"core":3,"adapter":3,"tools":3,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn pre_preview_versions() -> Value {
     json!({"capture":4,"core":3,"adapter":3,"tools":2,"checker":1,
         "source_parser":1,"output_contract":1})
 }
@@ -605,6 +611,7 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
     )?;
     ensure(
         accepted.data["versions"] == versions()
+            || accepted.data["versions"] == pre_preview_versions()
             || (accepted.data["versions"] == legacy_versions()
                 && accepted.data["replay"]["authority"]
                     .get("session_context")
@@ -615,6 +622,16 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
     let mut frozen: FrozenContext =
         serde_json::from_value(accepted.data["replay"]["authority"].clone())
             .map_err(|_| error("replay_frozen_input_missing", Some(0)))?;
+    let preview_supported = accepted.data["versions"]["tools"] == 3;
+    ensure(
+        preview_supported
+            || !frozen
+                .workspace
+                .tools
+                .contains(&ToolRef::Compiled(ToolName::StartPreview)),
+        "replay_invalid_frozen_input",
+        Some(0),
+    )?;
     // Config structs permit defaults for live configuration. A replay capture
     // must contain every effective field; never silently fill a redacted value.
     ensure(
@@ -801,7 +818,11 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                 // recognizes every compiled tool including `run_command`). A
                 // narrower match here would classify a recorded run_command call as
                 // `unknown_tool` and diverge from the recorded `executed` dispatch.
-                let tool = ToolName::from_wire(&call.name);
+                // A model could have hallucinated this name before it became a
+                // compiled tool. Preserve unknown_tool in those older captures,
+                // rather than changing their recorded denial to tool_denied.
+                let tool = ToolName::from_wire(&call.name)
+                    .filter(|tool| preview_supported || *tool != ToolName::StartPreview);
                 // Recognize an MCP tool from the frozen discovered set — never a
                 // live reconnect — and mirror the live denial ladder so the recorded
                 // dispatch classification validates consistently.

@@ -367,6 +367,42 @@ output, use an explicit profile, for example
 `kinesin --config PATH --json > session.jsonl`; redirected output does not open
 the interactive setup or model selector.
 
+## Preview a local website
+
+Website previews require an explicit local configuration with one workspace
+and one model. Keep its configuration and private state outside the working
+folder. In that workspace's existing entry, include `start_preview` alongside
+the file tools you want to grant, for example:
+
+```toml
+tools = ["list_files", "read_file", "search_files", "create_directory", "write_file", "edit_file", "start_preview"]
+```
+
+Use a local freeform profile. Service configurations reject preview grants,
+and checked runs cannot use a workspace that grants previews. The ordinary
+personal setup does not add the grant automatically. Start the interactive profile:
+
+```text
+kinesin --config preview.toml
+```
+
+Ask Kinesin to create a small storefront with `index.html`, `styles.css` and
+`app.js`, then call `start_preview` for its directory. Use relative asset paths
+such as `./styles.css` and `./app.js`, and JavaScript `addEventListener` calls.
+Inline scripts, inline styles, event attributes and remote assets are blocked.
+The returned URL includes a private path prefix; open the complete URL.
+
+Keep this Kinesin session open while using the website. Further file edits
+appear after browser reload, and requesting the same preview again returns
+the same URL. `/exit`, EOF or Ctrl+C closes the server; a one-shot `--prompt`
+command closes it when that command finishes. Restart the session to preview
+a different directory.
+
+This server serves static HTML, CSS, JavaScript, JSON, image and font files up
+to 1 MiB each, with no directory listings or backend execution. See the
+[preview tool contract](loop-and-tools.md#local-website-previews) for its
+complete limits.
+
 ## External model servers (advanced)
 
 Use an external connection only when you already run a compatible server yourself

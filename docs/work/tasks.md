@@ -1,6 +1,5 @@
 # Agent Tasks (Persistent Backlog)
 
-- [ ] T-113 (sprint 13) [intent: INT-0031]: Repair live server use with a granted local-CLI static preview and operate the storefront in-browser — touches: src/preview.rs; src/lib.rs; src/tools.rs; src/config.rs; src/runner.rs; src/cli.rs; src/model.rs; src/onboarding.rs; operator docs; sprint evidence
 - [ ] T-114 (sprint 13) [intent: INT-0031]: After live confidence, run focused official verification and independent review — touches: affected unit/integration tests; docs/sprints/s13; docs/work; INT-0031
 
 - [ ] T-101 (backlog) [intent: INT-0019]: Plan and verify mandatory Windows AppContainer/LPAC isolation alongside owned Jobs — touches: src/process.rs; src/tools.rs; tests/command_tool.rs; Windows isolation tests; docs/security.md

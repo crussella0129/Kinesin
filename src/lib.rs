@@ -13,6 +13,7 @@ pub mod model_selection;
 pub mod onboarding;
 pub mod operator;
 pub mod policy;
+pub mod preview;
 pub mod private_state;
 pub mod process;
 pub mod replay;
