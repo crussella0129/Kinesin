@@ -355,4 +355,4 @@
 - **Intent:** [INT-0032](../intents/INT-0032-low-intervention-local-workflows.md)
 - **Completed:** 2026-09-20T13:37:33Z
 - **Files modified:** src/{core,lib,model,onboarding,policy,preview,recovery,replay,runner,tools}.rs; tests/{managed_model,model_protocol}.rs; docs/intents/INT-0032-low-intervention-local-workflows.md; docs/sprints/s14 failure/research/plan-critique/live-evidence artifacts and public generated fixtures; docs/work/tasks.md; docs/work/completed-tasks.md.
-- **Commit:** PENDING
+- **Commit:** `a745b8b6e539ecc720b1621ddba125db77f4798e`
