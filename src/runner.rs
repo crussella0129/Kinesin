@@ -272,10 +272,14 @@ pub fn options(authority: &RunAuthority) -> ModelOptions {
         temperature: authority.model().temperature,
         max_output_tokens: authority.limits().max_output_tokens as usize,
         max_request_bytes: authority.limits().max_request_bytes,
+        max_history_bytes: authority.limits().max_history_bytes,
         max_response_bytes: authority.limits().max_response_bytes,
         stream: authority.model().stream,
         cache_prompt: authority.model().cache_prompt,
         tools: model::tool_defs(&authority.workspace().tools, authority.mcp_tools()),
+        // The structured-action experiment is retained for capture replay only.
+        // Its live workload regressed to answers without any actual actions.
+        structured_actions: false,
         constraint: None,
     }
 }
@@ -734,6 +738,22 @@ async fn run_owned(
         state
             .require_acceptance_check()
             .map_err(|e| e.to_string())?;
+    } else if authority
+        .workspace()
+        .tools
+        .iter()
+        .any(|tool| matches!(tool, crate::config::ToolRef::Compiled(name) if name.is_mutating()))
+    {
+        state
+            .enable_workflow_recovery_for_tools(
+                &authority
+                    .workspace()
+                    .tools
+                    .iter()
+                    .map(|tool| tool.wire_name())
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|e| e.to_string())?;
     }
     let mut start_data =
         json!({"queue_ms":accepted.elapsed().as_millis().min(u128::from(u64::MAX)) as u64});
@@ -816,6 +836,12 @@ async fn run_owned(
         .record("run_started", start_data, Some("running"))
         .await?;
     let settings = options(&authority);
+    let planning_settings = ModelOptions {
+        tools: Vec::new(),
+        structured_actions: false,
+        constraint: Some(crate::recovery::plan_schema()),
+        ..settings.clone()
+    };
     // Built once: the constrained turn is a different request shape, not a
     // mutation of the gather turn's settings.
     let finalize_settings = finalize_options(&authority);
@@ -874,7 +900,9 @@ async fn run_owned(
                         .map_err(|e| e.to_string())?;
                     continue;
                 }
-                let turn_settings = if state.finalizing() {
+                let turn_settings = if state.planning_work() {
+                    &planning_settings
+                } else if state.finalizing() {
                     &finalize_settings
                 } else {
                     &settings
@@ -978,12 +1006,17 @@ async fn run_owned(
                 if journal.requested_stop().is_some() {
                     journal.stop();
                 }
-                if let ModelReply::Answer(candidate) = &observation {
+                if state.retains_answer(&observation)
+                    && let ModelReply::Answer(candidate) = &observation
+                {
                     observed_candidate = Some(candidate.clone());
                 }
                 let mut metadata = json!({"effect_id":effect_id,"dispatch":"attempted","duration_ms":exchange_start.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
                     "control_dispatch":dispatch_control,
                     "classification":match &observation {ModelReply::Answer(_)=>"answer",ModelReply::ToolCalls{..}=>"tool_calls",ModelReply::Incomplete(_)=>"incomplete",ModelReply::Failure(_)=>"failure"}});
+                if let Some(workflow) = state.workflow_event(&observation) {
+                    metadata["workflow"] = workflow;
+                }
                 let prompt_tokens = usage.and_then(|usage| usage.prompt_tokens);
                 let completion_tokens = usage.and_then(|usage| usage.completion_tokens);
                 if let Some(tokens) = prompt_tokens {
@@ -1573,10 +1606,12 @@ mod tests {
             temperature: 0.0,
             max_output_tokens: 64,
             max_request_bytes: 131072,
+            max_history_bytes: 131072,
             max_response_bytes: 1048576,
             stream: false,
             cache_prompt: true,
             tools: Vec::new(),
+            structured_actions: false,
             constraint: None,
         }
     }

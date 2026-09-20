@@ -157,10 +157,12 @@ fn request_options(origin: &str, stream: bool, limit: usize) -> kinesin::model::
             temperature: 0.0,
             max_output_tokens: 64,
             max_request_bytes: 131072,
+            max_history_bytes: 131072,
             max_response_bytes: limit,
             stream,
             cache_prompt: true,
             tools: Vec::new(),
+            structured_actions: false,
             constraint: None,
         },
     )

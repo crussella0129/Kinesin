@@ -442,7 +442,7 @@ fn authorize_with_context(
     let instructions = config.instructions().to_owned();
     // Use the runner's actual conversation shape, including the framed prior
     // answer and JSON escaping, before admitting the immutable input set.
-    let (initial, _) = crate::core::initiate_with_context(
+    let (mut initial, _) = crate::core::initiate_with_context(
         instructions.clone(),
         prior.as_ref().map(|prior| prior.answer.clone()),
         session_text.clone(),
@@ -450,6 +450,22 @@ fn authorize_with_context(
         !workspace.tools.is_empty(),
     )
     .map_err(|_| "cannot initialize conversation")?;
+    if !task.is_checked()
+        && workspace
+            .tools
+            .iter()
+            .any(|tool| matches!(tool, ToolRef::Compiled(name) if name.is_mutating()))
+    {
+        initial
+            .enable_workflow_recovery_for_tools(
+                &workspace
+                    .tools
+                    .iter()
+                    .map(|tool| tool.wire_name())
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|_| "cannot initialize workflow")?;
+    }
     let initial_bytes = crate::model::history_len(initial.messages())?;
     if initial_bytes > limits.max_history_bytes || initial_bytes > limits.max_request_bytes {
         return Err("initial conversation exceeds effective history/request budget".into());

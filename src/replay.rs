@@ -30,6 +30,31 @@ pub const MAX_REPLAY_EVENTS: usize = 256;
 /// remains supported only for captures without that new optional input.
 /// Tools 3 adds start_preview; older captures keep its unknown-tool semantics.
 pub fn versions() -> Value {
+    json!({"capture":4,"core":7,"adapter":4,"tools":5,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn experimental_structured_versions() -> Value {
+    json!({"capture":4,"core":8,"adapter":5,"tools":5,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn refined_milestone_versions() -> Value {
+    json!({"capture":4,"core":6,"adapter":4,"tools":4,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn initial_milestone_versions() -> Value {
+    json!({"capture":4,"core":5,"adapter":4,"tools":4,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn pre_milestone_versions() -> Value {
+    json!({"capture":4,"core":4,"adapter":4,"tools":4,"checker":1,
+        "source_parser":1,"output_contract":1})
+}
+
+fn pre_recovery_versions() -> Value {
     json!({"capture":4,"core":3,"adapter":3,"tools":3,"checker":1,
         "source_parser":1,"output_contract":1})
 }
@@ -233,9 +258,10 @@ impl FrozenContext {
     /// `finalizing` must mirror the runner: a constrained turn withdraws tools,
     /// so a replay that ignored it would rebuild different bytes and report a
     /// fingerprint mismatch that never happened.
-    fn options(&self, finalizing: bool) -> ModelOptions {
-        let constraint = match (finalizing, &self.task) {
-            (true, TaskContract::FileFieldsV1(profile)) => {
+    fn options(&self, finalizing: bool, planning: bool, core_version: u64) -> ModelOptions {
+        let constraint = match (planning, finalizing, &self.task) {
+            (true, _, _) => Some(crate::recovery::plan_schema()),
+            (_, true, TaskContract::FileFieldsV1(profile)) => {
                 Some(crate::verification::candidate_schema(profile))
             }
             _ => None,
@@ -246,10 +272,24 @@ impl FrozenContext {
             temperature: self.model.temperature,
             max_output_tokens: self.limits.max_output_tokens as usize,
             max_request_bytes: self.limits.max_request_bytes,
+            max_history_bytes: self.limits.max_history_bytes,
             max_response_bytes: self.limits.max_response_bytes,
             stream: self.model.stream,
             cache_prompt: self.model.cache_prompt,
             tools: crate::model::tool_defs(&self.workspace.tools, &self.mcp_tools),
+            structured_actions: core_version == 8
+                && !self.task.is_checked()
+                && !planning
+                && self
+                    .workspace
+                    .tools
+                    .iter()
+                    .all(|tool| matches!(tool, ToolRef::Compiled(_)))
+                && self
+                    .workspace
+                    .tools
+                    .iter()
+                    .any(|tool| matches!(tool, ToolRef::Compiled(name) if name.is_mutating())),
             constraint,
         }
     }
@@ -611,6 +651,11 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
     )?;
     ensure(
         accepted.data["versions"] == versions()
+            || accepted.data["versions"] == experimental_structured_versions()
+            || accepted.data["versions"] == refined_milestone_versions()
+            || accepted.data["versions"] == initial_milestone_versions()
+            || accepted.data["versions"] == pre_milestone_versions()
+            || accepted.data["versions"] == pre_recovery_versions()
             || accepted.data["versions"] == pre_preview_versions()
             || (accepted.data["versions"] == legacy_versions()
                 && accepted.data["replay"]["authority"]
@@ -622,7 +667,18 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
     let mut frozen: FrozenContext =
         serde_json::from_value(accepted.data["replay"]["authority"].clone())
             .map_err(|_| error("replay_frozen_input_missing", Some(0)))?;
-    let preview_supported = accepted.data["versions"]["tools"] == 3;
+    let recovery_supported = accepted.data["versions"]["core"]
+        .as_u64()
+        .is_some_and(|version| version >= 4);
+    let core_version = accepted.data["versions"]["core"]
+        .as_u64()
+        .expect("admitted versions");
+    let adapter_version = accepted.data["versions"]["adapter"]
+        .as_u64()
+        .expect("admitted versions");
+    let preview_supported = accepted.data["versions"]["tools"]
+        .as_u64()
+        .is_some_and(|version| version >= 3);
     ensure(
         preview_supported
             || !frozen
@@ -662,6 +718,24 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         state
             .require_acceptance_check()
             .map_err(|_| error("replay_initial_transition", Some(0)))?;
+    } else if recovery_supported
+        && frozen
+            .workspace
+            .tools
+            .iter()
+            .any(|tool| matches!(tool, ToolRef::Compiled(name) if name.is_mutating()))
+    {
+        state
+            .enable_workflow_recovery_version(
+                core_version,
+                &frozen
+                    .workspace
+                    .tools
+                    .iter()
+                    .map(|tool| tool.wire_name())
+                    .collect::<Vec<_>>(),
+            )
+            .map_err(|_| error("replay_initial_transition", Some(0)))?;
     }
     let mut control_log = RecordedControl::default();
     if let Some((phase, reason)) = replay_mcp_start(&mut frozen, &events[1], &mut control_log)? {
@@ -694,8 +768,12 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     "replay_limit_divergence",
                     Some(planned.seq),
                 )?;
-                let request = model::prepare(state.messages(), &frozen.options(state.finalizing()))
-                    .map_err(|_| error("replay_request_preparation", Some(planned.seq)))?;
+                let request = model::prepare_with_version(
+                    state.messages(),
+                    &frozen.options(state.finalizing(), state.planning_work(), core_version),
+                    adapter_version,
+                )
+                .map_err(|_| error("replay_request_preparation", Some(planned.seq)))?;
                 let id = format!("model-{}", state.counters().model_turns);
                 ensure(
                     planned.data["effect_id"] == id
@@ -742,7 +820,16 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
                     .model_started()
                     .map_err(|_| error("replay_core_divergence", Some(planned.seq)))?;
                 let observed: ModelReply = observed.into();
-                if let ModelReply::Answer(candidate) = &observed {
+                if recovery_supported {
+                    ensure(
+                        finished.data.get("workflow").cloned() == state.workflow_event(&observed),
+                        "replay_workflow_divergence",
+                        Some(finished.seq),
+                    )?;
+                }
+                if state.retains_answer(&observed)
+                    && let ModelReply::Answer(candidate) = &observed
+                {
                     observed_candidate = Some(candidate.clone());
                 }
                 let mut stop = None;
@@ -1004,7 +1091,12 @@ pub fn replay(run: &RunRecord, events: &[Event]) -> Result<ReplayReport, ReplayE
         } else if history_exceeds(&state, frozen.limits.max_history_bytes)? {
             Some("history_bytes_limit".into())
         } else {
-            model::prepare(state.messages(), &frozen.options(state.finalizing())).err()
+            model::prepare_with_version(
+                state.messages(),
+                &frozen.options(state.finalizing(), state.planning_work(), core_version),
+                adapter_version,
+            )
+            .err()
         };
         if let Some(reason) = reason {
             effect = stop_state(&mut state, &reason)?;

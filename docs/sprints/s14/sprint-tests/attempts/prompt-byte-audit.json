@@ -1,0 +1,105 @@
+{
+  "scope": "Scored attempts1\u20138 only; raw prompts remain retained in each run record. No outcomes rewritten.",
+  "rule": "Compare against frozen prompt after removing only trailing CR/LF appended by terminal submission. Raw-byte equality is reported separately.",
+  "runs": [
+    {
+      "attempt": 1,
+      "run_id": "97241cfd-8824-424b-95ee-9b2797a958ec",
+      "frozen_prompt": "initial",
+      "actual_utf8_bytes": 454,
+      "frozen_utf8_bytes": 454,
+      "actual_sha256": "04d6f1a9c2af917728286de972d6e6119e48fb3fd37fc51fc6b1e9c083dbd1b1",
+      "raw_byte_identical": true,
+      "trailing_characters": "",
+      "normalized_matches": true
+    },
+    {
+      "attempt": 1,
+      "run_id": "a96761d6-565a-48e3-9171-1301c45f9b34",
+      "frozen_prompt": "follow_up",
+      "actual_utf8_bytes": 138,
+      "frozen_utf8_bytes": 138,
+      "actual_sha256": "2b643ab793fcb9f9ca416d06161fe0e8a75c29f04ed8f810a2f918cfc260d85d",
+      "raw_byte_identical": true,
+      "trailing_characters": "",
+      "normalized_matches": true
+    },
+    {
+      "attempt": 2,
+      "run_id": "de003881-f1e5-49bd-9187-8d9faae9e6dd",
+      "frozen_prompt": "initial",
+      "actual_utf8_bytes": 456,
+      "frozen_utf8_bytes": 454,
+      "actual_sha256": "3f62e91085945cc2397b9f800829d4118a11f09477b6c473f339276df01ece08",
+      "raw_byte_identical": false,
+      "trailing_characters": "\r\n",
+      "normalized_matches": true
+    },
+    {
+      "attempt": 3,
+      "run_id": "05d972a2-9d2e-4af7-aa1d-0654f31fc339",
+      "frozen_prompt": "initial",
+      "actual_utf8_bytes": 456,
+      "frozen_utf8_bytes": 454,
+      "actual_sha256": "3f62e91085945cc2397b9f800829d4118a11f09477b6c473f339276df01ece08",
+      "raw_byte_identical": false,
+      "trailing_characters": "\r\n",
+      "normalized_matches": true
+    },
+    {
+      "attempt": 4,
+      "run_id": "50f26c61-4a0d-47cc-a791-d5dc3b869663",
+      "frozen_prompt": "initial",
+      "actual_utf8_bytes": 456,
+      "frozen_utf8_bytes": 454,
+      "actual_sha256": "3f62e91085945cc2397b9f800829d4118a11f09477b6c473f339276df01ece08",
+      "raw_byte_identical": false,
+      "trailing_characters": "\r\n",
+      "normalized_matches": true
+    },
+    {
+      "attempt": 5,
+      "run_id": "f625cdd7-4901-4a47-9c91-23effd9b39cc",
+      "frozen_prompt": "initial",
+      "actual_utf8_bytes": 456,
+      "frozen_utf8_bytes": 454,
+      "actual_sha256": "3f62e91085945cc2397b9f800829d4118a11f09477b6c473f339276df01ece08",
+      "raw_byte_identical": false,
+      "trailing_characters": "\r\n",
+      "normalized_matches": true
+    },
+    {
+      "attempt": 6,
+      "run_id": "bd226c85-d794-454d-a3e9-49f7fa2e4a93",
+      "frozen_prompt": "initial",
+      "actual_utf8_bytes": 456,
+      "frozen_utf8_bytes": 454,
+      "actual_sha256": "3f62e91085945cc2397b9f800829d4118a11f09477b6c473f339276df01ece08",
+      "raw_byte_identical": false,
+      "trailing_characters": "\r\n",
+      "normalized_matches": true
+    },
+    {
+      "attempt": 7,
+      "run_id": "fe0e4f1f-bd63-45a3-aea6-f677caca3cb0",
+      "frozen_prompt": "initial",
+      "actual_utf8_bytes": 456,
+      "frozen_utf8_bytes": 454,
+      "actual_sha256": "3f62e91085945cc2397b9f800829d4118a11f09477b6c473f339276df01ece08",
+      "raw_byte_identical": false,
+      "trailing_characters": "\r\n",
+      "normalized_matches": true
+    },
+    {
+      "attempt": 8,
+      "run_id": "77579e77-d3d7-4394-b783-ffcfdec09a81",
+      "frozen_prompt": "initial",
+      "actual_utf8_bytes": 456,
+      "frozen_utf8_bytes": 454,
+      "actual_sha256": "3f62e91085945cc2397b9f800829d4118a11f09477b6c473f339276df01ece08",
+      "raw_byte_identical": false,
+      "trailing_characters": "\r\n",
+      "normalized_matches": true
+    }
+  ]
+}

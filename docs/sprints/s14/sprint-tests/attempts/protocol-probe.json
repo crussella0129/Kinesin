@@ -1,0 +1,45 @@
+{
+  "status": "unscored protocol-only diagnostic; not functional progress",
+  "metadata": {
+    "started_utc": "2026-09-20T06:50:04.8917238+00:00",
+    "native_tools_sent": false,
+    "finish_reason": "stop",
+    "http_status": 200,
+    "actions_executed": 0,
+    "usage": {
+      "completion_tokens": 34,
+      "prompt_tokens": 381,
+      "total_tokens": 415
+    },
+    "elapsed_ms": 780
+  },
+  "proposed_action": {
+    "kind": "tool",
+    "arguments": {
+      "path": "PaperHarbor"
+    },
+    "name": "create_directory"
+  },
+  "native_tools_sent": false,
+  "schema_alternatives": "Eight granted tools or answer; no native tools; temperature0/max_tokens2400.",
+  "prompt": "Same frozen initial user request as scored attempts.",
+  "model_profile_identity_ref": "attempt-4-freeze.json",
+  "artifact_hashes": [
+    {
+      "path": "target/s14-live/protocol-probe/request.json",
+      "sha256": "aff38eec71af6dcdc03e5fea8c7a67e9422c5c0f4fba24ed9b3ace89acd83b15"
+    },
+    {
+      "path": "target/s14-live/protocol-probe/response.json",
+      "sha256": "f8be9ed1f7be1839b7e8014581f6ec86bc6baefd542f51f282827c0966a46ed1"
+    },
+    {
+      "path": "target/s14-live/protocol-probe/metadata.json",
+      "sha256": "8f824b44c4dfaf7989e9ad3bfe86bdde004b1af2c7001316bfa59a6c63218025"
+    }
+  ],
+  "limits_of_inference": "One syntactically valid first mkdir proposal only. No tool executed or app written. Earlier native runs also dispatched mkdir; this establishes neither a relative improvement nor app competence.",
+  "system_instruction": "You are a local workspace coding assistant. Carry out the user request through one real action at a time. Return exactly one JSON object: {\"kind\":\"tool\",\"name\":\"TOOL_NAME\",\"arguments\":{...}} to request an action, or {\"kind\":\"answer\",\"text\":\"...\"} only when finished or concretely blocked. The harness executes an authorized tool action and supplies its real result before your next turn. Code belongs in write_file/edit_file arguments, never in an answer. Do not simulate tool results. Keep each action complete and small enough for the response limit.\nGranted tools and arguments: list_files(path) lists one directory; read_file(path) reads text; search_files(path,query,case_sensitive?) finds literal text; create_directory(path) creates one directory; write_file(path,content) writes a complete text file, parent must exist; edit_file(path,find,replace) replaces exactly one matching passage, so read first; run_command(command) runs an argv list in the foreground and only node is allowed; start_preview(path) serves index.html and public assets from that directory and returns its actual URL. All paths are relative to the workspace. The preview is static GET/HEAD, has no backend, and requires relative external JS/CSS files and addEventListener because inline scripts, event handlers and styles are blocked. Check actual results, repair errors and complete every requested behavior before finishing.",
+  "user_prompt_sha256": "04d6f1a9c2af917728286de972d6e6119e48fb3fd37fc51fc6b1e9c083dbd1b1",
+  "harness_boundary": "Direct model API only: bypassed Kinesin core/recovery/tool dispatch; protocol instruction and response schema differ from native calls."
+}

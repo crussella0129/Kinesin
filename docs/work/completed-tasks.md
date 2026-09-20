@@ -349,3 +349,10 @@
 - **Completed:** 2026-09-20T05:03:12Z
 - **Files modified:** docs/sprints/s13/sprint-tests/{unit-tests,integration-tests,e2e-tests,test-report,critique}.md; docs/sprints/s13/sprint-tests/tested-source.json; docs/sprints/s13/sprint-meta.md; docs/intents/INT-0031-live-local-app-delivery.md; docs/work/tasks.md; docs/work/completed-tasks.md.
 - **Commit:** `cc98c214cb277e6ba2beec1940aabe3c490ed1a3`
+
+## T-118 (sprint 14)
+- **Description:** Completed the owner-requested failed-sprint assessment and reversible archive of all eight failed live attempts, diagnostic findings and unverified implementation. Returned incomplete T-115–T-117 to backlog without certifying their product criteria. Native defaults restored; experimental replay retained. Official unit/integration verification remains unperformed because the live gate failed. This post-plan closure task records evidence and disposition only.
+- **Intent:** [INT-0032](../intents/INT-0032-low-intervention-local-workflows.md)
+- **Completed:** 2026-09-20T13:37:33Z
+- **Files modified:** src/{core,lib,model,onboarding,policy,preview,recovery,replay,runner,tools}.rs; tests/{managed_model,model_protocol}.rs; docs/intents/INT-0032-low-intervention-local-workflows.md; docs/sprints/s14 failure/research/plan-critique/live-evidence artifacts and public generated fixtures; docs/work/tasks.md; docs/work/completed-tasks.md.
+- **Commit:** PENDING

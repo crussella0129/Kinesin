@@ -31,8 +31,37 @@ effort evidence, then run focused official checks after live confidence.
 | docs/sprints/s13/sprint-tests/test-report.md | high | Explicit distinction between effects and unattended usefulness. |
 
 ## 3. External Sources
-None: implementation uses existing state-machine/tool interfaces and the
-installed local model. No new library or backend API is needed.
+- [Animus_Sprint_Loops at 0bdbe66](https://github.com/crussella0129/Animus_Sprint_Loops/tree/0bdbe66f3f2b82584e4f8b44cbd3f5101f0dc69f):
+  user-requested reference study; eight file-level sources from one repository
+  (README plus seven selected contracts/helpers), listed in the
+  [bounded study](reference-loop-principles.md). No new library or backend API.
+- [Official Qwen3-8B GGUF model card](https://huggingface.co/Qwen/Qwen3-8B-GGUF):
+  one additional primary source for the planned model-profile comparison,
+  quantization and non-thinking-mode configuration after four failed baseline
+  attempts. This does not introduce a new adapter or change the live criteria.
+- Official Qwen artifact provenance: [main tree](https://huggingface.co/Qwen/Qwen3-8B-GGUF/tree/main),
+  [main file page](https://huggingface.co/Qwen/Qwen3-8B-GGUF/blob/main/Qwen3-8B-Q4_K_M.gguf)
+  and [immutable file revision](https://huggingface.co/Qwen/Qwen3-8B-GGUF/blob/6a569868d07d3bd59e8b97fb001bf8c0b254bb20/Qwen3-8B-Q4_K_M.gguf)
+  were inspected to resolve the filename and published artifact identity.
+- [Official llama.cpp function-calling documentation](https://github.com/ggml-org/llama.cpp/blob/master/docs/function-calling.md)
+  was inspected to check native Qwen2.5 support during the bounded model
+  diagnostic. No runtime-template change or new tool protocol was implemented.
+
+## Budget Override
+The user explicitly requested the reference comparison after two failed live
+attempts. Permit thirteen file/page sources across three repositories: eight
+from the Animus study (including its README/tree entry point) plus five official
+model/runtime pages for the bounded model diagnostic and profile comparison.
+This exceeds the five-source default when files/pages are counted separately. The
+crosscutting core/replay, tool/lifetime and live/CI audit also exceeded the
+20-local-file default: transition compatibility and observed failures span
+multiple modules plus their profiles, journals and evidence. The original
+survey above records the initial scope, not a claim that later inspection
+stayed within nine files. PR 13's two hosted CI runs are separate first-party
+validation records, not additional external design sources. This override is
+limited to those existing audits, eight reference-study sources and five official
+model/runtime pages; no broader model survey, repository clone, vendoring or
+official tests are authorized by this note.
 
 ## 4. Risks, Unknowns, Dependencies
 - Completion self-review is another model observation, not proof of correct
@@ -72,6 +101,7 @@ failure rather than improve the product.
 - [Draft build plan](../sprint-plans/build-plan.md)
 - [Deferred official test plan](../sprint-plans/test-plan.md)
 - [Draft live workload card](live-workload.md)
+- [Reference loop principles and progress-oracle limits](reference-loop-principles.md)
 
 ## Orchestration
 The user explicitly authorizes progress and retains live-first testing order.
