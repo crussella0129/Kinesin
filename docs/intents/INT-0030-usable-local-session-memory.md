@@ -2,11 +2,11 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0030
-- **State:** active
+- **State:** realized
 - **Work evidence:** [sprint 12 plan](../sprints/s12/sprint-plans/build-plan.md)
 - **Completion evidence:** [T-110 and T-111](../work/completed-tasks.md#t-110-sprint-12)
 - **Code evidence:** [live memory](../../src/cli/session.rs), [context contract](../../src/session.rs), [authorization](../../src/policy.rs), [replay](../../src/replay.rs)
-- **Test evidence:** [unit](../sprints/s12/sprint-tests/unit-tests.md), [integration](../sprints/s12/sprint-tests/integration-tests.md), [native walkthrough](../sprints/s12/sprint-tests/e2e-tests.md)
+- **Test evidence:** [accepted report](../sprints/s12/sprint-tests/test-report.md), [native walkthrough](../sprints/s12/sprint-tests/e2e-tests.md)
 - **Documentation evidence:** [CLI](../cli.md)
 
 ## Intent
@@ -51,3 +51,6 @@ INT-0026 criteria open.
 - 2026-09-20: created as planned for the user's implementation-first local
   assistant request, with scope confirmed as launch, context and file editing.
 - 2026-09-20: planned → active after independent plan review and helper finalization.
+- 2026-09-20: active → realized after native installed-command memory and file-edit
+  proof, 271 targeted tests, clean formatting/Clippy and accepted independent
+  review. Process-local/byte-budget and model-quality limitations remain explicit.
