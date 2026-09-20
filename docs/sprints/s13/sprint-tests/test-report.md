@@ -51,3 +51,26 @@ operator steering disclosed. Actual browser interactions and HTTP responses
 prove the basic storefront outcome. Static previews are local CLI only and
 do not execute arbitrary backend code. Linux execution, remote CI, production
 design quality and a full unrelated suite were outside this pass.
+
+## PR 13 CI follow-up
+After local closure the user authorized [PR #13](https://github.com/crussella0129/Kinesin/pull/13).
+At `b9f2941`, both Windows checks and supply-chain jobs passed, while both Ubuntu
+jobs failed at the batch test's post-shutdown storage reopen. The store worker
+was already joined; Unix locks can survive close through descriptors inherited
+by concurrently spawned children. The repair uses an explicit-unlock guard
+after the SQLite connection field, covering successful shutdown and failed
+initialization without releasing ownership before SQLite closes.
+
+Post-closure checks on the repaired checkpoint in Ubuntu WSL / Rust 1.96:
+- `cargo test --locked --lib storage::tests -- --test-threads=4`: 21 passed,
+  including deterministic retained-descriptor shutdown and continued exclusivity.
+- `cargo test --locked --lib cli::tests::complete_cli_batch_checks_more_tasks_than_controller_capacity -- --exact`:
+  1 passed (the CI failure).
+- `cargo fmt --all -- --check` and `git diff --check`: passed.
+- `cargo clippy --locked --lib --tests -- -D warnings`: passed in Ubuntu WSL.
+- Independent read-only review found no blockers in lock order, initialization
+  failure cleanup or the retained-descriptor regression.
+
+These are separate from the original 271 native Windows checks and source
+manifest. The repaired remote head still requires fresh CI; no green result is
+claimed here before those jobs finish. Sprint 14 is excluded from this checkpoint.

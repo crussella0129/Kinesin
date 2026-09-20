@@ -34,3 +34,13 @@ Initial remote supply-chain CI found RUSTSEC-2026-0285 in rustls 0.23.44.
 The checkpoint updates only that dependency to patched 0.23.45; the recorded
 local checks predate this lockfile repair, and remote CI verifies it. PR #13
 also includes the previously unmerged Sprint 12 work.
+
+Both remote Windows jobs and supply-chain checks then passed at `b9f2941`.
+Ubuntu exposed `storage_controller_locked` when the batch test reopened its
+database after a joined shutdown. The checkpoint repair explicitly releases
+the controller lock after SQLite closes; a concurrently inherited Unix file
+descriptor can otherwise retain the shared lock past the controller lifetime.
+The deterministic duplicate-descriptor regression and all 21 storage tests,
+plus the exact failing batch test, passed in Ubuntu WSL with Rust 1.96.
+See the [checkpoint follow-up](sprint-tests/test-report.md#pr-13-ci-follow-up)
+for the distinct post-closure validation record. Sprint 14 remains excluded.
