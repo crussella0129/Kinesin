@@ -1,3 +1,5 @@
+Finalized - DO NOT EDIT
+
 # Sprint 15 Test Plan
 
 User approved on 2026-09-20. Disposable live operation comes first; official unit/integration checks run only after T-123 passes.
