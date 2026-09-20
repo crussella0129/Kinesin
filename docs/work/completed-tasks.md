@@ -334,4 +334,4 @@
 - **Intent:** [INT-0031](../intents/INT-0031-live-local-app-delivery.md)
 - **Completed:** 2026-09-20T04:55:52Z
 - **Files modified:** docs/sprints/s13/sprint-tests/e2e-tests.md; docs/sprints/s13/sprint-tests/fixtures/storefront/{manifest.json,selected-runs.json,public/app.js,public/cart.js,public/checkout.js,public/index.html,public/styles.css}; docs/work/tasks.md; docs/work/completed-tasks.md. Disposable app/control state remains ignored under target/storefront-lab.
-- **Commit:** PENDING
+- **Commit:** `4c2d5a7c2b2672481f84d88fa3c918e0fa2d28da`
