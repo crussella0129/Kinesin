@@ -2,7 +2,7 @@
 
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0032
-- **State:** planned
+- **State:** active
 - **Work evidence:** [T-115–T-117 plan](../sprints/s14/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** none
@@ -77,3 +77,5 @@ Broader workload comparisons and human-effort baselines remain INT-0024/T-103.
   writing the code themselves.
 - 2026-09-20: proposed → planned for core-4 bounded recovery, tools-4 error
   guidance, adapter-4 descriptions and the frozen two-prompt live workload.
+- 2026-09-20: planned → active after the independent plan critic accepted the
+  scope and finalize-plan.sh locked both plans; formal checks remain post-live.

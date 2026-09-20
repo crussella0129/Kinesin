@@ -1,5 +1,8 @@
 # Agent Tasks (Persistent Backlog)
 
+- [ ] T-115 (sprint 14) [intent: INT-0032]: Add bounded receipt-grounded recovery, version-compatible replay, useful tool errors and preserved-profile defaults — touches: src/recovery.rs; src/lib.rs; src/core.rs; src/runner.rs; src/replay.rs; src/tools.rs; src/model.rs; src/onboarding.rs; src/config.rs; affected tests after live gate; operator docs
+- [ ] T-116 (sprint 14) [intent: INT-0032]: Run the frozen fresh storefront and Clear Cart/item-count follow-up without corrective operator messages; retain every attempt and effort — touches: isolated workload; docs/sprints/s14/sprint-research/live-workload.md; docs/sprints/s14/sprint-tests/e2e-tests.md; workload fixtures
+- [ ] T-117 (sprint 14) [intent: INT-0032]: After zero-correction live confidence, run focused official checks and independent acceptance — touches: affected recovery/runner/replay tests; docs/sprints/s14; INT-0032; docs/work ledgers
 
 - [ ] T-101 (backlog) [intent: INT-0019]: Plan and verify mandatory Windows AppContainer/LPAC isolation alongside owned Jobs — touches: src/process.rs; src/tools.rs; tests/command_tool.rs; Windows isolation tests; docs/security.md
 - [ ] T-102 (backlog) [intent: INT-0026]: Define session continuity and model token admission, then test branching and mixed-owner slot reassignment with actual prepared requests — touches: src/cli.rs; src/policy.rs; src/model.rs; src/replay.rs; tests/live_evaluation.rs

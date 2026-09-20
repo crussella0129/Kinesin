@@ -1,3 +1,5 @@
+Finalized - DO NOT EDIT
+
 # Sprint 14 Build Plan
 
 Implementation-owner design agreed; independent critique precedes locking.

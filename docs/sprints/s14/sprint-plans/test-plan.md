@@ -1,3 +1,5 @@
+Finalized - DO NOT EDIT
+
 # Sprint 14 Test Plan
 
 Draft. Formal unit/integration checks follow a zero-correction live workload.
