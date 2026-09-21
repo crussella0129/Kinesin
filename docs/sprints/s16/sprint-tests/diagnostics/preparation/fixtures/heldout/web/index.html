@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Desk Supply Cart</title>
+  <link rel="stylesheet" href="assets/theme.css">
+  <script src="assets/basket.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Desk Supply Cart</h1>
+    <label for="filter">Search supplies</label>
+    <input id="filter" type="search" autocomplete="off">
+    <section aria-label="Catalog">
+      <article class="supply" data-name="Grid Pad">
+        <h2>Grid Pad</h2><p>$4.00</p>
+        <button type="button" data-add="pad">Add Grid Pad</button>
+      </article>
+      <article class="supply" data-name="Paper Tape">
+        <h2>Paper Tape</h2><p>$3.00</p>
+        <button type="button" data-add="tape">Add Paper Tape</button>
+      </article>
+    </section>
+    <section aria-label="Basket" aria-live="polite">
+      <h2>Basket</h2>
+      <p>Items: <span id="count">0</span></p>
+      <ul id="rows"></ul>
+      <p>Total: <strong id="amount">$0.00</strong></p>
+    </section>
+  </main>
+</body>
+</html>
