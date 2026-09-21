@@ -11,6 +11,7 @@
 - **Summary:** Failed repair qualification with filenames and full source; preserve zero-action findings before further harness changes.
 - **Intents:** [INT-0033](../../intents/INT-0033-evidence-driven-work-recovery.md); [INT-0032](../../intents/INT-0032-low-intervention-local-workflows.md)
 - **Completion evidence:** docs/sprints/s16/failure-report.md: A/B/C failed with zero actions; conditional slot 4, implementation, full workload and official checks not run
+- **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/16
 
 ## Scope and approval
 
