@@ -21,3 +21,9 @@ all three journals have zero tool events and therefore contain no inspected
 personal files. Local paths include the routine account name `charl`. Credential
 pattern screening found no signals, supplementing the controlled input audit.
 The [audit record](publication-audit.json) preserves these checks and limits.
+
+After that audit, automatic review approved the retry and the installed remote
+helper opened [PR #16](https://github.com/crussella0129/Kinesin/pull/16).
+It is a draft failure checkpoint with the complete findings and unperformed
+verification disclosed in its description. The helper-recorded checkpoint
+metadata is included in the final archival publication; no merge was performed.
