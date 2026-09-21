@@ -1,0 +1,1 @@
+Repair the cart total calculation in this existing small app. The total should include the price of every added item. Keep the existing product catalog and search filtering working, and avoid unrelated features or a rewrite. Start it locally and report the actual preview URL and what you changed.

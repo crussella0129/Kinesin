@@ -1,0 +1,24 @@
+{
+  "observed_utc": "2026-09-21T01:58:47.7113657Z",
+  "owned_processes": [
+    {
+      "pid": 63800,
+      "name": "llama-server.exe",
+      "command_line": "\"C:\\Users\\charl\\.cargo\\bin\\runtime\\llama-server.exe\" --model C:\\Users\\charl\\.cargo\\bin\\models\\qwen2.5-coder-7b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 51640 --alias s15-causal-qwen25 --ctx-size 16384 --parallel 1 --jinja --no-context-shift --no-webui --slots --gpu-layers 99 --threads 4 --threads-batch 4 --seed 0",
+      "termination_return": 0
+    },
+    {
+      "pid": 28972,
+      "name": "python.exe",
+      "command_line": "\"C:\\Users\\charl\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe\" -u target/s16-live/relay.py",
+      "termination_return": 0
+    },
+    {
+      "pid": 63908,
+      "name": "python.exe",
+      "command_line": "\"C:\\Users\\charl\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe\" -u -m http.server 0 --bind 127.0.0.1 --directory target/s16-live/fixtures",
+      "termination_return": 0
+    }
+  ],
+  "remaining_listeners": []
+}

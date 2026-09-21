@@ -81,5 +81,17 @@ tests and Clippy remain deferred until the unchanged full workload passes.
 
 ## Slot ledger
 
-No submitted requests at freeze. Append actual consumed slots and results here;
-never remove a failure. Per-call `started.json` is create-exclusive.
+No submitted requests at freeze. Per-call `started.json` is create-exclusive.
+
+| Slot | Frozen branch | Result | Actual operations | Request seconds |
+| --- | --- | --- | --- | --- |
+| 1 | A, no assistance | FAIL | 2 model turns, 0 tools, no changes or preview | 2.281 |
+| 2 | B, root filenames | FAIL | 2 model turns, 0 tools, no changes or preview | 2.328 |
+| 3 | C, filenames and complete source | FAIL | 2 model turns, 0 tools, no changes or preview | 2.844 |
+| 4 | Conditional held-out | NOT RUN | C failed; decision tree stops | — |
+
+All three actual first wire hashes matched their pre-inference expected bytes.
+Every terminal file hash equals the original seed. All sessions closed and
+captures exported. See [attempt ledger](../sprint-tests/diagnostics/attempt-ledger.md)
+for per-call evidence. No T-126 implementation or normal held-out qualification;
+zero full-workload submissions. No new budget is implied by the unused slot.

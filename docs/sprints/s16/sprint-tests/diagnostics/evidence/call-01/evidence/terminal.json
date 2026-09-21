@@ -1,0 +1,44 @@
+{
+  "slot": 1,
+  "terminal_utc": "2026-09-21T01:54:32.555318+00:00",
+  "request_elapsed_s": 2.2810000000172295,
+  "run": {
+    "kind": "run",
+    "index": 1,
+    "task_accepted": false,
+    "exit_code": 0,
+    "run_id": "ff9e7736-5c8f-4dd3-81c3-36bd565b6f65",
+    "owner_id": "local",
+    "workspace_id": "storefront",
+    "model_profile_id": "local",
+    "task_mode": "freeform",
+    "task_profile_id": null,
+    "task_profile_version": null,
+    "task_spec_sha256": null,
+    "checker_id": null,
+    "checker_version": null,
+    "capture": "replay",
+    "phase": "completed",
+    "acceptance_status": "unchecked",
+    "created_unix_ms": 1789955670972,
+    "policy_version": "1",
+    "submission_sha256": "86f57831c0b3d1d58a189a5e99aae2602635a39418de3724a16eb267a38c4ab8",
+    "idempotency_key": null,
+    "terminal_reason": "answer_candidate",
+    "result": {
+      "candidate": "No files were provided for analysis. Please provide the necessary files for the app."
+    },
+    "result_sha256": "b8267d6c8f156775e7dfef5724a985e1bd0bf050b0b2fb57180f3e16af913d27",
+    "receipt": {
+      "candidate_sha256": "b8267d6c8f156775e7dfef5724a985e1bd0bf050b0b2fb57180f3e16af913d27",
+      "contract": null,
+      "criteria": [],
+      "duration_ms": 0,
+      "owner_id": "local",
+      "reason": "no_acceptance_contract",
+      "run_id": "ff9e7736-5c8f-4dd3-81c3-36bd565b6f65",
+      "scope": "unchecked freeform task",
+      "status": "unchecked"
+    }
+  }
+}

@@ -8,22 +8,32 @@
 - **Bundle version:** 0.22.0
 - **Exit status:** in-progress
 - **Token count:** (filled at Loop Phase if observable)
-- **Summary:** Isolate workspace discovery failures and conditionally provide bounded observed directory context; prove useful repair before full live delivery and official checks.
+- **Summary:** Failed repair qualification with filenames and full source; preserve zero-action findings before further harness changes.
 - **Intents:** [INT-0033](../../intents/INT-0033-evidence-driven-work-recovery.md); [INT-0032](../../intents/INT-0032-low-intervention-local-workflows.md)
 - **Completion evidence:** (filled at Loop Phase)
 
 ## Scope and approval
 
 Started after the owner reported Sprint 14 merged and requested continuation.
-Sprint 15's separate failed checkpoint is draft PR #15. Sprint 16 research and
-planning remain local. No new diagnostic has run and implementation is unchanged.
-The exhausted Sprint 15 request budget is not reset; the proposed Sprint 16
-budget and conditional mitigation were explicitly approved on 2026-09-21.
+The separate Sprint 16 budget and conditional mitigation were explicitly
+approved on 2026-09-21; no Sprint 15 request was replaced or reset.
 
 Research is committed at `2993c99`. The preliminary
 [proposal review](sprint-plans/proposal-review.md) is clean; reviewable
 [build](sprint-plans/build-plan.proposed.md) and
 [test](sprint-plans/test-plan.proposed.md) proposals were approved. Canonical
-plans have been populated; their critic and finalization helper precede Build.
-No implementation, live call or official test has yet been performed for Sprint
-16. Both selected intents were already active and retain that state.
+plans received a clean canonical critic and helper locks before execution.
+Three live requests (A/B/C) failed with zero tools/changes/previews. C failure
+stops the tree; slot 4 is unused. T-126 was not implemented; T-127 did not qualify;
+T-128/T-129 were not run. T-125 records evidence completion only. Product source
+is unchanged and official checks remain deferred. Both selected intents stay
+active and unrealized. See [failure report](failure-report.md).
+
+## Blockages and checkpoint disposition
+
+The diagnostic gate failed before useful execution. Unfinished conditional and
+qualification work returns to backlog; T-130 carries the narrower research
+obligation without granting more calls. Owned lab processes were stopped and
+ports verified closed. During closeout GitHub confirmed PR #15 merged at
+2026-09-21T00:58:12Z; accepted main can now be synchronized for a separate Sprint
+16 failure checkpoint. No merge, install or default promotion is authorized.

@@ -363,3 +363,10 @@
 - **Completed:** 2026-09-20T15:34:49Z
 - **Files modified:** .gitattributes; docs/sprints/s15/{failure-report,implementation-notes,sprint-meta,closure-review}.md; docs/sprints/s15/sprint-research/{failure-mechanisms,live-workload}.md; docs/sprints/s15/sprint-tests/test-report.md; docs/sprints/s15/sprint-tests/diagnostics/; docs/intents/INT-0032-low-intervention-local-workflows.md; docs/intents/INT-0033-evidence-driven-work-recovery.md; docs/work/{tasks,completed-tasks,confidence.txt}.
 - **Commit:** `3be4d4c7604979fb364ab3fa7c46c20a425fa2e5`
+
+## T-125 (sprint 16)
+- **Description:** Completed the approved frozen diagnostic decision and independent scoring. Unaided, authentic-root-name and complete-source arms each produced two answers, zero tool calls, unchanged files and no preview. Source-assisted prose identified the defect but claimed unperformed work. Followed the stop branch with slot 4 unused; did not implement T-126 or run blocked qualification/full workload/official checks. Preserved both seed browser baselines, all conditional inputs and actual wire/capture/artifact identities, failures, effort limits and owned-process cleanup. This completes evidence gathering only; product usefulness remains unmet.
+- **Intent:** [INT-0033](../intents/INT-0033-evidence-driven-work-recovery.md); [INT-0032](../intents/INT-0032-low-intervention-local-workflows.md)
+- **Completed:** 2026-09-21T01:58:47Z
+- **Files modified:** .gitattributes; docs/sprints/s16/{failure-report,sprint-meta}.md; docs/sprints/s16/sprint-research/{diagnostic-card,failure-mechanisms}.md; docs/sprints/s16/sprint-tests/test-report.md; docs/sprints/s16/sprint-tests/diagnostics/; docs/intents/INT-0032-low-intervention-local-workflows.md; docs/intents/INT-0033-evidence-driven-work-recovery.md; docs/work/{tasks,completed-tasks,confidence.txt}.
+- **Commit:** PENDING

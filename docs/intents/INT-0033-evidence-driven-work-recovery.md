@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0033
 - **State:** active
-- **Work evidence:** [T-119–T-124 build plan](../sprints/s15/sprint-plans/build-plan.md); [T-122 diagnostic decision and failed qualification](../sprints/s15/failure-report.md); [Approved Sprint 16 plan](../sprints/s16/sprint-plans/build-plan.md)
+- **Work evidence:** [T-119–T-124 build plan](../sprints/s15/sprint-plans/build-plan.md); [T-122 diagnostic decision and failed qualification](../sprints/s15/failure-report.md); [Approved Sprint 16 plan](../sprints/s16/sprint-plans/build-plan.md); [T-125 failed qualification and T-130 handoff](../sprints/s16/failure-report.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -116,6 +116,21 @@ repair with normal user requests and no operator-supplied context. If filenames
 are insufficient, a bounded source-assisted contrast may identify a retrieval
 dependency, but cannot authorize automatic source reading or unlock full app
 acceptance. These are proposed execution boundaries, not successful outcomes.
+
+Sprint 16's approved A/B/C sequence produced zero actions in every arm, even
+with complete unmodified source. C identified the assignment bug but claimed an
+unperformed repair. Filenames and source are therefore insufficient on this
+sample under the current interface; the conditional automatic listing was not
+implemented. The fourth conditional request, held-out repair and full workload
+were not run. No product source changed and no official verification occurred.
+
+The next obligation is to investigate action selection and the boundary between
+model claims and recorded work. A valid answer branch can still be premature;
+the same model's completion review is not independent evidence. A truthful
+operation-based presentation may improve reporting without improving execution.
+Do not infer a unique cause, force every question into a tool call, or add a
+source-retrieval subsystem without new evidence and a separately approved plan.
+T-130 carries this research; the less-babysitting outcome remains unrealized.
 
 ## Transition history
 - 2026-09-21: refined active intent with AC6's bounded observation, authority,
