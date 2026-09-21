@@ -53,6 +53,14 @@ independent observation. Truthful stopping alone is not useful task completion.
   to an explicit failed/inconclusive decision, not unrecorded profile roulette
   or a weaker acceptance criterion. No general reliability or measured human
   productivity claim is made without corresponding evidence.
+- AC6: Any automatic workspace context is an explicit trusted selection, derived
+  from actual authorized operations after admission. It shares existing tool,
+  time and byte budgets, labels incomplete/error observations, preserves origin
+  separately from model initiative and obeys capture/privacy/offline-replay
+  boundaries. Disabled behavior and historical encodings remain unchanged.
+  A first candidate is limited to one root-directory listing; no automatic source
+  selection, recursive scan, tool forcing or semantic acceptance is implied.
+  Its implementation is conditional on evidence and an approved scoped plan.
 
 ## Rationale
 Sprint 14's eight failures exposed more than generated application bugs. Its
@@ -99,7 +107,21 @@ contrast should precede wider automatic observation or planning machinery.
 Retain the original less-babysitting objective and zero-correction full workload.
 The new fact memory is diagnostic infrastructure, not proof of improved work.
 
+Sprint 16 proposes an adaptive maximum of four diagnostic submissions to isolate
+this boundary without another model or prompt sweep. An unaided baseline is
+followed, only if needed, by an authentic filename observation. A filename-only
+success can justify implementing a small opt-in automatic listing under AC6;
+the implementation must then pass the original repair and a distinct held-out
+repair with normal user requests and no operator-supplied context. If filenames
+are insufficient, a bounded source-assisted contrast may identify a retrieval
+dependency, but cannot authorize automatic source reading or unlock full app
+acceptance. These are proposed execution boundaries, not successful outcomes.
+
 ## Transition history
+- 2026-09-21: refined active intent with AC6's bounded observation, authority,
+  accounting and provenance constraints for Sprint 16 planning. Desired outcome
+  remains less babysitting with independently observed work; no lifecycle
+  transition, extra live execution or verified implementation is claimed.
 - 2026-09-20: retained active/unrealized after all six Sprint 15 diagnostics.
   Ordered actions correctly performed two explicit-file tasks but neither repair
   arm inspected or edited the app; real browser feedback did not change that.
