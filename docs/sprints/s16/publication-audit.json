@@ -1,0 +1,50 @@
+{
+  "destination": "https://github.com/crussella0129/Kinesin",
+  "destination_visibility_verified_via_gh": "PUBLIC",
+  "product_or_workflow_changes": [],
+  "original_fixture_matches_accepted_public_main": {
+    "app.js": true,
+    "index.html": true,
+    "style.css": true
+  },
+  "calls": [
+    {
+      "call": "call-01",
+      "captured_inputs": [
+        "generic assistant instructions",
+        "frozen synthetic app repair prompt",
+        "local disposable workspace paths",
+        "local model profile and resource limits"
+      ],
+      "tool_events": 0,
+      "remote_model": false,
+      "prompt_sha256": "f8618671b422710147b38008511c17446e999c40e91a22976100e454842e08c6"
+    },
+    {
+      "call": "call-02",
+      "captured_inputs": [
+        "generic assistant instructions",
+        "frozen synthetic app repair prompt",
+        "local disposable workspace paths",
+        "local model profile and resource limits"
+      ],
+      "tool_events": 0,
+      "remote_model": false,
+      "prompt_sha256": "28c7d8314f2752a731efa185983f704feccbe2abdede611a17aa310723ef3d38"
+    },
+    {
+      "call": "call-03",
+      "captured_inputs": [
+        "generic assistant instructions",
+        "frozen synthetic app repair prompt",
+        "local disposable workspace paths",
+        "local model profile and resource limits"
+      ],
+      "tool_events": 0,
+      "remote_model": false,
+      "prompt_sha256": "e753f85eacd2032b89657cd5ab7f37be0687693a97cbd32417a872eba78c4469"
+    }
+  ],
+  "credential_pattern_signals": [],
+  "limits": "Pattern screening alone does not prove absence of secrets; the controlled synthetic input construction and zero tool events bound captured data. Heldout app was operator-created for this sprint. Local absolute paths contain the routine account name charl; no credentials or personal files are included."
+}
