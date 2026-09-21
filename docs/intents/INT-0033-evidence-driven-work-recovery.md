@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0033
 - **State:** active
-- **Work evidence:** [T-119–T-124 build plan](../sprints/s15/sprint-plans/build-plan.md); [T-122 diagnostic decision and failed qualification](../sprints/s15/failure-report.md); [Sprint 16 proposal awaiting approval](../sprints/s16/sprint-plans/build-plan.proposed.md)
+- **Work evidence:** [T-119–T-124 build plan](../sprints/s15/sprint-plans/build-plan.md); [T-122 diagnostic decision and failed qualification](../sprints/s15/failure-report.md); [Approved Sprint 16 plan](../sprints/s16/sprint-plans/build-plan.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
