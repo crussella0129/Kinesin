@@ -1,3 +1,5 @@
+Finalized - DO NOT EDIT
+
 # Sprint 16 Test Plan
 
 Approved by the user on 2026-09-21. Live operation and bounded repair happen first. Official
