@@ -19,3 +19,11 @@ Sprint 15's separate failed checkpoint is draft PR #15. Sprint 16 research and
 planning remain local. No new diagnostic has run and implementation is unchanged.
 The exhausted Sprint 15 request budget is not reset; the proposed Sprint 16
 budget and conditional mitigation require the reviewed plan's approval.
+
+Research is committed at `2993c99`. The preliminary
+[proposal review](sprint-plans/proposal-review.md) is clean; reviewable
+[build](sprint-plans/build-plan.proposed.md) and
+[test](sprint-plans/test-plan.proposed.md) proposals await approval. Canonical
+plans remain empty and unlocked. No implementation, live call or official test
+has been performed for Sprint 16. After approval, the canonical critic and
+finalization helper still run before Build.
