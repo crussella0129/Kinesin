@@ -28,5 +28,7 @@ approved plan kept Sprint 15 local instead of adding it to that older archive.
 On 2026-09-21 the owner reported PR #14 merged and requested continuation. GitHub
 confirmed merge commit `26f143b8a32be2159f79ea8c3c30878a7ec944e3`; the installed
 sync helper brought that accepted base into dev without changing product source.
-The separate Sprint 15 failure checkpoint can now be opened. It remains a draft
-archive of unverified work; no Sprint 15 merge or passing checks are claimed.
+The separate Sprint 15 failure checkpoint is draft PR #15. It archives unverified
+work; no Sprint 15 merge or passing checks are claimed. Follow-on research may
+continue locally under the owner's continuation request; it is not part of this
+checkpoint unless later explicitly published.
