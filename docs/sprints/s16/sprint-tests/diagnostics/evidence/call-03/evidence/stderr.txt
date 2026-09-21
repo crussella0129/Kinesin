@@ -1,0 +1,3 @@
+> [Session memory adjusted: 0 older turns omitted, this turn shortened; /context shows the retained size.]
+
+> 

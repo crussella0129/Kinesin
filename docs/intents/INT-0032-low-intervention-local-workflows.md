@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0032
 - **State:** active
-- **Work evidence:** [T-115–T-117 plan](../sprints/s14/sprint-plans/build-plan.md); [T-118 failed-sprint assessment](../sprints/s14/failure-report.md); [T-119–T-124 follow-on plan](../sprints/s15/sprint-plans/build-plan.md); [Sprint 15 failed qualification](../sprints/s15/failure-report.md)
+- **Work evidence:** [T-115–T-117 plan](../sprints/s14/sprint-plans/build-plan.md); [T-118 failed-sprint assessment](../sprints/s14/failure-report.md); [T-119–T-124 follow-on plan](../sprints/s15/sprint-plans/build-plan.md); [Sprint 15 failed qualification](../sprints/s15/failure-report.md); [Sprint 16 failed qualification](../sprints/s16/failure-report.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -174,6 +174,15 @@ live operation and repair first, followed by focused official unit/integration
 checks once the working flow is convincing. Avoid repeated test cycles that
 delay operating the product. Compilation and read-only inspection may support
 the live repair work; this preference does not remove final verification.
+
+Sprint 16 retained the unchanged usefulness gate. Its unaided, filename-assisted
+and full-source-assisted repairs all produced zero tool calls and no preview.
+The planned conditional listing was not implemented; no full storefront or
+same-session follow-up ran and official checks remain deferred. The desired
+outcome is still less time babysitting than writing the code directly. A more
+detailed model explanation did not constitute an improvement in applied work.
+State remains active and unrealized; future action-selection research must
+preserve the actual browser and zero-correction criteria.
 
 ## Transition history
 - 2026-09-20: remained active/unrealized after Sprint 15's bounded diagnostics.

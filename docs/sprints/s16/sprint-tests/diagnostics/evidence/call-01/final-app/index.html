@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Small Cart Diagnostic</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Small Cart Diagnostic</h1>
+    <label for="search">Search products</label>
+    <input id="search" type="search" autocomplete="off">
+    <section aria-label="Products">
+      <article class="product" data-name="Copper Pencil">
+        <h2>Copper Pencil</h2>
+        <p>$2.00</p>
+        <button type="button" data-product="pencil">Add Copper Pencil</button>
+      </article>
+      <article class="product" data-name="Field Notebook">
+        <h2>Field Notebook</h2>
+        <p>$5.00</p>
+        <button type="button" data-product="notebook">Add Field Notebook</button>
+      </article>
+    </section>
+    <section aria-label="Cart" aria-live="polite">
+      <h2>Cart</h2>
+      <p>Items: <span id="item-count">0</span></p>
+      <ul id="cart-items"></ul>
+      <p>Total: <strong id="total">$0.00</strong></p>
+    </section>
+  </main>
+</body>
+</html>

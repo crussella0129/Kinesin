@@ -1,0 +1,39 @@
+{
+  "root": {
+    "observer": "Codex operator; direct filesystem observation, not a harness tool event",
+    "observed_utc": "2026-09-21T01:51:42.862919+00:00",
+    "scope": "workspace root only",
+    "entries": [
+      "web"
+    ],
+    "byte_cap": 2048,
+    "truncated": false,
+    "error": null,
+    "interpretation": "Untrusted filenames only; not recursive; no claim about descendants."
+  },
+  "source": {
+    "observer": "Codex operator; direct filesystem observation, not a harness tool event",
+    "observed_utc": "2026-09-21T01:51:42.862919+00:00",
+    "scope": "all three seeded app files",
+    "byte_cap": 16384,
+    "truncated": false,
+    "error": null,
+    "files": [
+      {
+        "path": "web/assets/basket.js",
+        "sha256": "501140f6c3e9f7ac4b1c2a4ced69214b1724399a3164e21a826ba3fb1d20b388",
+        "utf8": "\"use strict\";\n\nconst catalog = {\n  pad: { name: \"Grid Pad\", cents: 400 },\n  tape: { name: \"Paper Tape\", cents: 300 }\n};\nconst basket = {};\n\nfunction renderBasket() {\n  const rows = document.getElementById(\"rows\");\n  rows.replaceChildren();\n  let units = 0;\n  let cents = 0;\n  for (const [id, quantity] of Object.entries(basket)) {\n    units += quantity;\n    cents += catalog[id].cents * quantity;\n    const row = document.createElement(\"li\");\n    const label = document.createElement(\"span\");\n    label.textContent = catalog[id].name + \" \u00d7 \" + quantity;\n    const remove = document.createElement(\"button\");\n    remove.type = \"button\";\n    remove.textContent = \"Remove \" + catalog[id].name;\n    remove.addEventListener(\"click\", () => {\n      basket[id] -= 1;\n      if (basket[id] === 0) delete basket[id];\n      renderBasket();\n    });\n    row.append(label, remove);\n    rows.append(row);\n  }\n  document.getElementById(\"count\").textContent = String(units);\n  document.getElementById(\"amount\").textContent = \"$\" + (cents / 100).toFixed(2);\n}\n\ndocument.querySelectorAll(\"button[data-add]\").forEach((button) => {\n  button.addEventListener(\"click\", () => {\n    const id = button.dataset.add;\n    basket[id] = (basket[id] || 0) + 1;\n    renderBasket();\n  });\n});\n\ndocument.getElementById(\"filter\").addEventListener(\"input\", (event) => {\n  const query = event.target.value.trim().toLowerCase();\n  document.querySelectorAll(\".supply\").forEach((product) => {\n    product.hidden = !product.dataset.name.toLowerCase().includes(query);\n  });\n});\n"
+      },
+      {
+        "path": "web/assets/theme.css",
+        "sha256": "0a5d14c95545b01caf29e3f90012762d8a9dba38b808a6097fae5f53408edc31",
+        "utf8": "body { margin: 2rem; font: 16px system-ui, sans-serif; color: #1b2732; }\nmain { max-width: 42rem; margin: auto; }\ninput, button { font: inherit; padding: 0.5rem; }\ninput { display: block; margin: 0.5rem 0 1rem; }\n.supply { border: 1px solid #becbd5; padding: 1rem; margin: 0.75rem 0; }\n.supply[hidden] { display: none; }\nli { margin: 0.75rem 0; }\nli button { margin-left: 0.75rem; }\nbutton { cursor: pointer; }\n"
+      },
+      {
+        "path": "web/index.html",
+        "sha256": "2c0f0b035415746584727c44e52ddb3a625ad50e1854ed4561d442bf549a6b8e",
+        "utf8": "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Desk Supply Cart</title>\n  <link rel=\"stylesheet\" href=\"assets/theme.css\">\n  <script src=\"assets/basket.js\" defer></script>\n</head>\n<body>\n  <main>\n    <h1>Desk Supply Cart</h1>\n    <label for=\"filter\">Search supplies</label>\n    <input id=\"filter\" type=\"search\" autocomplete=\"off\">\n    <section aria-label=\"Catalog\">\n      <article class=\"supply\" data-name=\"Grid Pad\">\n        <h2>Grid Pad</h2><p>$4.00</p>\n        <button type=\"button\" data-add=\"pad\">Add Grid Pad</button>\n      </article>\n      <article class=\"supply\" data-name=\"Paper Tape\">\n        <h2>Paper Tape</h2><p>$3.00</p>\n        <button type=\"button\" data-add=\"tape\">Add Paper Tape</button>\n      </article>\n    </section>\n    <section aria-label=\"Basket\" aria-live=\"polite\">\n      <h2>Basket</h2>\n      <p>Items: <span id=\"count\">0</span></p>\n      <ul id=\"rows\"></ul>\n      <p>Total: <strong id=\"amount\">$0.00</strong></p>\n    </section>\n  </main>\n</body>\n</html>\n"
+      }
+    ]
+  }
+}

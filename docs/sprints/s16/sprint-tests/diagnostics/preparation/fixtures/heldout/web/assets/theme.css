@@ -1,0 +1,9 @@
+body { margin: 2rem; font: 16px system-ui, sans-serif; color: #1b2732; }
+main { max-width: 42rem; margin: auto; }
+input, button { font: inherit; padding: 0.5rem; }
+input { display: block; margin: 0.5rem 0 1rem; }
+.supply { border: 1px solid #becbd5; padding: 1rem; margin: 0.75rem 0; }
+.supply[hidden] { display: none; }
+li { margin: 0.75rem 0; }
+li button { margin-left: 0.75rem; }
+button { cursor: pointer; }
