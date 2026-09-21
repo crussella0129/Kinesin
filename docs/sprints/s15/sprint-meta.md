@@ -11,6 +11,7 @@
 - **Summary:** Failed repair qualification after six bounded diagnostics; retain explicit-file gains, unverified implementation and discovery findings.
 - **Intents:** [INT-0033](../../intents/INT-0033-evidence-driven-work-recovery.md); [INT-0032](../../intents/INT-0032-low-intervention-local-workflows.md)
 - **Completion evidence:** Six diagnostics retained: two explicit-file passes, both app-repair arms failed without actions; T-122 evidence complete, T-119-T-121 unverified, T-123/T-124 not run; see docs/sprints/s15/failure-report.md. Local checkpoint only under approved plan.
+- **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/15
 
 ## Failure disposition
 
