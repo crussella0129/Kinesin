@@ -3,14 +3,14 @@
 - **Sprint number:** 16
 - **Book schema version:** 2
 - **Start timestamp:** 2026-09-21T00:47:51Z
-- **End timestamp:** (filled at Loop Phase)
+- **End timestamp:** 2026-09-21T02:05:57Z
 - **Model:** gpt-6-astra
 - **Bundle version:** 0.22.0
-- **Exit status:** in-progress
+- **Exit status:** failed
 - **Token count:** (filled at Loop Phase if observable)
 - **Summary:** Failed repair qualification with filenames and full source; preserve zero-action findings before further harness changes.
 - **Intents:** [INT-0033](../../intents/INT-0033-evidence-driven-work-recovery.md); [INT-0032](../../intents/INT-0032-low-intervention-local-workflows.md)
-- **Completion evidence:** (filled at Loop Phase)
+- **Completion evidence:** docs/sprints/s16/failure-report.md: A/B/C failed with zero actions; conditional slot 4, implementation, full workload and official checks not run
 
 ## Scope and approval
 
