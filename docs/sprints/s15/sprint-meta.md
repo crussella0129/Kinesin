@@ -22,8 +22,10 @@ See [failure-report.md](failure-report.md).
 
 ## Remote checkpoint boundary
 
-Sprint 14 draft PR #14 remains open on `dev -> main` (read back 2026-09-20).
-The approved Sprint 15 plan explicitly keeps this sprint local while that failed
-archive awaits separate human disposition. No new PR is claimed and `dev` was
-not pushed, which would have changed PR #14's contents. A separate Sprint 15
-remote checkpoint remains pending that disposition; no merge is authorized.
+At local closeout on 2026-09-20, Sprint 14 draft PR #14 was still open. The
+approved plan kept Sprint 15 local instead of adding it to that older archive.
+On 2026-09-21 the owner reported PR #14 merged and requested continuation. GitHub
+confirmed merge commit `26f143b8a32be2159f79ea8c3c30878a7ec944e3`; the installed
+sync helper brought that accepted base into dev without changing product source.
+The separate Sprint 15 failure checkpoint can now be opened. It remains a draft
+archive of unverified work; no Sprint 15 merge or passing checks are claimed.

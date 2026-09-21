@@ -90,3 +90,12 @@ all new code paths. Evidence and source remain local under the approved Sprint
 15 checkpoint boundary while Sprint 14's separate draft PR #14 awaits human
 disposition. Pushing the shared `dev` branch would change that archival PR;
 this assessment does not silently combine the two sprints.
+
+## Subsequent checkpoint disposition
+
+On 2026-09-21 the owner reported Sprint 14 merged and requested continuation.
+The merge was verified and synchronized into dev. Sprint 15 can therefore open
+its own draft failure checkpoint. This does not change its failed outcome or
+verify its retained implementation. As for the Sprint 14 failure archive, the
+archival head uses the provider's CI-skip marker because official suites remain
+behind the unmet live gate; no CI pass or check-policy change is claimed.
