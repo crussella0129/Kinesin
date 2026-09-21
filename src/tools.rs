@@ -892,14 +892,14 @@ impl WorkspaceWriter {
             return ToolResult::failure(
                 ToolStatus::Error,
                 "match_not_found",
-                "The text to find does not appear in the file.",
+                "No exact match; file unchanged. If read_file is granted, reread it and resubmit a unique exact find/replace.",
             );
         }
         if occurrences > 1 {
             return ToolResult::failure(
                 ToolStatus::Denied,
                 "ambiguous_match",
-                "The text to find appears more than once; make it unique.",
+                "Multiple matches; file unchanged. If read_file is granted, reread it and include more surrounding text in find.",
             );
         }
         let updated = text.replacen(find, replace, 1);
@@ -1200,8 +1200,15 @@ impl CommandRunner {
         // saw, bounded so a descendant that keeps a pipe open cannot hang the run.
         let ((raw_stdout, out_truncated), (raw_stderr, err_truncated)) =
             tokio::join!(join_reader(out), join_reader(err));
-        let (stdout_bytes, stderr_bytes, combined_truncated) =
-            combine_capped(raw_stdout, raw_stderr, cap);
+        let (stdout_bytes, stderr_bytes, combined_truncated) = if matches!(&outcome, Ok(Ok(status)) if !status.success())
+        {
+            // Compiler/runtime diagnostics must survive a failed command
+            // even when ordinary stdout fills the capture budget first.
+            let (stderr, stdout, truncated) = combine_capped(raw_stderr, raw_stdout, cap);
+            (stdout, stderr, truncated)
+        } else {
+            combine_capped(raw_stdout, raw_stderr, cap)
+        };
         let truncated = out_truncated || err_truncated || combined_truncated;
         match outcome {
             Ok(Ok(status)) => command_result(
@@ -1750,23 +1757,22 @@ async fn join_reader(mut handle: CommandReader) -> (Vec<u8>, bool) {
     }
 }
 
-/// Hold the combined stdout+stderr to `cap` bytes: stdout keeps up to `cap`, and
-/// stderr keeps whatever budget remains. Returns the trimmed streams and whether
-/// the combined trim dropped anything.
-fn combine_capped(stdout: Vec<u8>, stderr: Vec<u8>, cap: usize) -> (Vec<u8>, Vec<u8>, bool) {
-    let out_keep = stdout.len().min(cap);
-    let err_keep = stderr.len().min(cap - out_keep);
-    let trimmed = out_keep < stdout.len() || err_keep < stderr.len();
+/// Hold both streams to `cap` bytes, prioritizing the first. Failed commands
+/// supply stderr first; successful commands preserve the stdout-first policy.
+fn combine_capped(first: Vec<u8>, second: Vec<u8>, cap: usize) -> (Vec<u8>, Vec<u8>, bool) {
+    let first_keep = first.len().min(cap);
+    let second_keep = second.len().min(cap - first_keep);
+    let trimmed = first_keep < first.len() || second_keep < second.len();
     (
-        stdout[..out_keep].to_vec(),
-        stderr[..err_keep].to_vec(),
+        first[..first_keep].to_vec(),
+        second[..second_keep].to_vec(),
         trimmed,
     )
 }
 
-/// Shape a completed command's exit status and captured output into a result. A
-/// command that ran and exited — even non-zero — is a completed tool call (`Ok`);
-/// its exit code rides in the body for the model to read.
+/// Shape a completed command's exit status and captured output into a result.
+/// Nonzero/signal exits are tool errors with preserved diagnostic fields, so
+/// callers need not discover a failure hidden inside an otherwise successful result.
 fn command_result(
     status: ExitStatus,
     stdout: &[u8],
@@ -1777,7 +1783,15 @@ fn command_result(
     let stdout = String::from_utf8_lossy(stdout);
     let stderr = String::from_utf8_lossy(stderr);
     let shape = |out: &str, err: &str, truncated| {
-        let mut result = ToolResult::success(None);
+        let mut result = if status.success() {
+            ToolResult::success(None)
+        } else {
+            ToolResult::failure(
+                ToolStatus::Error,
+                "command_failed",
+                "Command exited unsuccessfully.",
+            )
+        };
         result.truncated = truncated;
         result.body = serde_json::to_string(&json!({
             "exit_code": status.code(), "success": status.success(),
@@ -1792,7 +1806,7 @@ fn command_result(
     }
     // Measure the actual doubly encoded JSON envelope, including replacement
     // characters for invalid UTF-8. Search prefixes on character boundaries;
-    // preserve the status fields and give stdout the first share of the budget.
+    // preserve the status fields and prioritize stderr for a failed command.
     let prefix = |text: &str, bytes: usize| {
         let mut end = bytes.min(text.len());
         while !text.is_char_boundary(end) {
@@ -1801,8 +1815,17 @@ fn command_result(
         end
     };
     let candidate = |bytes: usize| {
-        let out = prefix(&stdout, bytes);
-        let err = prefix(&stderr, bytes.saturating_sub(stdout.len()));
+        let (out, err) = if status.success() {
+            (
+                prefix(&stdout, bytes),
+                prefix(&stderr, bytes.saturating_sub(stdout.len())),
+            )
+        } else {
+            (
+                prefix(&stdout, bytes.saturating_sub(stderr.len())),
+                prefix(&stderr, bytes),
+            )
+        };
         shape(&stdout[..out], &stderr[..err], true)
     };
     let (mut low, mut high) = (0, stdout.len() + stderr.len());
@@ -1844,7 +1867,7 @@ fn io_failure(kind: ErrorKind) -> ToolResult {
         ErrorKind::NotFound => ToolResult::failure(
             ToolStatus::Error,
             "not_found",
-            "The requested workspace resource was not found.",
+            "Resource not found at that workspace-relative path. Include its subdirectory; if list_files is granted, inspect the parent before retrying.",
         ),
         ErrorKind::PermissionDenied => ToolResult::failure(
             ToolStatus::Denied,

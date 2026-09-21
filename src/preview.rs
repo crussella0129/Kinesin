@@ -24,6 +24,7 @@ use crate::ingress::{IngressLimits, IngressStats};
 use crate::tools::{ToolResult, ToolStatus, normalized_path};
 
 const MAX_ASSET_BYTES: usize = 1024 * 1024;
+const MAX_COMPAT_WARNINGS: usize = 4;
 const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 
 pub struct WorkspacePreview {
@@ -34,6 +35,7 @@ pub struct WorkspacePreview {
 struct ActivePreview {
     path: String,
     url: String,
+    root: Arc<Dir>,
     shutdown: CancellationToken,
     server: JoinHandle<Result<(), String>>,
 }
@@ -85,18 +87,19 @@ impl WorkspacePreview {
         };
         if let Some(active) = current.as_ref()
             && !active.server.is_finished()
+            && active.path != path
         {
-            return if active.path == path {
-                running_result(&active.url)
-            } else {
-                failure(
-                    "preview_already_running",
-                    "This workspace already previews another directory; restart the session to change it.",
-                )
-            };
+            return failure(
+                "preview_already_running",
+                "This workspace already previews another directory; restart the session to change it.",
+            );
         }
         // A stopped server can be replaced, but never leave its owned task behind.
-        if let Some(mut previous) = current.take() {
+        if current
+            .as_ref()
+            .is_some_and(|active| active.server.is_finished())
+            && let Some(mut previous) = current.take()
+        {
             let _ = (&mut previous.server).await;
         }
         if cancel.is_cancelled() {
@@ -107,20 +110,27 @@ impl WorkspacePreview {
         }
         let workspace = self.root.clone();
         let selected_path = path.to_owned();
+        // Recheck the capability actually served, even if its original path has
+        // since been renamed. Revalidation never replaces a live server.
+        let existing_root = current.as_ref().map(|active| active.root.clone());
         let mut preparation = tokio::task::spawn_blocking(move || {
-            let root = open_directory(&workspace, &selected_path).map_err(|_| {
-                failure(
-                    "preview_directory_unavailable",
-                    "The preview directory must exist inside the workspace without symbolic links.",
-                )
-            })?;
-            read_asset(&root, "index.html").map_err(|_| {
+            let root = match existing_root {
+                Some(root) => root,
+                None => Arc::new(open_directory(&workspace, &selected_path).map_err(|_| {
+                    failure(
+                        "preview_directory_unavailable",
+                        "The preview directory must exist inside the workspace without symbolic links.",
+                    )
+                })?),
+            };
+            let index = read_asset(&root, "index.html").map_err(|_| {
                 failure(
                     "preview_index_unavailable",
                     "The preview directory needs a regular index.html no larger than 1 MiB.",
                 )
             })?;
-            Ok(root)
+            let warnings = compatibility_warnings(&index);
+            Ok((root, warnings))
         });
         let prepared = tokio::select! {
             biased;
@@ -128,8 +138,8 @@ impl WorkspacePreview {
             () = tokio::time::sleep_until(deadline) => Err(startup_timeout()),
             result = &mut preparation => Ok(result),
         };
-        let root = match prepared {
-            Ok(Ok(Ok(root))) => root,
+        let (root, warnings) = match prepared {
+            Ok(Ok(Ok(prepared))) => prepared,
             Ok(Ok(Err(result))) => return result,
             Ok(Err(_)) => return failure("tool_worker_failed", "Preview preparation failed."),
             Err(stopped) => {
@@ -140,6 +150,20 @@ impl WorkspacePreview {
                 return stopped;
             }
         };
+        if cancel.is_cancelled() {
+            return failure("cancelled", "Preview startup cancelled.");
+        }
+        if Instant::now() >= deadline {
+            return startup_timeout();
+        }
+        if let Some(active) = current.as_ref()
+            && !active.server.is_finished()
+        {
+            return running_result(&active.url, warnings, max_output);
+        }
+        if let Some(mut previous) = current.take() {
+            let _ = (&mut previous.server).await;
+        }
         let listener = tokio::select! {
             biased;
             () = cancel.cancelled() => return failure("cancelled", "Preview startup cancelled."),
@@ -163,7 +187,7 @@ impl WorkspacePreview {
         let origin = format!("http://{host}");
         let url = format!("{origin}{prefix}");
         let state = Arc::new(PreviewState {
-            root,
+            root: root.clone(),
             host,
             origin,
             prefix,
@@ -191,10 +215,11 @@ impl WorkspacePreview {
         *current = Some(ActivePreview {
             path: path.to_owned(),
             url: url.clone(),
+            root,
             shutdown,
             server,
         });
-        running_result(&url)
+        running_result(&url, warnings, max_output)
     }
 
     /// Stop accepting, drain bounded connections, and join the server task.
@@ -218,7 +243,7 @@ impl Drop for WorkspacePreview {
 }
 
 struct PreviewState {
-    root: Dir,
+    root: Arc<Dir>,
     host: String,
     origin: String,
     prefix: String,
@@ -373,13 +398,344 @@ fn decode_path(raw: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
-fn running_result(url: &str) -> ToolResult {
-    ToolResult {
-        status: ToolStatus::Ok,
-        body: json!({ "url": url, "status": "running" }).to_string(),
-        truncated: false,
-        error: None,
-        evidence_id: None,
+/// A conservative scan of the already-read public entry point, not a browser
+/// check or an HTML validator. No content is executed or echoed into warnings.
+fn compatibility_warnings(html: &[u8]) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let mut cursor = 0;
+    while cursor < html.len() && warnings.len() < MAX_COMPAT_WARNINGS {
+        if html[cursor] != b'<' {
+            cursor += 1;
+            continue;
+        }
+        if html[cursor..].starts_with(b"<!--") {
+            cursor = html[cursor + 4..]
+                .windows(3)
+                .position(|part| part == b"-->")
+                .map_or(html.len(), |end| cursor + 4 + end + 3);
+            continue;
+        }
+        let start = cursor;
+        cursor += 1;
+        if html
+            .get(cursor)
+            .is_some_and(|byte| matches!(byte, b'!' | b'?'))
+        {
+            let mut quote = None;
+            while let Some(byte) = html.get(cursor) {
+                cursor += 1;
+                match quote {
+                    Some(current) if *byte == current => quote = None,
+                    None if matches!(byte, b'\'' | b'"') => quote = Some(*byte),
+                    None if *byte == b'>' => break,
+                    _ => {}
+                }
+            }
+            continue;
+        }
+        let closing = html.get(cursor) == Some(&b'/');
+        cursor += usize::from(closing);
+        let name_start = cursor;
+        if !html.get(cursor).is_some_and(u8::is_ascii_alphabetic) {
+            continue;
+        }
+        while html
+            .get(cursor)
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b':' | b'-'))
+        {
+            cursor += 1;
+        }
+        let name = &html[name_start..cursor];
+        let mut has_src = false;
+        let mut script_type = None;
+        let mut script_language = None;
+        let mut attributes_complete = false;
+        while cursor < html.len() {
+            if html[cursor].is_ascii_whitespace() || html[cursor] == b'/' {
+                cursor += 1;
+                continue;
+            }
+            if html[cursor] == b'>' {
+                cursor += 1;
+                attributes_complete = true;
+                break;
+            }
+            let attribute_start = cursor;
+            while html.get(cursor).is_some_and(|byte| {
+                !byte.is_ascii_whitespace() && !matches!(byte, b'=' | b'>' | b'/')
+            }) {
+                cursor += 1;
+            }
+            if cursor == attribute_start {
+                cursor += 1;
+                continue;
+            }
+            let attribute = &html[attribute_start..cursor];
+            while html.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+                cursor += 1;
+            }
+            let mut value: &[u8] = b"";
+            if html.get(cursor) == Some(&b'=') {
+                cursor += 1;
+                while html.get(cursor).is_some_and(u8::is_ascii_whitespace) {
+                    cursor += 1;
+                }
+                let quote = html
+                    .get(cursor)
+                    .copied()
+                    .filter(|b| matches!(b, b'\'' | b'"'));
+                if let Some(quote) = quote {
+                    cursor += 1;
+                    let value_start = cursor;
+                    while html.get(cursor).is_some_and(|byte| *byte != quote) {
+                        cursor += 1;
+                    }
+                    value = &html[value_start..cursor];
+                    if cursor == html.len() {
+                        break;
+                    }
+                    cursor += 1;
+                } else {
+                    let value_start = cursor;
+                    while html
+                        .get(cursor)
+                        .is_some_and(|byte| !byte.is_ascii_whitespace() && *byte != b'>')
+                    {
+                        cursor += 1;
+                    }
+                    value = &html[value_start..cursor];
+                }
+            }
+            if closing {
+                continue;
+            }
+            if attribute.eq_ignore_ascii_case(b"src") {
+                has_src = true;
+            } else if attribute.eq_ignore_ascii_case(b"type") && script_type.is_none() {
+                script_type = Some(value);
+            } else if attribute.eq_ignore_ascii_case(b"language") && script_language.is_none() {
+                script_language = Some(value);
+            }
+            if !value.trim_ascii().is_empty() {
+                if attribute.eq_ignore_ascii_case(b"style") {
+                    compatibility_warning(
+                        &mut warnings,
+                        html,
+                        attribute_start,
+                        "inline style; use relative external CSS.",
+                    );
+                } else if event_handler(attribute) {
+                    compatibility_warning(
+                        &mut warnings,
+                        html,
+                        attribute_start,
+                        "inline handler; use addEventListener.",
+                    );
+                }
+            }
+        }
+        if !attributes_complete || closing {
+            continue;
+        }
+        let script = name.eq_ignore_ascii_case(b"script");
+        let style = name.eq_ignore_ascii_case(b"style");
+        if script || style || raw_text_element(name) {
+            let end = raw_text_end(html, cursor, name);
+            if !html[cursor..end].trim_ascii().is_empty() {
+                if script && !has_src && executable_script(script_type, script_language) {
+                    compatibility_warning(
+                        &mut warnings,
+                        html,
+                        start,
+                        "inline script; use relative external JS.",
+                    );
+                } else if style
+                    && script_type.is_none_or(|kind| {
+                        kind.trim_ascii().is_empty()
+                            || kind.trim_ascii().eq_ignore_ascii_case(b"text/css")
+                    })
+                {
+                    compatibility_warning(
+                        &mut warnings,
+                        html,
+                        start,
+                        "inline style; use relative external CSS.",
+                    );
+                }
+            }
+            cursor = end;
+        } else if name.eq_ignore_ascii_case(b"plaintext") {
+            break;
+        }
+    }
+    warnings
+}
+
+fn compatibility_warning(warnings: &mut Vec<String>, html: &[u8], offset: usize, repair: &str) {
+    if warnings.len() < MAX_COMPAT_WARNINGS {
+        let line = 1 + html[..offset].iter().filter(|byte| **byte == b'\n').count();
+        warnings.push(format!("Static CSP: index.html:{line}: {repair}"));
+    }
+}
+
+fn raw_text_end(html: &[u8], mut cursor: usize, name: &[u8]) -> usize {
+    while cursor + 2 + name.len() < html.len() {
+        if html[cursor..].starts_with(b"</")
+            && html[cursor + 2..cursor + 2 + name.len()].eq_ignore_ascii_case(name)
+            && (html[cursor + 2 + name.len()].is_ascii_whitespace()
+                || matches!(html[cursor + 2 + name.len()], b'>' | b'/'))
+        {
+            return cursor;
+        }
+        cursor += 1;
+    }
+    html.len()
+}
+
+fn raw_text_element(name: &[u8]) -> bool {
+    [
+        "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript",
+    ]
+    .iter()
+    .any(|candidate| name.eq_ignore_ascii_case(candidate.as_bytes()))
+}
+
+fn executable_script(kind: Option<&[u8]>, language: Option<&[u8]>) -> bool {
+    if let Some(kind) = kind {
+        let kind = kind.trim_ascii();
+        return kind.is_empty()
+            || kind.eq_ignore_ascii_case(b"module")
+            || [
+                "text/javascript",
+                "application/javascript",
+                "text/ecmascript",
+                "application/ecmascript",
+                "application/x-javascript",
+                "text/jscript",
+                "text/livescript",
+            ]
+            .iter()
+            .any(|candidate| kind.eq_ignore_ascii_case(candidate.as_bytes()));
+    }
+    language.is_none_or(|language| {
+        let language = language.trim_ascii();
+        language.is_empty()
+            || [
+                "javascript",
+                "javascript1.0",
+                "javascript1.1",
+                "javascript1.2",
+                "javascript1.3",
+                "javascript1.4",
+                "javascript1.5",
+                "ecmascript",
+                "jscript",
+                "livescript",
+            ]
+            .iter()
+            .any(|candidate| language.eq_ignore_ascii_case(candidate.as_bytes()))
+    })
+}
+
+fn event_handler(name: &[u8]) -> bool {
+    // Unknown on-prefixed attributes are not necessarily executable handlers.
+    [
+        "onclick",
+        "ondblclick",
+        "oninput",
+        "onchange",
+        "onsubmit",
+        "onreset",
+        "onload",
+        "onerror",
+        "onfocus",
+        "onblur",
+        "onfocusin",
+        "onfocusout",
+        "onkeydown",
+        "onkeyup",
+        "onkeypress",
+        "onmousedown",
+        "onmouseup",
+        "onmousemove",
+        "onmouseover",
+        "onmouseout",
+        "onmouseenter",
+        "onmouseleave",
+        "onpointerdown",
+        "onpointerup",
+        "onpointermove",
+        "onpointerenter",
+        "onpointerleave",
+        "onpointerover",
+        "onpointerout",
+        "onpointercancel",
+        "oncontextmenu",
+        "onwheel",
+        "onscroll",
+        "ondrag",
+        "ondragstart",
+        "ondragend",
+        "ondragenter",
+        "ondragleave",
+        "ondragover",
+        "ondrop",
+        "ontouchstart",
+        "ontouchend",
+        "ontouchmove",
+        "ontouchcancel",
+        "oncopy",
+        "oncut",
+        "onpaste",
+        "oninvalid",
+        "onselect",
+        "onanimationstart",
+        "onanimationend",
+        "ontransitionend",
+        "onbeforeunload",
+        "onunload",
+        "onresize",
+        "onhashchange",
+        "onpopstate",
+        "onmessage",
+        "onstorage",
+        "onplay",
+        "onpause",
+        "onended",
+        "ontimeupdate",
+        "oncanplay",
+        "onloadeddata",
+        "onloadedmetadata",
+        "onprogress",
+        "ontoggle",
+        "onbeforetoggle",
+    ]
+    .iter()
+    .any(|candidate| name.eq_ignore_ascii_case(candidate.as_bytes()))
+}
+
+fn running_result(url: &str, mut warnings: Vec<String>, max_output: usize) -> ToolResult {
+    let mut truncated = warnings.len() == MAX_COMPAT_WARNINGS;
+    loop {
+        let result = ToolResult {
+            status: ToolStatus::Ok,
+            body: json!({ "url": url, "status": "running", "warnings": warnings }).to_string(),
+            truncated,
+            error: None,
+            evidence_id: None,
+        };
+        if result
+            .encoded()
+            .is_ok_and(|encoded| encoded.len() <= max_output)
+        {
+            return result;
+        }
+        // The URL and one complete diagnostic fit the minimum 256-byte budget.
+        // Preserve actionable messages rather than cutting one mid-sentence.
+        if warnings.pop().is_none() {
+            return failure("invalid_limit", "Preview result exceeds its byte limit.");
+        }
+        truncated = true;
     }
 }
 

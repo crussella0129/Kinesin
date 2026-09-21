@@ -16,6 +16,7 @@ pub mod policy;
 pub mod preview;
 pub mod private_state;
 pub mod process;
+mod recovery;
 pub mod replay;
 pub mod runner;
 pub mod scheduler;

@@ -1,0 +1,120 @@
+{
+  "attempt": 8,
+  "outcome": "failed_initial_gate",
+  "records": [
+    {
+      "run_id": "77579e77-d3d7-4394-b783-ffcfdec09a81",
+      "created_utc": "2026-09-20T07:28:33.306000+00:00",
+      "phase": "completed",
+      "terminal_reason": "answer_candidate",
+      "models": [
+        {
+          "event_seq": 3,
+          "elapsed_ms": 1404,
+          "classification": "answer",
+          "duration_ms": 1393,
+          "prompt_tokens": 1376,
+          "completion_tokens": 43,
+          "workflow": {
+            "action": "retry",
+            "completion_reviews": 1,
+            "reason": "completion_review",
+            "repair_attempts": 0
+          },
+          "replay": {
+            "kind": "answer",
+            "text": "I will build a Paper Harbor storefront with the requested features. First, I need to create the necessary files and folders. Let me start by setting up the directory structure."
+          }
+        },
+        {
+          "event_seq": 5,
+          "elapsed_ms": 1955,
+          "classification": "answer",
+          "duration_ms": 509,
+          "prompt_tokens": 1481,
+          "completion_tokens": 33,
+          "replay": {
+            "kind": "answer",
+            "text": "I will build a Paper Harbor storefront with the requested features. Let me create the necessary files and set up the preview."
+          }
+        }
+      ],
+      "tools": [],
+      "prompt": "Build a small local stationery storefront called Paper Harbor. Include six products with names, prices and categories; search and category filtering; a cart with quantities, remove controls and a correct total; and a demo checkout collecting a name and email and showing an order confirmation. Keep the cart after a page reload. Use synthetic data, no accounts or real payments, and no external dependencies. Start it locally and give me the preview URL.\r\n",
+      "frozen_prompt_matches": true,
+      "versions": null,
+      "effective_limits": {
+        "compaction": {
+          "enabled": true,
+          "floor": 6
+        },
+        "max_history_bytes": 32768,
+        "max_model_turns": 20,
+        "max_output_tokens": 2400,
+        "max_request_bytes": 131072,
+        "max_response_bytes": 1048576,
+        "max_run_s": 240,
+        "max_tool_calls": 30,
+        "max_tool_result_bytes": 8192,
+        "repeat_limit": 3
+      },
+      "effective_model": {
+        "base_url": "http://127.0.0.1:57215",
+        "cache_prompt": true,
+        "connect_timeout_s": 3,
+        "context_size": 16384,
+        "id": "local",
+        "model_id": "kinesin-managed-49c5dda4ae6c433a8a22706faca8e33a",
+        "model_queue_timeout_s": 10,
+        "read_timeout_s": 180,
+        "request_timeout_s": 180,
+        "stream": false,
+        "temperature": 0.7,
+        "verified_slots": 1
+      },
+      "terminal_elapsed_ms": 1972,
+      "finished_utc": "2026-09-20T07:28:35.278000+00:00",
+      "counters": {
+        "completion_tokens": 76,
+        "model_turns": 2,
+        "prompt_tokens": 2857,
+        "tool_calls": 0
+      },
+      "candidate_sha256": "2c4ddfde6239cf9b71014c3a02daccdc7c4ca6240be62875d092684a5878ae1b",
+      "summed_model_duration_ms": 1902,
+      "prompt_comparison": {
+        "actual_utf8_bytes": 456,
+        "frozen_utf8_bytes": 454,
+        "raw_byte_identical": false,
+        "actual_sha256": "3f62e91085945cc2397b9f800829d4118a11f09477b6c473f339276df01ece08",
+        "frozen_sha256": "04d6f1a9c2af917728286de972d6e6119e48fb3fd37fc51fc6b1e9c083dbd1b1",
+        "trailing_characters": "\r\n",
+        "normalization": "Remove only terminal-added trailing CR/LF; preserve wording and all other bytes.",
+        "normalized_matches": true,
+        "operator_submission_note": "Primary operator reported trimming read-command output before PTY submission; accepted journal still contains trailing CRLF."
+      }
+    }
+  ],
+  "initial_files": [],
+  "follow_up": "not submitted: zero effects and no preview",
+  "browser_observations": {
+    "initial": "No app files or preview; no browser behavior could be exercised.",
+    "protocol_result": "Two schema-valid answers promised future work; zero actual tool calls. Structured output validity did not produce execution or functional progress.",
+    "comparison": "Relative to native-tool attempt5 with the same profile, actual file creation and six-product rendering were lost. Neither attempt passed the complete workload."
+  },
+  "measurements": {
+    "operator_task_messages": 1,
+    "corrective_prompts": 0,
+    "manual_app_edits": 0,
+    "tool_forcing_prompts": 0,
+    "context_resets": 0,
+    "completion_reviews": 1,
+    "repair_nudges": 0,
+    "evidence_agent_setup_freeze_active_minutes_estimate": 2,
+    "root_total_active_minutes_estimate": 1,
+    "post_attempt_analysis_minutes": "not instrumented; separate from live task operation",
+    "human_authoring_baseline": "not measured"
+  },
+  "shutdown": "Operator /exit ended native session88595 with exit0; no preview existed.",
+  "official_tests": "still deferred: live confidence gate failed"
+}

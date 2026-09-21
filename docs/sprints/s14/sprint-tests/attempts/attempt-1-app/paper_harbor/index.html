@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paper Harbor</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .product { border: 1px solid #ccc; padding: 10px; margin: 10px; }
+        .cart { margin-top: 20px; }
+        .cart-item { border: 1px solid #ccc; padding: 10px; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Paper Harbor</h1>
+    <h2>Products</h2>
+    <div id="products"></div>
+    <h2>Cart</h2>
+    <div id="cart" class="cart"></div>
+    <h2>Checkout</h2>
+    <form id="checkoutForm">
+        <label for="name">Name:</label>
+        <input type="text" id="name" name="name" required>
+        <br>
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email" required>
+        <br>
+        <button type="submit">Checkout</button>
+    </form>
+    <div id="orderConfirmation"></div>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -670,9 +670,10 @@ instructions = "You are a workspace assistant. Use supplied tools to carry out r
 path = "placeholder"
 capture = "metadata"
 [limits]
-max_model_turns = 12
-max_run_s = 180
-max_output_tokens = 512
+max_model_turns = 20
+max_tool_calls = 30
+max_run_s = 240
+max_output_tokens = 2400
 [[workspaces]]
 id = "working"
 root = "placeholder"
@@ -681,7 +682,7 @@ tools = ["list_files", "read_file", "search_files", "create_directory", "write_f
 id = "local"
 base_url = "placeholder"
 model_id = "placeholder"
-context_size = 4096
+context_size = 16384
 verified_slots = 1
 temperature = 0.0
 stream = false

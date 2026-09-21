@@ -158,6 +158,7 @@ pub struct RunState {
     /// proposed. A checked run answers twice: freely while it reads, then under
     /// the frozen contract's shape.
     finalizing: bool,
+    recovery: Option<crate::recovery::Recovery>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -272,12 +273,83 @@ pub fn initiate_with_context(
             tools_enabled,
             checked_task: false,
             finalizing: false,
+            recovery: None,
         },
         Effect::Model,
     ))
 }
 
 impl RunState {
+    /// New-version freeform work opts in at admission. Keeping the legacy
+    /// initializer unchanged allows old captures to replay byte for byte.
+    pub fn enable_workflow_recovery(&mut self) -> Result<(), TransitionError> {
+        self.enable_workflow_recovery_for_tools(&[])
+    }
+
+    pub fn enable_workflow_recovery_for_tools(
+        &mut self,
+        tools: &[String],
+    ) -> Result<(), TransitionError> {
+        self.enable_workflow_recovery_version(7, tools)
+    }
+
+    pub(crate) fn enable_workflow_recovery_version(
+        &mut self,
+        core_version: u64,
+        tools: &[String],
+    ) -> Result<(), TransitionError> {
+        self.require(Pending::ModelProposed, "enable workflow recovery")?;
+        if self.counters != Counters::default() || self.checked_task || !self.tools_enabled {
+            return Err(self.invalid("enable workflow recovery after admission"));
+        }
+        if self.recovery.is_none() {
+            self.messages[0]
+                .content
+                .as_mut()
+                .expect("system instructions")
+                .push_str(if core_version >= 7 {
+                    crate::recovery::WORK_INSTRUCTION_V7
+                } else {
+                    crate::recovery::WORK_INSTRUCTION
+                });
+            if matches!(core_version, 5 | 6) {
+                self.messages[0]
+                    .content
+                    .as_mut()
+                    .expect("system instructions")
+                    .push_str(if core_version >= 6 {
+                        crate::recovery::PLANNING_INSTRUCTION_V6
+                    } else {
+                        crate::recovery::PLANNING_INSTRUCTION
+                    });
+            }
+            if core_version == 6 {
+                self.messages[0].content.as_mut().expect("system instructions")
+                    .push_str(&format!("\nGranted tool names for this run: {}. Choose only steps these tools can perform. start_preview corresponds to a preview step, not a run step.", serde_json::to_string(tools).expect("tool name strings")));
+            }
+            self.recovery = Some(crate::recovery::Recovery::new(core_version));
+        }
+        Ok(())
+    }
+
+    pub fn planning_work(&self) -> bool {
+        self.recovery
+            .as_ref()
+            .is_some_and(|recovery| recovery.planning())
+    }
+
+    pub fn workflow_event(&self, reply: &ModelReply) -> Option<serde_json::Value> {
+        self.recovery
+            .as_ref()
+            .and_then(|recovery| recovery.event(reply))
+    }
+
+    /// Rejected/reviewed prose remains in raw model events, never in the saved
+    /// candidate that a stopped run could display or a session could remember.
+    pub fn retains_answer(&self, reply: &ModelReply) -> bool {
+        matches!(reply, ModelReply::Answer(_)) && self.workflow_event(reply).is_none()
+    }
+
     pub fn messages(&self) -> &[Message] {
         &self.messages
     }
@@ -368,7 +440,10 @@ impl RunState {
     /// The trusted runner separately owns the frozen specification and checker.
     pub fn require_acceptance_check(&mut self) -> Result<(), TransitionError> {
         self.require(Pending::ModelProposed, "select a checked task")?;
-        if self.counters != Counters::default() || self.messages.len() != 2 {
+        if self.counters != Counters::default()
+            || self.messages.len() != 2
+            || self.recovery.is_some()
+        {
             return Err(self.invalid("select a checked task after execution began"));
         }
         self.checked_task = true;
@@ -391,6 +466,32 @@ impl RunState {
 
     pub fn observe_model(&mut self, reply: ModelReply) -> Result<Effect, TransitionError> {
         self.require(Pending::ModelInFlight, "observe a model reply")?;
+        let accepted_plan = self
+            .workflow_event(&reply)
+            .is_some_and(|event| event["reason"] == "work_plan");
+        if let Some(response) = self
+            .recovery
+            .as_mut()
+            .and_then(|recovery| recovery.respond(&reply))
+        {
+            match response {
+                crate::recovery::Response::Retry(feedback) => {
+                    // Retain the accepted bounded plan as conversation history
+                    // so the next turn clearly follows the planning response.
+                    // Rejected prose remains only in the raw journal.
+                    if accepted_plan && let ModelReply::Answer(plan) = &reply {
+                        self.messages
+                            .push(Message::text(Role::Assistant, plan.clone()));
+                    }
+                    self.messages.push(Message::text(Role::User, feedback));
+                    self.pending = Pending::ModelProposed;
+                    return Ok(Effect::Model);
+                }
+                crate::recovery::Response::Stop => {
+                    return self.stop(RunPhase::Stopped, "workflow_recovery_exhausted".into());
+                }
+            }
+        }
         match reply {
             ModelReply::Answer(answer) => {
                 if answer.trim().is_empty() {
@@ -415,7 +516,7 @@ impl RunState {
                 Ok(Effect::Candidate(answer))
             }
             ModelReply::ToolCalls { content, calls } => {
-                if !self.tools_enabled {
+                if !self.tools_enabled || self.planning_work() {
                     return self.stop(RunPhase::Failed, "unexpected_tool_call".into());
                 }
                 if !valid_batch(&calls) {
@@ -453,6 +554,9 @@ impl RunState {
         self.require(Pending::ToolBatch, "observe a tool result")?;
         if self.pending_batch[self.next_tool].id != call_id {
             return Err(TransitionError::ToolResultOutOfOrder);
+        }
+        if let Some(recovery) = &mut self.recovery {
+            recovery.observe(&self.pending_batch[self.next_tool], &content);
         }
         self.messages.push(Message {
             role: Role::Tool,

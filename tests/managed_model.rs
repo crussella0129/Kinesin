@@ -224,10 +224,12 @@ async fn leader_death_during_model_request_is_observed_and_descendants_are_reape
             temperature: 0.0,
             max_output_tokens: 32,
             max_request_bytes: 65536,
+            max_history_bytes: 65536,
             max_response_bytes: 65536,
             stream: false,
             cache_prompt: true,
             tools: vec![],
+            structured_actions: false,
             constraint: None,
         },
     )
