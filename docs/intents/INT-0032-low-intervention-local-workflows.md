@@ -3,7 +3,7 @@
 <!-- sprint-loop-intent-v2 -->
 - **Intent ID:** INT-0032
 - **State:** active
-- **Work evidence:** [T-115–T-117 plan](../sprints/s14/sprint-plans/build-plan.md); [T-118 failed-sprint assessment](../sprints/s14/failure-report.md)
+- **Work evidence:** [T-115–T-117 plan](../sprints/s14/sprint-plans/build-plan.md); [T-118 failed-sprint assessment](../sprints/s14/failure-report.md); [T-119–T-124 follow-on plan](../sprints/s15/sprint-plans/build-plan.md); [Sprint 15 failed qualification](../sprints/s15/failure-report.md)
 - **Completion evidence:** none
 - **Code evidence:** none
 - **Test evidence:** none
@@ -176,6 +176,11 @@ delay operating the product. Compilation and read-only inspection may support
 the live repair work; this preference does not remove final verification.
 
 ## Transition history
+- 2026-09-20: remained active/unrealized after Sprint 15's bounded diagnostics.
+  Two small file-task passes did not transfer to either app-repair request; the
+  unchanged storefront/follow-up was not run and official checks remain deferred.
+  Retain failed evidence and unverified source; T-125 plans a narrower discovery
+  investigation rather than weakening this intent's usability criterion.
 - 2026-09-20: owner requested Sprint 14 closure as failed after eight failed
   live attempts. Intent remains active and unrealized; T-115–T-117 return to
   backlog. T-118 archives failure evidence and unverified source, with no

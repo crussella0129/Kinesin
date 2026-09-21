@@ -1,0 +1,6 @@
+{
+  "dispatch_window": "evening",
+  "carrier": "local",
+  "package_limit": 6,
+  "labels": { "sender": "Sample Shop", "format": "plain" }
+}

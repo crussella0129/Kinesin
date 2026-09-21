@@ -1218,6 +1218,7 @@ fn session_reference() -> SessionContext {
                 run_id: format!("session-run-{index}"),
                 prompt: format!("private-prompt-{index}: remember Cobalt Heron"),
                 answer: format!("private-answer-{index}: remembered"),
+                run_reference: None,
             })
             .collect(),
     }

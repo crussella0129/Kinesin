@@ -544,15 +544,35 @@ impl Startup {
                 .session_context()
                 .map(|value| value.encode())
                 .transpose()?;
-            let (state, _) = crate::core::initiate_with_context(
+            let (mut state, _) = crate::core::initiate_with_context_reference(
                 authority.instructions().to_owned(),
                 None,
                 context,
                 authority.prompt().to_owned(),
                 !authority.workspace().tools.is_empty(),
+                authority.has_run_references(),
             )
             .map_err(|_| "cannot initialize session conversation")?;
-            crate::model::prepare(state.messages(), &crate::runner::options(authority))?;
+            if authority.workspace().tools.iter().any(
+                |tool| matches!(tool, crate::config::ToolRef::Compiled(name) if name.is_mutating()),
+            ) {
+                state
+                    .enable_workflow_recovery_version(
+                        authority.action_protocol().core_version(),
+                        &authority
+                            .workspace()
+                            .tools
+                            .iter()
+                            .map(|tool| tool.wire_name())
+                            .collect::<Vec<_>>(),
+                    )
+                    .map_err(|_| "cannot initialize session recovery")?;
+            }
+            crate::model::prepare_with_version(
+                state.messages(),
+                &crate::runner::options(authority),
+                authority.action_protocol().adapter_version(),
+            )?;
             Ok(())
         };
         prepare(&baseline)?;
@@ -1073,6 +1093,30 @@ async fn event_page(
     }
 }
 
+async fn recorded_effects(
+    store: &StorageClient,
+    run: &str,
+) -> Result<crate::effects::EffectSummary, String> {
+    let mut builder = crate::effects::EffectSummaryBuilder::new(run)?;
+    let mut after = None;
+    while builder.remaining_events() > 0 && !builder.is_complete() {
+        let events = event_page(store, run, after, builder.remaining_events().min(64)).await?;
+        if events.is_empty() {
+            break;
+        }
+        let next = events.last().map(|event| event.seq);
+        for event in &events {
+            builder.observe(event);
+        }
+        if next <= after {
+            break;
+        }
+        after = next;
+        // A short page may have reached the byte cap, not the end of history.
+    }
+    Ok(builder.finished())
+}
+
 async fn operator_action(command: CliCommand, store: &StorageClient) -> Result<OutputLine, String> {
     match command {
         CliCommand::Inspect(command) => {
@@ -1529,20 +1573,27 @@ async fn run_session(
         let run_id = job.authority.run_id().to_owned();
         code = run_single(handle, job, true, (!json).then_some(store)).await?;
         last_run = Some(run_id.clone());
-        if code == 0 {
+        let record = retained_run(store, run_id.clone()).await?;
+        let effects = recorded_effects(store, &run_id).await?;
+        let reference =
+            (effects.has_activity() || effects.incomplete).then(|| crate::session::RunReference {
+                version: 1,
+                phase: record.phase.clone(),
+                terminal_reason: record.terminal_reason.clone(),
+                effects,
+            });
+        let answer = record
+            .result
+            .as_ref()
+            .and_then(|value| value["candidate"].as_str())
+            .unwrap_or_default();
+        if !answer.trim().is_empty() || reference.is_some() {
             memory.retain_recent(retained);
-            let record = retained_run(store, run_id.clone()).await?;
-            if let Some(answer) = record
-                .result
-                .as_ref()
-                .and_then(|value| value["candidate"].as_str())
-                && !answer.trim().is_empty()
-                && let Some(notice) = memory.remember(run_id, &prompt, answer)
-            {
+            if let Some(notice) = memory.remember_run(run_id, &prompt, answer, reference) {
                 session_notice(notice, json).await?;
             }
-        } else {
-            session_notice("[This entry was not added to memory. Earlier completed turns remain; files may have changed, so re-read them before retrying.]\n\n".into(), json).await?;
+        } else if code != 0 {
+            session_notice("[This entry had no retained answer or recorded tool activity. Earlier session context remains.]\n\n".into(), json).await?;
         }
         if interrupted.is_cancelled() {
             return Ok(code);

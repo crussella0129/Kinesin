@@ -144,18 +144,14 @@ impl HumanDisplay {
         } else if self.started {
             display.push('\n');
         }
-        if record.phase == "completed" && record.acceptance_status == "unchecked" {
-            display.push('\n');
-        } else {
-            display.push_str(&format!("\n{}", run_status(record)));
-        }
+        display.push_str(&format!("\n{}", run_status(record)));
         display
     }
 }
 
 pub(super) fn run_status(record: &RunRecord) -> String {
     let status = match (record.phase.as_str(), record.acceptance_status.as_str()) {
-        ("completed", "unchecked") => "Run completed (freeform; no acceptance check).".to_owned(),
+        ("completed", "unchecked") => "Response finished; requested work is unverified.".to_owned(),
         ("completed", "passed") => "Run completed; acceptance check passed.".to_owned(),
         ("completed", "failed") => "Run completed; acceptance check failed.".to_owned(),
         ("completed", _) => "Run completed; acceptance is inconclusive.".to_owned(),
@@ -166,7 +162,6 @@ pub(super) fn run_status(record: &RunRecord) -> String {
                 .terminal_reason
                 .as_deref()
                 .unwrap_or("no terminal reason")
-                .replace('_', " ")
         ),
     };
     format!(

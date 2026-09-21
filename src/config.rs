@@ -300,6 +300,49 @@ pub struct WorkspaceConfig {
     pub commands: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionProtocol {
+    #[default]
+    Native,
+    StructuredOrderedV1,
+}
+
+impl ActionProtocol {
+    pub const fn is_native(&self) -> bool {
+        matches!(self, Self::Native)
+    }
+
+    pub const fn core_version(self) -> u64 {
+        match self {
+            Self::Native => 7,
+            Self::StructuredOrderedV1 => 8,
+        }
+    }
+
+    pub const fn adapter_version(self) -> u64 {
+        match self {
+            Self::Native => 4,
+            Self::StructuredOrderedV1 => 6,
+        }
+    }
+
+    pub(crate) fn validate_scope(self, checked: bool, tools: &[ToolRef]) -> Result<(), String> {
+        if !self.is_native()
+            && (checked
+                || !tools
+                    .iter()
+                    .all(|tool| matches!(tool, ToolRef::Compiled(_)))
+                || !tools
+                    .iter()
+                    .any(|tool| matches!(tool, ToolRef::Compiled(name) if name.is_mutating())))
+        {
+            return Err("structured_ordered_v1 requires freeform work with only compiled tools and an authorized effectful tool".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
@@ -323,6 +366,10 @@ pub struct ModelConfig {
     /// False omits the field; it does not disable a server's own cache behavior.
     #[serde(default = "default_cache_prompt")]
     pub cache_prompt: bool,
+    /// Explicit experimental wire protocol. Omission preserves historical
+    /// native profile/capture serialization and never changes granted tools.
+    #[serde(default, skip_serializing_if = "ActionProtocol::is_native")]
+    pub action_protocol: ActionProtocol,
 }
 
 const fn default_request_timeout() -> u64 {

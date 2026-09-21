@@ -1,0 +1,188 @@
+{
+  "scope": "S15 diagnostic requests 5-6; bounded raw evidence, exact effective prompts, final synthetic app snapshots; seed and authentic observation retained separately in ../repair-preparation",
+  "excluded": "SQLite/locks, binaries/models, duplicate expected-first request bodies, stdout/export copies and close-session sentinel",
+  "files": [
+    {
+      "path": "call-05/evidence/freeze.json",
+      "bytes": 5235,
+      "sha256": "40f12789f18eee5b191b06fe4f5639167aa37df71173748c6924fe2b11849222"
+    },
+    {
+      "path": "call-05/evidence/started.json",
+      "bytes": 130,
+      "sha256": "77ecf2c6fe8ce22d245a99fe46d0de70677817dec5cc48a7837b4eaa7fb3dcbe"
+    },
+    {
+      "path": "call-05/evidence/finished.json",
+      "bytes": 1602,
+      "sha256": "50edd1c31d59653cca49b226a316bb00d7a260615cb0218a27529d9e65929759"
+    },
+    {
+      "path": "call-05/evidence/capture.json",
+      "bytes": 6736,
+      "sha256": "3fa2a046f8a019657847cf8c486bf5c9ec44a5292d0f1d1b872a3496f2696b6d"
+    },
+    {
+      "path": "call-05/evidence/stderr.txt",
+      "bytes": 4,
+      "sha256": "9b127a2ff97e1dfa6082a030b638aaf5ab38989eb25c00a5b3093f6ee18676f4"
+    },
+    {
+      "path": "call-05/evidence/process.json",
+      "bytes": 14,
+      "sha256": "968b62738ba9558d3eaf88b47f561d458bc8fddf2b4a2cf5b049ce0c503887cb"
+    },
+    {
+      "path": "call-05/evidence/terminal.json",
+      "bytes": 1494,
+      "sha256": "844689d179e6fe539a954679e311073f721ed4b12066c845b16f57792e5d26a9"
+    },
+    {
+      "path": "call-05/evidence/wire-00-request.json",
+      "bytes": 10391,
+      "sha256": "dc2e4e804d9988fb766bc732b8210f04778d5533ae2ca016ff16424efa5ffdea"
+    },
+    {
+      "path": "call-05/evidence/wire-00-response.json",
+      "bytes": 813,
+      "sha256": "a17f1e72f31b9314b90408a8a8be3309a2f691689c9f0829ee1c22f54d0bd0ee"
+    },
+    {
+      "path": "call-05/evidence/wire-00-timing.json",
+      "bytes": 169,
+      "sha256": "fa6f05c8bdefa45fa19423bca11faef7a9ac339c72b6e011f0fb161525540234"
+    },
+    {
+      "path": "call-05/evidence/wire-01-request.json",
+      "bytes": 10972,
+      "sha256": "c8c2baab4a48a43f3d9c545b854f13ee2101a0c8fe25be2882b157747c1f600e"
+    },
+    {
+      "path": "call-05/evidence/wire-01-response.json",
+      "bytes": 703,
+      "sha256": "addc16e03fed4153611f47a8088ac30db1367176de35090ceb6467d950dab5cd"
+    },
+    {
+      "path": "call-05/evidence/wire-01-timing.json",
+      "bytes": 171,
+      "sha256": "19b7813f33c05974f947d730a80f9cf3f40be6df987d2ba19f3f76c8917afa49"
+    },
+    {
+      "path": "call-05/control/kinesin.toml",
+      "bytes": 950,
+      "sha256": "a700543eb6d62e6832297f8b7837e51e09048186ec3d53f63d2b489a3f6d86ee"
+    },
+    {
+      "path": "call-05/control/prompt.txt",
+      "bytes": 298,
+      "sha256": "f8618671b422710147b38008511c17446e999c40e91a22976100e454842e08c6"
+    },
+    {
+      "path": "call-05/app/app.js",
+      "bytes": 1007,
+      "sha256": "8bfccd3e533a710807b711031661a228a443e73b9f7bdc22ffffb22c8fc062ff"
+    },
+    {
+      "path": "call-05/app/index.html",
+      "bytes": 1138,
+      "sha256": "b7876f7e7e6ec72d7445b6220b1adc66b7e4cc4acd60b5759b6a3cec43af1ee5"
+    },
+    {
+      "path": "call-05/app/style.css",
+      "bytes": 351,
+      "sha256": "ca72c560519bb7b4b158c5b907566a7bb4bb4332d8ed3105667ad493a21f0df7"
+    },
+    {
+      "path": "call-06/evidence/freeze.json",
+      "bytes": 5234,
+      "sha256": "e29b81a02f019b690b0a4757c8c11a808230712d89f74c90586161b29bfcec27"
+    },
+    {
+      "path": "call-06/evidence/started.json",
+      "bytes": 130,
+      "sha256": "4fa6a21e2d81eaf9d017ce4d235382819dfc2d1a302db32e5431208f4e46e3b2"
+    },
+    {
+      "path": "call-06/evidence/finished.json",
+      "bytes": 1740,
+      "sha256": "bd887effdc527ae91893c3a261ecedae8f9ab7ee2afd00ae26529f00a8c07678"
+    },
+    {
+      "path": "call-06/evidence/capture.json",
+      "bytes": 7846,
+      "sha256": "8931a3c3357cecd1f986f2e070251b40893a583d3cb7d6b50790cadb4ca76787"
+    },
+    {
+      "path": "call-06/evidence/stderr.txt",
+      "bytes": 4,
+      "sha256": "9b127a2ff97e1dfa6082a030b638aaf5ab38989eb25c00a5b3093f6ee18676f4"
+    },
+    {
+      "path": "call-06/evidence/process.json",
+      "bytes": 14,
+      "sha256": "e70fd7b1b6d1524a219ead7f45c0484b405b3eabb61c2d50d9c0012e8b4bdedb"
+    },
+    {
+      "path": "call-06/evidence/terminal.json",
+      "bytes": 1618,
+      "sha256": "8d9cd229a143c3f454536b128b4952143ca7e912bf4cf963a328da6daacd24e2"
+    },
+    {
+      "path": "call-06/evidence/wire-00-request.json",
+      "bytes": 11162,
+      "sha256": "067c343e33faf81cead461e4140ff1f28616e6bbef1b297eeedfcf6566df4061"
+    },
+    {
+      "path": "call-06/evidence/wire-00-response.json",
+      "bytes": 876,
+      "sha256": "c81a38e4b4742f0e644c363c78408c63c85cf20c786448adee11ca2159445fae"
+    },
+    {
+      "path": "call-06/evidence/wire-00-timing.json",
+      "bytes": 170,
+      "sha256": "2884050c6cf6b9aa31e282bf83d2b3f25b31a1991fe018bfa6f86cecd2b26496"
+    },
+    {
+      "path": "call-06/evidence/wire-01-request.json",
+      "bytes": 11743,
+      "sha256": "081821b79e1172e88d886c67669511d97ba5eeb3cf306aa65205af6a5168c292"
+    },
+    {
+      "path": "call-06/evidence/wire-01-response.json",
+      "bytes": 865,
+      "sha256": "b7a5aab4740b5326d4e2c23f1253266b43b0b2f28ff55c1bf053f7ac3e86d809"
+    },
+    {
+      "path": "call-06/evidence/wire-01-timing.json",
+      "bytes": 170,
+      "sha256": "b6793710074dd7e66673a85df099d4b14cf92df2b5e6a6d76977351f899beae1"
+    },
+    {
+      "path": "call-06/control/kinesin.toml",
+      "bytes": 950,
+      "sha256": "a700543eb6d62e6832297f8b7837e51e09048186ec3d53f63d2b489a3f6d86ee"
+    },
+    {
+      "path": "call-06/control/prompt.txt",
+      "bytes": 1069,
+      "sha256": "2398a18ee1ff1d83187fa4b97a6837b22776819b46b775eecee68c80693bec58"
+    },
+    {
+      "path": "call-06/app/app.js",
+      "bytes": 1007,
+      "sha256": "8bfccd3e533a710807b711031661a228a443e73b9f7bdc22ffffb22c8fc062ff"
+    },
+    {
+      "path": "call-06/app/index.html",
+      "bytes": 1138,
+      "sha256": "b7876f7e7e6ec72d7445b6220b1adc66b7e4cc4acd60b5759b6a3cec43af1ee5"
+    },
+    {
+      "path": "call-06/app/style.css",
+      "bytes": 351,
+      "sha256": "ca72c560519bb7b4b158c5b907566a7bb4bb4332d8ed3105667ad493a21f0df7"
+    }
+  ],
+  "total_bytes": 88265,
+  "file_count": 36
+}

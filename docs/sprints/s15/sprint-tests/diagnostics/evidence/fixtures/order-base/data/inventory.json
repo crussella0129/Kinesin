@@ -1,0 +1,8 @@
+{
+  "currency": "USD",
+  "items": [
+    { "id": "pencil", "quantity": 11, "unit_price": 2 },
+    { "id": "notebook", "quantity": 4, "unit_price": 5 }
+  ],
+  "location": "shelf-a"
+}

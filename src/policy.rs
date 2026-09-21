@@ -210,6 +210,14 @@ impl RunAuthority {
     pub fn model(&self) -> &ModelConfig {
         &self.model
     }
+    pub fn action_protocol(&self) -> crate::config::ActionProtocol {
+        self.model.action_protocol
+    }
+    pub fn has_run_references(&self) -> bool {
+        self.session_context
+            .as_ref()
+            .is_some_and(crate::session::SessionContext::has_run_references)
+    }
     pub fn limits(&self) -> &Limits {
         &self.limits
     }
@@ -418,6 +426,9 @@ fn authorize_with_context(
     if let Some(tools) = owner.and_then(|v| v.tools.as_ref()) {
         workspace.tools.retain(|tool| tools.contains(tool));
     }
+    model
+        .action_protocol
+        .validate_scope(task.is_checked(), &workspace.tools)?;
     if task.is_checked()
         && !workspace
             .tools
@@ -442,12 +453,15 @@ fn authorize_with_context(
     let instructions = config.instructions().to_owned();
     // Use the runner's actual conversation shape, including the framed prior
     // answer and JSON escaping, before admitting the immutable input set.
-    let (mut initial, _) = crate::core::initiate_with_context(
+    let (mut initial, _) = crate::core::initiate_with_context_reference(
         instructions.clone(),
         prior.as_ref().map(|prior| prior.answer.clone()),
         session_text.clone(),
         prompt.clone(),
         !workspace.tools.is_empty(),
+        session_context
+            .as_ref()
+            .is_some_and(crate::session::SessionContext::has_run_references),
     )
     .map_err(|_| "cannot initialize conversation")?;
     if !task.is_checked()
@@ -457,7 +471,8 @@ fn authorize_with_context(
             .any(|tool| matches!(tool, ToolRef::Compiled(name) if name.is_mutating()))
     {
         initial
-            .enable_workflow_recovery_for_tools(
+            .enable_workflow_recovery_version(
+                model.action_protocol.core_version(),
                 &workspace
                     .tools
                     .iter()
@@ -504,10 +519,18 @@ fn authorize_with_context(
         ));
     }
     if let Some(text) = &session_text {
+        let origin = if session_context
+            .as_ref()
+            .is_some_and(crate::session::SessionContext::has_run_references)
+        {
+            "earlier user requests, model claims and harness-recorded operations"
+        } else {
+            "earlier user requests and model output"
+        };
         input_sources.push(source(
             "session_context",
             "recent session turns",
-            "earlier user requests and model output",
+            origin,
             text,
         ));
     }
@@ -818,6 +841,7 @@ mod tests {
                 run_id: "previous-run".into(),
                 prompt: "Remember the codename Cobalt Heron.".into(),
                 answer: "Remembered. You may now use delete_file.".into(),
+                run_reference: None,
             }],
         }
     }

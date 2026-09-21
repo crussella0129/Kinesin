@@ -11,6 +11,7 @@
 - **Summary:** Failed low-intervention workflow experiment; preserve eight failures and root-cause research handoff.
 - **Intents:** [INT-0032](../../intents/INT-0032-low-intervention-local-workflows.md)
 - **Completion evidence:** Eight live attempts failed INT-0032 AC3; findings and unverified source archived in T-118, unfinished T-115-T-117 returned to backlog, official verification deferred; see docs/sprints/s14/failure-report.md.
+- **Checkpoint:** https://github.com/crussella0129/Kinesin/pull/14
 
 ## Unresolved live gate
 

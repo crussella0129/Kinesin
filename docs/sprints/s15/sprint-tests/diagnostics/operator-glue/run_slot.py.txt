@@ -1,0 +1,47 @@
+"""Submit one frozen live slot; retain raw responses and export its real capture."""
+
+import json
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+lab = Path(__file__).resolve().parent
+number = int(sys.argv[1])
+call = lab / f"call-{number:02d}"
+evidence = call / "evidence"
+freeze = json.loads((evidence / "freeze.json").read_text(encoding="utf-8"))
+started = {
+    "slot": number, "started_utc": datetime.now(timezone.utc).isoformat(),
+    "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=lab.parents[1], text=True).strip(),
+    "consumed": True, "operator_correction_messages": 0,
+}
+with (evidence / "started.json").open("x", encoding="utf-8") as output:
+    json.dump(started, output, indent=2)
+(lab / "active.json").write_text(json.dumps({"evidence": str(evidence), "expected_first_sha256": freeze["expected_first_sha256"]}), encoding="utf-8")
+prompt = Path(freeze["prompt"]).read_text(encoding="utf-8")
+start = time.monotonic()
+completed = subprocess.run(
+    [freeze["executable"], "--config", freeze["config"], "--workspace", "storefront", "--model", "local", "--prompt", prompt, "--allow-unchecked", "--capture", "replay"],
+    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=280,
+    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+)
+(evidence / "stdout.jsonl").write_bytes(completed.stdout)
+(evidence / "stderr.txt").write_bytes(completed.stderr)
+rows = []
+for line in completed.stdout.decode("utf-8").splitlines():
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if row.get("kind") == "run":
+        rows.append(row)
+        run_id = row.get("record", row)["run_id"]
+        export = subprocess.run([freeze["executable"], "export", "--config", freeze["config"], "--run", run_id, "--output", str(evidence / "capture.json")], capture_output=True, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        (evidence / "export.jsonl").write_bytes(export.stdout)
+        if export.returncode:
+            (evidence / "export-error.txt").write_bytes(export.stderr)
+finish = {"slot": number, "finished_utc": datetime.now(timezone.utc).isoformat(), "elapsed_s": time.monotonic() - start, "exit_code": completed.returncode, "runs": rows}
+(evidence / "finished.json").write_text(json.dumps(finish, indent=2), encoding="utf-8")
+print(json.dumps(finish, indent=2))

@@ -1,2 +1,6 @@
 # Provider wire fixtures retain their original bytes, including SSE separators.
 tests/fixtures/live/** -text whitespace=-blank-at-eof,cr-at-eol
+# Sprint diagnostic hashes refer to the exact archived bytes.
+docs/sprints/s15/sprint-tests/diagnostics/evidence/** -text whitespace=-blank-at-eof,cr-at-eol
+docs/sprints/s15/sprint-tests/diagnostics/repair-preparation/** -text whitespace=-blank-at-eof,cr-at-eol
+docs/sprints/s15/sprint-tests/diagnostics/operator-glue/** -text whitespace=-blank-at-eof,cr-at-eol

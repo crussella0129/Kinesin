@@ -4,6 +4,8 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
+use crate::effects::EffectSummary;
+
 pub const MAX_SESSION_CONTEXT_BYTES: usize = 8_192;
 pub const MAX_SESSION_TURNS: usize = 16;
 
@@ -13,10 +15,41 @@ pub struct SessionTurn {
     pub run_id: String,
     pub prompt: String,
     pub answer: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_reference: Option<RunReference>,
 }
 
-/// The caller retains successful turns in memory. This is reference data, never
-/// inherited authority, tool observations, or independently checked evidence.
+/// Historical run facts stay separate from the assistant's answer claims.
+/// They confer no current authority or evidence of correct behavior.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct RunReference {
+    pub version: u32,
+    pub phase: String,
+    pub terminal_reason: Option<String>,
+    pub effects: EffectSummary,
+}
+
+impl RunReference {
+    pub fn validate(&self, run_id: &str) -> Result<(), String> {
+        if self.version != 1
+            || !matches!(
+                self.phase.as_str(),
+                "completed" | "stopped" | "failed" | "cancelled" | "interrupted"
+            )
+            || self.terminal_reason.as_ref().is_some_and(|reason| {
+                reason.trim().is_empty() || reason.len() > MAX_SESSION_CONTEXT_BYTES
+            })
+            || self.effects.run_id != run_id
+        {
+            return Err("invalid historical run reference".into());
+        }
+        self.effects.validate()
+    }
+}
+
+/// The caller retains bounded terminal turns, including partial operations.
+/// This is reference data, never inherited authority or checked evidence.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct SessionContext {
@@ -24,6 +57,10 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
+    pub fn has_run_references(&self) -> bool {
+        self.turns.iter().any(|turn| turn.run_reference.is_some())
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         self.encode().map(|_| ())
     }
@@ -40,10 +77,15 @@ impl SessionContext {
             if !origins.insert(&turn.run_id) {
                 return Err("session context contains a duplicate run origin".into());
             }
-            for text in [&turn.prompt, &turn.answer] {
-                if text.trim().is_empty() || text.len() > MAX_SESSION_CONTEXT_BYTES {
-                    return Err("session text must be nonempty and within its byte limit".into());
-                }
+            if turn.prompt.trim().is_empty()
+                || turn.prompt.len() > MAX_SESSION_CONTEXT_BYTES
+                || turn.answer.len() > MAX_SESSION_CONTEXT_BYTES
+                || (turn.answer.trim().is_empty() && turn.run_reference.is_none())
+            {
+                return Err("session text must be nonempty and within its byte limit".into());
+            }
+            if let Some(reference) = &turn.run_reference {
+                reference.validate(&turn.run_id)?;
             }
         }
         let encoded = serde_json::to_string(self).map_err(|_| "cannot encode session context")?;
@@ -63,6 +105,7 @@ mod tests {
             run_id: format!("run-{index}"),
             prompt: "Remember the codename: 雪豹.".into(),
             answer: "The codename is 雪豹.".into(),
+            run_reference: None,
         }
     }
 

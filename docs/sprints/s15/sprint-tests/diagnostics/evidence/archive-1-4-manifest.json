@@ -1,0 +1,408 @@
+{
+  "scope": "S15 diagnostic requests 1-4; byte-for-byte bounded raw evidence and synthetic fixture/app files",
+  "excluded": "SQLite and lock files, binaries/models, duplicate expected-first bodies, stdout/export duplicated by capture",
+  "files": [
+    {
+      "path": "call-01/evidence/freeze.json",
+      "bytes": 4820,
+      "sha256": "5bcda35207b290213e9283e3c232cbc2ca7fcb59b821387feca102159f3a2f7b"
+    },
+    {
+      "path": "call-01/evidence/started.json",
+      "bytes": 194,
+      "sha256": "5dba25b2c955ed072b3539e43dba847ee83c3c9397093e5bf195884e00f4ea22"
+    },
+    {
+      "path": "call-01/evidence/capture.json",
+      "bytes": 7013,
+      "sha256": "18608ee676f80c8ba5d55b6e089dd4cbb18db696c86071a9529d92590de49565"
+    },
+    {
+      "path": "call-01/evidence/stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "call-01/evidence/wire-00-request.json",
+      "bytes": 10438,
+      "sha256": "ad71de2f942f02dfa79c05699790c6c1ecafcf4a597d816d2907a7085d140a0e"
+    },
+    {
+      "path": "call-01/evidence/wire-00-response.json",
+      "bytes": 1020,
+      "sha256": "7fb51a46839dba050398b222528d5e8c2e3bf99a8c91c34abe401774b5ec9d3f"
+    },
+    {
+      "path": "call-01/evidence/wire-00-timing.json",
+      "bytes": 170,
+      "sha256": "99f6c473daf52f876232a003f11245302db8b777a50b2a344c0506edb7206727"
+    },
+    {
+      "path": "call-01/evidence/wire-01-request.json",
+      "bytes": 11019,
+      "sha256": "a65b134c0ddaaba0fb1a2d051dc122ccb50ff7241e559c2a90c24db1e8a09606"
+    },
+    {
+      "path": "call-01/evidence/wire-01-response.json",
+      "bytes": 748,
+      "sha256": "bcba7701e1513407b619b3d1da83c963e91a914b27138761c024b84009b2ed13"
+    },
+    {
+      "path": "call-01/evidence/wire-01-timing.json",
+      "bytes": 170,
+      "sha256": "47d1b843324b14076c5993ec1ddc553a82ebe6c8803205178ec576e4093e730e"
+    },
+    {
+      "path": "call-01/control/kinesin.toml",
+      "bytes": 907,
+      "sha256": "bd68607390376c7ad79b536612871b489f3cdcaed74f052c77a9c8a219e5c9e8"
+    },
+    {
+      "path": "call-01/app/data/inventory.json",
+      "bytes": 181,
+      "sha256": "f401975d50fc5a8b04505b640878b85544f681417353365b2c82d4d4e8f5cd9b"
+    },
+    {
+      "path": "call-02/evidence/freeze.json",
+      "bytes": 4792,
+      "sha256": "ec9912a1e6f1014b07a5dba5265e113b3b8c02c45498fa500e77bbaee1516bc7"
+    },
+    {
+      "path": "call-02/evidence/started.json",
+      "bytes": 194,
+      "sha256": "dde91f7393bb6ae35462b63ee21460593d39413cab3690bb652b2148ce5551a3"
+    },
+    {
+      "path": "call-02/evidence/finished.json",
+      "bytes": 1673,
+      "sha256": "8eb5365cc0b12589a13a47e551d5c30a0a11f8027441960c9f68aa95e32fe570"
+    },
+    {
+      "path": "call-02/evidence/capture.json",
+      "bytes": 12366,
+      "sha256": "16b5b0b8669595907588aad61a724a6b9cd1b10d00ea3217373a626ffc5282f1"
+    },
+    {
+      "path": "call-02/evidence/stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "call-02/evidence/wire-00-request.json",
+      "bytes": 10438,
+      "sha256": "b59a38996734cbd74f43fdff2cabffd7bcaa5f0872bc1565e294b0ec2793c5e5"
+    },
+    {
+      "path": "call-02/evidence/wire-00-response.json",
+      "bytes": 699,
+      "sha256": "c6cc57a454e35b8c4f86136db773cdeb9e0e1260797356777b4b2964f15d26a6"
+    },
+    {
+      "path": "call-02/evidence/wire-00-timing.json",
+      "bytes": 170,
+      "sha256": "39e95ebb6a884582714b00b8f5360a3489469af3225f394ade66707e224f05b6"
+    },
+    {
+      "path": "call-02/evidence/wire-01-request.json",
+      "bytes": 11092,
+      "sha256": "28ab7a12d62c542a09a6a8785056cd7004b154d80d840e32c20de1d424219973"
+    },
+    {
+      "path": "call-02/evidence/wire-01-response.json",
+      "bytes": 756,
+      "sha256": "334fb7fdf42f8b6f9a242fc08745fef6b5c85d39d93c4ab9944b054c94071a8d"
+    },
+    {
+      "path": "call-02/evidence/wire-01-timing.json",
+      "bytes": 170,
+      "sha256": "c4f96c68512297f06da6f76deff01d58716e79143c51a7ce1c1d3830ff4d4b23"
+    },
+    {
+      "path": "call-02/evidence/wire-02-request.json",
+      "bytes": 11603,
+      "sha256": "3b1902967f8b10e7bb001d1d84cbf14bcc98c95f629347ab1db636bbe11385e0"
+    },
+    {
+      "path": "call-02/evidence/wire-02-response.json",
+      "bytes": 710,
+      "sha256": "ba1b98f829d64652dc09b5998f055de67f46605ccd68aa673f60c1985e5ae85e"
+    },
+    {
+      "path": "call-02/evidence/wire-02-timing.json",
+      "bytes": 170,
+      "sha256": "baa99e38568a34d693289dab5cec740573fce1ba8e21b2cdac6ece27ecac6328"
+    },
+    {
+      "path": "call-02/evidence/wire-03-request.json",
+      "bytes": 12070,
+      "sha256": "d1dc989cec0c8d542403c2955aab597b2df598c8aca8af45f5950fb6cb3341ce"
+    },
+    {
+      "path": "call-02/evidence/wire-03-response.json",
+      "bytes": 762,
+      "sha256": "11b19315755d09a63f47d7e6f53687b8371b966d39fd0e890400cb4a0c85987e"
+    },
+    {
+      "path": "call-02/evidence/wire-03-timing.json",
+      "bytes": 170,
+      "sha256": "1f095230fb16e4c1197bda94f7fd095fd76b92781bf15fc7a858db7e10ef84c9"
+    },
+    {
+      "path": "call-02/evidence/wire-04-request.json",
+      "bytes": 12935,
+      "sha256": "8e906c4d4e7c2671256e7126eba4a7413d310f71d500705928c95a42df2d2cd2"
+    },
+    {
+      "path": "call-02/evidence/wire-04-response.json",
+      "bytes": 794,
+      "sha256": "fd1799111dcc3cf41ca1f8e5b5adf8ac05e9fb97af8ab4614eebe4465be16011"
+    },
+    {
+      "path": "call-02/evidence/wire-04-timing.json",
+      "bytes": 169,
+      "sha256": "8e68515da13d52395781e5c251a071d41f07f9cd0828b23a8b840bc45468ae61"
+    },
+    {
+      "path": "call-02/control/kinesin.toml",
+      "bytes": 950,
+      "sha256": "a700543eb6d62e6832297f8b7837e51e09048186ec3d53f63d2b489a3f6d86ee"
+    },
+    {
+      "path": "call-02/app/change-note.txt",
+      "bytes": 16,
+      "sha256": "3359819fce7a2ef1b7426f6dde431be2cbbdc5f314505a4b8dbbbf41169c3cea"
+    },
+    {
+      "path": "call-02/app/data/inventory.json",
+      "bytes": 180,
+      "sha256": "b6e34edac4bb25969f1294151328d805fa2cc56a86d920c70ae69971c7ba3d74"
+    },
+    {
+      "path": "call-03/evidence/freeze.json",
+      "bytes": 4798,
+      "sha256": "d6d9771cd29916159c1fd994970cd25a3b52e391f6864389448529ee1bfaf489"
+    },
+    {
+      "path": "call-03/evidence/started.json",
+      "bytes": 194,
+      "sha256": "e8736c8ef0661beb5e65371f17d77be41d95d951032a130037dcb40d23baf7ed"
+    },
+    {
+      "path": "call-03/evidence/finished.json",
+      "bytes": 3551,
+      "sha256": "05bf4891ea6a32405c4e0bb96076d0973b70086275519afb1cdb418a6f648ab8"
+    },
+    {
+      "path": "call-03/evidence/capture.json",
+      "bytes": 24128,
+      "sha256": "61a3000a6ae3267feb733d844b8d36cae9660cc113618e4f5067df2697d3d057"
+    },
+    {
+      "path": "call-03/evidence/stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "call-03/evidence/wire-00-request.json",
+      "bytes": 6700,
+      "sha256": "9dbebe2e75b2a6842c19ef4a90f2bdeaf5750f638b065c14be68beb5d89fde7c"
+    },
+    {
+      "path": "call-03/evidence/wire-00-response.json",
+      "bytes": 3132,
+      "sha256": "2fb5ea20f0d807875fac724760feacd734137ed4150b52c659c64c5e57e31888"
+    },
+    {
+      "path": "call-03/evidence/wire-00-timing.json",
+      "bytes": 169,
+      "sha256": "afd531e6425dbfe1daad08264c54a20e6ecb2d85a5864a2b3cdd5cde9c5a51bc"
+    },
+    {
+      "path": "call-03/evidence/wire-01-request.json",
+      "bytes": 11615,
+      "sha256": "848f2261da7b6c293304be49030cf665bcd1b70c65bada207319c59f69a96140"
+    },
+    {
+      "path": "call-03/evidence/wire-01-response.json",
+      "bytes": 3077,
+      "sha256": "fab54f0f1ef084bca8867dfea30aaaf0293193448230ca7880f12dc5182408f9"
+    },
+    {
+      "path": "call-03/evidence/wire-01-timing.json",
+      "bytes": 168,
+      "sha256": "044d071298740699b299a7e43e4157fca61f75b6fd77fc7907afc885876ac33c"
+    },
+    {
+      "path": "call-03/evidence/wire-02-request.json",
+      "bytes": 13045,
+      "sha256": "466f8e8a7dba169802c46a385c0397b49ebe9b28d73abcd34a419860a16d6ff4"
+    },
+    {
+      "path": "call-03/evidence/wire-02-response.json",
+      "bytes": 2639,
+      "sha256": "d7480ccde08b76430aaa169373ec733de58526c93d180c6da6391f6bad988e63"
+    },
+    {
+      "path": "call-03/evidence/wire-02-timing.json",
+      "bytes": 169,
+      "sha256": "36ead334ed6cc7a9627d7152618a1234cd352fb235814b3dbe6e2a067569a251"
+    },
+    {
+      "path": "call-03/control/kinesin.toml",
+      "bytes": 907,
+      "sha256": "bd68607390376c7ad79b536612871b489f3cdcaed74f052c77a9c8a219e5c9e8"
+    },
+    {
+      "path": "call-03/app/settings/shipping.json",
+      "bytes": 139,
+      "sha256": "3cb026e20641fb7abef58339ce102d0c9336ce9ede5af1f492df6f30825449f7"
+    },
+    {
+      "path": "call-03/app/shipping-note.txt",
+      "bytes": 32,
+      "sha256": "867f1a4a03a2cedbbf77d6afcd8a2c091612e07ca72c8aa12dd64010dcc575c1"
+    },
+    {
+      "path": "call-04/evidence/freeze.json",
+      "bytes": 4798,
+      "sha256": "b5a44a60b6752f7bcf65340eae1b3a60e679f1d1d42b220cc4bb711cf2a87fbf"
+    },
+    {
+      "path": "call-04/evidence/started.json",
+      "bytes": 194,
+      "sha256": "5fe8cd966607800eb87401b88ef8c99f6b52e0e61f359cb6cfc34296e03bcc2d"
+    },
+    {
+      "path": "call-04/evidence/finished.json",
+      "bytes": 1696,
+      "sha256": "89e726bd50832e4725c1edf89b3aa32de74b8a0356fffd9ae1a816839952588e"
+    },
+    {
+      "path": "call-04/evidence/capture.json",
+      "bytes": 12573,
+      "sha256": "1c0065f91a7e3a59732ff9149ea9caf41f09a583d68ccfee05f5fdc0453ddbda"
+    },
+    {
+      "path": "call-04/evidence/stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "call-04/evidence/wire-00-request.json",
+      "bytes": 10437,
+      "sha256": "ffc6deb359f9721e71ad4469d336cd9c41e6fe17abbe7c26ca024efb94dd83f0"
+    },
+    {
+      "path": "call-04/evidence/wire-00-response.json",
+      "bytes": 716,
+      "sha256": "97a30071d8b001117e26fc3fee674fde37597ab07ffbe7eed09debf43cb3d283"
+    },
+    {
+      "path": "call-04/evidence/wire-00-timing.json",
+      "bytes": 169,
+      "sha256": "88317c9bc4b4352add503e48534a669c5a0a314da0585160e465ef0f10ab0559"
+    },
+    {
+      "path": "call-04/evidence/wire-01-request.json",
+      "bytes": 11030,
+      "sha256": "3eb1c315644ea7e941edea07b947d579f1dabff66ffec34f06bcbfb3e75d21b7"
+    },
+    {
+      "path": "call-04/evidence/wire-01-response.json",
+      "bytes": 799,
+      "sha256": "f4dac37416606eae1ee19622a75eb35bc1fd284e32ae981505d41f19cfe2fe02"
+    },
+    {
+      "path": "call-04/evidence/wire-01-timing.json",
+      "bytes": 170,
+      "sha256": "1b9f8a807bf3a43ebe42375d65d92058e8841e15074a23d2c564aa8622afaf68"
+    },
+    {
+      "path": "call-04/evidence/wire-02-request.json",
+      "bytes": 11588,
+      "sha256": "a23b94c406c17fca39f226ef0e91b400bc18d9cda244d2dc1ad5b3b0eea6e632"
+    },
+    {
+      "path": "call-04/evidence/wire-02-response.json",
+      "bytes": 738,
+      "sha256": "f28963156a36e604645b82ec4c555b39fad5c1ca7709fd613985694fa6a53ac1"
+    },
+    {
+      "path": "call-04/evidence/wire-02-timing.json",
+      "bytes": 170,
+      "sha256": "ab43cc21af56a0a78c8238a0747cb9c598a5d493ab59495ad3348a62a8cf19bd"
+    },
+    {
+      "path": "call-04/evidence/wire-03-request.json",
+      "bytes": 12079,
+      "sha256": "16e5bb1819027c3b5b478855a927b1646818ec48027316bb760f762e6b088a4b"
+    },
+    {
+      "path": "call-04/evidence/wire-03-response.json",
+      "bytes": 789,
+      "sha256": "19f32dc14b6fc4e37069d41e2b85a17b2b671611dc3d96fabfcfd6aab6db6051"
+    },
+    {
+      "path": "call-04/evidence/wire-03-timing.json",
+      "bytes": 168,
+      "sha256": "6f76a26f5fde6483ff512b57a0c13bc48c544e660d21635a6c5f0b83d0fa75bb"
+    },
+    {
+      "path": "call-04/evidence/wire-04-request.json",
+      "bytes": 12952,
+      "sha256": "99185f1462b5d092c1349bb0641712c9c47093359401809c0270bdaaa9d03d32"
+    },
+    {
+      "path": "call-04/evidence/wire-04-response.json",
+      "bytes": 830,
+      "sha256": "c5087a95ce6bb58b70a559e04b71c9ad81fcce5e7d7eb03312b8ebfe19c82032"
+    },
+    {
+      "path": "call-04/evidence/wire-04-timing.json",
+      "bytes": 170,
+      "sha256": "a383fc6117c1dee3a1cb26338e9778f119ee7d6c5f49e4734848f659921fa2b7"
+    },
+    {
+      "path": "call-04/control/kinesin.toml",
+      "bytes": 950,
+      "sha256": "a700543eb6d62e6832297f8b7837e51e09048186ec3d53f63d2b489a3f6d86ee"
+    },
+    {
+      "path": "call-04/app/settings/shipping.json",
+      "bytes": 139,
+      "sha256": "af047e0ad8d01cfe4b01ec079787349342ab699597cfed9f2b63f7d8b9d63371"
+    },
+    {
+      "path": "call-04/app/shipping-note.txt",
+      "bytes": 36,
+      "sha256": "edc1cbab585cba536f20d5e47419fd74c00d7689cacd548e98279590c238ca27"
+    },
+    {
+      "path": "fixtures/order-base/data/inventory.json",
+      "bytes": 181,
+      "sha256": "f401975d50fc5a8b04505b640878b85544f681417353365b2c82d4d4e8f5cd9b"
+    },
+    {
+      "path": "fixtures/heldout-base/settings/shipping.json",
+      "bytes": 139,
+      "sha256": "3cb026e20641fb7abef58339ce102d0c9336ce9ede5af1f492df6f30825449f7"
+    },
+    {
+      "path": "fixtures/prompts/pair-1.txt",
+      "bytes": 345,
+      "sha256": "21a062de089de131b43ea3f2dc8b4e93beb291c225fec14b11cad5df4821dcc8"
+    },
+    {
+      "path": "fixtures/prompts/heldout.txt",
+      "bytes": 344,
+      "sha256": "87445b8a3f177f729fa5d47334a8835daf4db028cf8e421508777a6c2cf0591b"
+    },
+    {
+      "path": "fixtures/seed-manifest.json",
+      "bytes": 1962,
+      "sha256": "2307939177bf491fcffd153da5dbea79feff37c966e26aadc59b1229fc104d1e"
+    }
+  ],
+  "total_bytes": 280184,
+  "file_count": 80
+}

@@ -356,3 +356,10 @@
 - **Completed:** 2026-09-20T13:37:33Z
 - **Files modified:** src/{core,lib,model,onboarding,policy,preview,recovery,replay,runner,tools}.rs; tests/{managed_model,model_protocol}.rs; docs/intents/INT-0032-low-intervention-local-workflows.md; docs/sprints/s14 failure/research/plan-critique/live-evidence artifacts and public generated fixtures; docs/work/tasks.md; docs/work/completed-tasks.md.
 - **Commit:** `a745b8b6e539ecc720b1621ddba125db77f4798e`
+
+## T-122 (sprint 15)
+- **Description:** Completed the approved six-request diagnostic decision sequence and independent scoring in disposable workspaces. Ordered schema passed two explicit-file tasks, but both app-repair arms failed with zero actions and unchanged files. Preserved all failures, exact wire/capture/profile/artifact provenance, authentic browser observation and operator-effort limits; stopped before the blocked full workload and official verification. This completes the diagnostic/evidence task only, not T-119–T-121 or product usefulness. Returned unfinished work to backlog and recorded a narrower research handoff. Owned model, relay and seed server were stopped and their ports checked closed.
+- **Intent:** [INT-0033](../intents/INT-0033-evidence-driven-work-recovery.md); [INT-0032](../intents/INT-0032-low-intervention-local-workflows.md)
+- **Completed:** 2026-09-20T15:34:49Z
+- **Files modified:** .gitattributes; docs/sprints/s15/{failure-report,implementation-notes,sprint-meta,closure-review}.md; docs/sprints/s15/sprint-research/{failure-mechanisms,live-workload}.md; docs/sprints/s15/sprint-tests/test-report.md; docs/sprints/s15/sprint-tests/diagnostics/; docs/intents/INT-0032-low-intervention-local-workflows.md; docs/intents/INT-0033-evidence-driven-work-recovery.md; docs/work/{tasks,completed-tasks,confidence.txt}.
+- **Commit:** `3be4d4c7604979fb364ab3fa7c46c20a425fa2e5`

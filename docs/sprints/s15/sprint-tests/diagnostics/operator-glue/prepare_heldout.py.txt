@@ -1,0 +1,44 @@
+import hashlib
+import json
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+lab = Path(__file__).resolve().parent
+repo = lab.parents[1]
+base = json.loads((lab / "call-02/evidence/freeze.json").read_text(encoding="utf-8"))
+template = (lab / "call-01/control/kinesin.toml").read_text(encoding="utf-8")
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+for number, adapter in [(3, 4), (4, 6)]:
+    call = lab / f"call-{number:02d}"
+    call.mkdir()
+    shutil.copytree(lab / "fixtures/heldout-base", call / "app")
+    (call / "control").mkdir()
+    (call / "evidence").mkdir()
+    profile = template
+    if adapter == 6:
+        profile = profile.replace('stream = false', 'stream = false\naction_protocol = "structured_ordered_v1"')
+    config = call / "control/kinesin.toml"
+    config.write_text(profile, encoding="utf-8")
+    prompt = lab / "fixtures/prompts/heldout.txt"
+    first = call / "evidence/expected-first.json"
+    subprocess.run([str(repo / "target/debug/examples/s15-prepare-request.exe"), str(config), str(prompt), str(adapter), str(first)], check=True)
+    freeze = dict(base)
+    freeze.update({
+        "slot": number, "adapter": adapter, "frozen_utc": datetime.now(timezone.utc).isoformat(),
+        "config": str(config), "config_sha256": digest(config), "prompt": str(prompt), "prompt_sha256": digest(prompt),
+        "executable": str(repo / "target/debug/kinesin.exe"), "binary_sha256": digest(repo / "target/debug/kinesin.exe"),
+        "expected_first_sha256": digest(first),
+        "branch": "slot2 actual effects passed; held-out native-versus-ordered comparison",
+        "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
+        "seed": {str(p.relative_to(call / "app")): digest(p) for p in sorted((call / "app").rglob("*")) if p.is_file()},
+    })
+    freeze.pop("control_source_note", None)
+    (call / "evidence/freeze.json").write_text(json.dumps(freeze, indent=2), encoding="utf-8")
+print("Held-out slots 3/4 frozen; no invocation yet")
